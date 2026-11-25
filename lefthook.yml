@@ -1,0 +1,24 @@
+# Git hooks, installed by `pnpm install` through the `prepare` script.
+# Skip once with `LEFTHOOK=0 git commit ...` only when you really have to.
+
+pre-commit:
+  jobs:
+    # No glob: Biome decides which staged files it handles and skips the rest.
+    - name: biome
+      run: pnpm exec biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+      stage_fixed: true
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: pnpm exec commitlint --edit {1}
+
+pre-push:
+  parallel: true
+  jobs:
+    - name: lint
+      run: pnpm lint
+    - name: typecheck
+      run: pnpm typecheck
+    - name: test
+      run: pnpm test
