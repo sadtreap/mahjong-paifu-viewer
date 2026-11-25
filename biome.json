@@ -6,7 +6,8 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": true
+    "ignoreUnknown": true,
+    "includes": ["**", "!**/__fixtures__", "!public/samples", "!public/tiles"]
   },
   "formatter": {
     "enabled": true,
