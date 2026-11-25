@@ -1,0 +1,141 @@
+.center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--u) * 0.18);
+  width: 100%;
+  height: 100%;
+  padding: calc(var(--u) * 1.4);
+  border-radius: calc(var(--u) * 0.3);
+  background: var(--center-bg);
+  color: var(--center-fg);
+  text-align: center;
+  line-height: 1.15;
+}
+
+.roundName {
+  font-size: max(0.75rem, calc(var(--u) * 0.5));
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.counters {
+  display: flex;
+  gap: calc(var(--u) * 0.4);
+  font-size: max(0.65rem, calc(var(--u) * 0.36));
+  font-variant-numeric: tabular-nums;
+}
+
+.counter {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--u) * 0.12);
+}
+
+.stick100,
+.stick1000 {
+  position: relative;
+  display: inline-block;
+  width: calc(var(--u) * 0.9);
+  height: max(3px, calc(var(--u) * 0.14));
+  border-radius: 999px;
+  background: #f4f1ea;
+}
+
+.stick100 {
+  background-image: radial-gradient(circle, #222 0 35%, transparent 40%);
+  background-size: 25% 100%;
+  background-position: center;
+}
+
+.stick1000::after {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: max(3px, calc(var(--u) * 0.11));
+  height: max(3px, calc(var(--u) * 0.11));
+  border-radius: 50%;
+  background: #d22;
+  content: "";
+}
+
+.dora {
+  --tile-w: calc(var(--u) * 0.56);
+
+  display: flex;
+  gap: calc(var(--u) * 0.06);
+  margin: calc(var(--u) * 0.06) 0;
+}
+
+.wall {
+  font-size: max(0.65rem, calc(var(--u) * 0.34));
+  white-space: nowrap;
+}
+
+.wallShort {
+  display: none;
+}
+
+/*
+ * Small boards (phones, up to 480px wide). The rem minimums above would make the content taller
+ * and wider than the 3.2-unit content box, and centering would push it into the band where the
+ * riichi sticks lie. Here the sizes scale with the board (capped at those minimums), the gaps and
+ * the stick icons shrink and the wall count is shortened, so the content always fits in 3.5 units;
+ * Board.module.css moves the riichi sticks out against the seat strips to make that room.
+ */
+@container (max-width: 30rem) {
+  .center {
+    gap: calc(var(--u) * 0.1);
+    padding: calc(var(--u) * 1.25);
+  }
+
+  .roundName {
+    font-size: min(0.75rem, calc(var(--u) * 0.75));
+  }
+
+  .counters {
+    gap: calc(var(--u) * 0.3);
+    font-size: min(0.65rem, calc(var(--u) * 0.62));
+  }
+
+  .stick100,
+  .stick1000 {
+    width: calc(var(--u) * 0.75);
+  }
+
+  .dora {
+    margin: 0;
+  }
+
+  .wall {
+    font-size: min(0.65rem, calc(var(--u) * 0.62));
+  }
+
+  /* Visually hidden (like .sr-only), so screen readers still get the full text. */
+  .wallLong {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    border: 0;
+    white-space: nowrap;
+  }
+
+  .wallShort {
+    display: inline;
+  }
+}
+
+/* Forced colors drop backgrounds, which would hide the stick icons; keep their colors (also for
+   the 1000-point dot, as the property is inherited) and outline them. */
+@media (forced-colors: active) {
+  .stick100,
+  .stick1000 {
+    forced-color-adjust: none;
+    outline: 1px solid CanvasText;
+  }
+}

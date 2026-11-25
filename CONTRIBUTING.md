@@ -42,9 +42,28 @@ Every user-visible string goes through `src/i18n`. Never hard-code UI text in co
 
 Strings that need values are functions, e.g. `` round: (n: number) => `Round ${n}` ``.
 
+Text the parsers take from a log (player names, unknown yaku, rule text they cannot read) is shown as it is. Anything the app itself knows, such as Tenhou's rooms and ranks, comes from structured model fields and is localized.
+
+## Accessibility
+
+- Text needs a contrast of 4.5:1 in both themes; `src/ui/theme.test.ts` checks the color tokens in `src/index.css`.
+- Anything drawn only with backgrounds (sticks, highlights) needs a `@media (forced-colors: active)` rule, or it disappears in Windows High Contrast mode.
+- A button that can reach its limit when pressed (Last step) uses `aria-disabled`, not `disabled`, so it keeps the focus.
+- When a view or message replaces the control that had the focus, move the focus on purpose (see `Viewer.tsx`, `App.tsx` and `ErrorMessage.tsx`).
+- Announce each change once: the step status line is the only live region of the viewer.
+- Check layout changes in a browser at 320 px and at desktop width; the tests run in happy-dom, which does not lay out CSS.
+
 ## Tests
 
-Tests are colocated with the code as `*.test.ts(x)` and run with `pnpm test`. Parsers and replay logic should be covered by unit tests, ideally with real log fixtures.
+Tests are colocated with the code as `*.test.ts(x)` and run with `pnpm test`. Parsers and replay logic should be covered by unit tests, ideally with real log fixtures whose license allows it.
+
+- Tests run in Node by default; component tests start with `// @vitest-environment happy-dom`.
+- Tests are typechecked with `tsconfig.test.json`, which adds the Node.js types, so tests can read files with `node:fs`. App code (`tsconfig.app.json`) cannot use Node APIs.
+- Fixtures live in a `__fixtures__` folder next to the code that uses them; shared test helpers live in `src/test`.
+- Anonymize real logs before committing them: replace the player names with "A", "B", "C" and "D" and remove the log id. Third-party data keeps its license text and a README naming the source and the changes next to it.
+- Tenhou's mjlog game records carry no license and are never committed. The mjlog parser is tested on XML written by `src/test/mjlog-serialize.ts`, a test-only encoder that turns hand-built games and the tenhou.net/6 fixtures into Tenhou-style mjlog; `parseMjlog(toMjlogXml(game))` must give back `stripMjlogUnsupported(game)`, which lists what mjlog cannot carry.
+- To check the mjlog parser and that encoder against real games, point `MJLOG_CORPUS_DIR` at a folder of mjlog XML files, e.g. `MJLOG_CORPUS_DIR=~/tenhou-logs pnpm test src/formats`. Each game is then compared with Tenhou's own scores and hands, replayed with `checkGame`, and must come back unchanged from `toMjlogXml`. Such a corpus is never committed.
+- The sample logs offered on the start page live in `public/samples` (listed in `src/ui/samples.ts`) and follow the same rules.
 
 ## Commit messages
 

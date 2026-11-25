@@ -1,0 +1,10 @@
+.pond {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: flex-end;
+  height: calc(var(--tile-w) * 4 / 3);
+}

@@ -1,0 +1,109 @@
+.screen {
+  display: grid;
+  gap: 1rem;
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+.heading {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.intro {
+  margin: 0;
+}
+
+.loading {
+  margin: 0;
+  font-weight: 600;
+}
+
+.fileButton {
+  justify-self: start;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fileButton:hover {
+  background: var(--color-accent-hover);
+}
+
+.fileButton:focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.fileButton:has(input:disabled) {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.paste {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.pasteLabel {
+  font-weight: 600;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 8rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  resize: vertical;
+}
+
+.submit {
+  justify-self: start;
+  min-width: 6rem;
+}
+
+.samples {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.samplesHeading {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.sampleButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.notes {
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
+.notes p,
+.notes ul {
+  margin: 0 0 0.5rem;
+}
+
+.notes ul {
+  padding-left: 1.25rem;
+}
+
+.notesHeading {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.875rem;
+  color: var(--color-fg);
+}

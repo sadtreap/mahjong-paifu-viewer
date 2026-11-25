@@ -1,0 +1,24 @@
+.row {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+}
+
+.concealed {
+  display: flex;
+  align-items: flex-end;
+}
+
+/* Keep in sync with DRAWN_GAP and MELD_GAP in layout.ts. */
+.drawn {
+  margin-left: calc(var(--tile-w) * 0.4);
+}
+
+.melds {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: flex-end;
+  gap: calc(var(--tile-w) * 0.25);
+  margin-left: auto;
+  padding-left: calc(var(--tile-w) * 0.25);
+}

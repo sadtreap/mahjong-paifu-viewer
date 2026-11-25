@@ -1,0 +1,69 @@
+.viewer {
+  display: grid;
+  grid-template-areas:
+    "board header"
+    "board controls"
+    "board details";
+  grid-template-rows: auto auto 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
+  gap: 1rem 1.25rem;
+  align-items: start;
+}
+
+.header {
+  grid-area: header;
+  min-width: 0;
+}
+
+.board {
+  grid-area: board;
+  justify-self: center;
+  /* As large as fits: the full column width, but no taller than the window below the app bar. */
+  width: min(100%, calc(100dvh - var(--app-bar-height) - 2.5rem));
+  min-width: 0;
+}
+
+.controls {
+  display: grid;
+  grid-area: controls;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.details {
+  display: grid;
+  grid-area: details;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.status {
+  min-height: 1.5em;
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.error {
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid var(--color-danger);
+  border-radius: 0.5rem;
+  color: var(--color-danger);
+}
+
+@media (max-width: 56rem) {
+  .viewer {
+    grid-template-areas:
+      "header"
+      "board"
+      "controls"
+      "details";
+    grid-template-rows: none;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .board {
+    width: min(100%, 40rem);
+  }
+}

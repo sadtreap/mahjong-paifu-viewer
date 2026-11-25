@@ -1,0 +1,44 @@
+.tile {
+  --w: var(--tile-w, 2rem);
+
+  display: block;
+  flex: none;
+  width: var(--w);
+  height: calc(var(--w) * 4 / 3);
+  background-size: 100% 100%;
+  /* Matches the rounded corners of the tile artwork (radius 40 on a 300x400 tile). */
+  border-radius: 13.3% / 10%;
+  box-shadow:
+    0 0 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
+    0 max(1px, calc(var(--w) * 0.04)) max(1px, calc(var(--w) * 0.06)) var(--tile-shadow);
+  user-select: none;
+}
+
+.dimmed {
+  filter: brightness(0.8) saturate(0.8);
+}
+
+.called {
+  opacity: 0.4;
+}
+
+.highlighted {
+  outline: max(2px, calc(var(--w) * 0.08)) solid var(--color-highlight);
+  outline-offset: max(1px, calc(var(--w) * 0.04));
+}
+
+.sideways {
+  position: relative;
+  display: block;
+  flex: none;
+  width: calc(var(--tile-w, 2rem) * 4 / 3);
+  height: var(--tile-w, 2rem);
+}
+
+.sideways > .tile {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  rotate: 90deg;
+}

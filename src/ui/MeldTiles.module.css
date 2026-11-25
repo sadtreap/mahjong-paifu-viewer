@@ -1,0 +1,10 @@
+.meld {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+}
