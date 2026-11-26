@@ -1,0 +1,281 @@
+/*
+ * The 3D table: one flattened CSS 3D plane (a single transform, no preserve-3d) with ordinary 2D
+ * content, flat DOM above it (plates, own hand, captions) and a static 2D room behind it.
+ * Geometry is pure CSS custom properties, mirrored in geometry.ts (geometry.test.ts checks both).
+ *
+ * Hard layer rules (measured with the CDP layer tree; breaking one adds composited layers):
+ *   1. Nothing painted in the plane may extend outside the plane's border box (the rails live in
+ *      its border; the far wall is in an unrotated layer).
+ *   2. The plane's background must end with a solid colour.
+ *   3. S is snapped to an even pixel count.
+ *   4. Never set border or border-width on .plane outside its base rule (it holds the rails).
+ */
+@property --S {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+.stage {
+  /* Camera: tilt, its sine and cosine, perspective k (x S), share of S below the near edge. */
+  --tilt: 34deg;
+  --sin: 0.559193;
+  --cos: 0.829038;
+  --k: 1.15;
+  --below: 0.085;
+  /* Depth of the frame's top line (1 = the far edge). */
+  --ztop: 1;
+  --gutter: 12px;
+  /* Room above the plane, in px, for the standing walls' far lids (amendment 2). */
+  --pad: 0px;
+
+  grid-area: stage;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  container-type: size;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--room-1);
+  touch-action: pan-y pinch-zoom;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.stage:focus {
+  outline: none;
+}
+
+.stage:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+/*
+ * Standing walls (Show all hands off) rise above the far edge: the frame reserves their far lids
+ * (geometry.ts wallLidDepth), plus a margin that keeps them 8 px inside the stage.
+ */
+.stage[data-walls] {
+  --ztop: 1.105;
+  --pad: max(0px, 8px - var(--gutter));
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .stage {
+    --gutter: 4px;
+  }
+}
+
+@media (orientation: portrait) {
+  .stage {
+    --tilt: 26deg;
+    --sin: 0.438371;
+    --cos: 0.898794;
+    --k: 2.1;
+    --gutter: 6px;
+
+    height: auto;
+    container-type: inline-size;
+    overflow: clip visible;
+  }
+
+  .stage[data-walls] {
+    --ztop: 1.055;
+    --pad: 8px;
+  }
+}
+
+.stage[data-view="flat"] {
+  --tilt: 0deg;
+  --sin: 0;
+  --cos: 1;
+  --ztop: 1;
+  --pad: 0px;
+}
+
+/* A modal card over the table (the result or the welcome card): plates and captions step aside. */
+.stage[data-overlay] {
+  cursor: default;
+}
+
+.frame {
+  /* Far/near width ratio and the frame's height factor (see frameHeightFactor). */
+  --r: calc(var(--k) / (var(--k) + var(--sin)));
+  --st: calc(var(--k) / (var(--k) + var(--ztop) * var(--sin)));
+  --hf: calc(var(--cos) * var(--ztop) * var(--st) + var(--below));
+  --S: round(
+    down,
+    min(100cqw - 2 * var(--gutter), (100cqh - 2 * var(--gutter) - var(--pad)) / var(--hf)),
+    2px
+  );
+  --u: calc(var(--S) / 20);
+  --fh: calc(var(--S) * var(--hf) + var(--pad));
+  /* Eye: kc above the felt, ke beyond the near edge, in units. */
+  --kc: calc(20 * var(--k) * var(--cos));
+  --ke: calc(20 * var(--k) * var(--sin));
+
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  width: var(--S);
+  height: var(--fh);
+}
+
+/*
+ * Portrait: the stage scrolls with the page. S comes from the width and the viewport minus the
+ * chrome (--chrome, set per breakpoint on .player). The frame clips at its top (the far rail is
+ * wider than S and rises above the far edge) but not at the sides or the bottom.
+ */
+@media (orientation: portrait) {
+  .frame {
+    --S: round(
+      down,
+      min(100cqw - 2 * var(--gutter), (100svh - var(--chrome, 200px) - var(--pad)) / var(--hf)),
+      2px
+    );
+
+    position: relative;
+    left: auto;
+    top: auto;
+    translate: none;
+    margin: 0 auto;
+    clip-path: inset(0 -50vw -200vh -50vw);
+  }
+}
+
+/* No round(): S is not snapped (an extra composited layer or two is acceptable there). */
+@supports not (width: round(down, 1px, 2px)) {
+  .frame {
+    --S: min(100cqw - 2 * var(--gutter), (100cqh - 2 * var(--gutter) - var(--pad)) / var(--hf));
+  }
+
+  @media (orientation: portrait) {
+    .frame {
+      --S: min(
+        100cqw -
+        2 *
+        var(--gutter),
+        (100svh - var(--chrome, 200px) - var(--pad)) /
+        var(--hf)
+      );
+    }
+  }
+}
+
+/* No container units: size the table from the viewport, flat. */
+@supports not (width: 1cqw) {
+  .stage {
+    --tilt: 0deg;
+    --sin: 0;
+    --cos: 1;
+    --ztop: 1;
+    --pad: 0px;
+  }
+
+  .frame {
+    --S: min(100vw - 2 * var(--gutter), (100vh - 14rem) / var(--hf));
+
+    position: relative;
+    left: auto;
+    top: auto;
+    translate: none;
+    margin: 0 auto;
+  }
+}
+
+/*
+ * The plane: the felt square plus a rail border on the far and side edges. Rail bands in the
+ * border, outward from the felt: the lip (the rail's inner face, its exact decal width), a lit
+ * edge, the rail top, the rail base. The trailing colour makes the plane "known opaque".
+ */
+.plane {
+  --hr: 0.5;
+  --tr: calc(var(--kc) / (var(--kc) - var(--hr)));
+  --Ls: calc(10 * (var(--tr) - 1));
+  --Lf: calc((20 + var(--ke)) * (var(--tr) - 1));
+  --Fs: 1.7;
+  --Ft: 2.4;
+  --b1: calc(var(--Ls) * var(--u));
+  --b2: calc((var(--Ls) + 0.09) * var(--u));
+  --b3: calc((var(--Ls) + 0.55) * var(--u));
+  --f1: calc(var(--Lf) * var(--u));
+  --f2: calc((var(--Lf) + 0.09) * var(--u));
+  --f3: calc((var(--Lf) + 0.55) * var(--u));
+
+  box-sizing: content-box;
+  position: absolute;
+  left: calc(var(--Fs) * var(--u) * -1);
+  bottom: calc(var(--S) * var(--below));
+  width: var(--S);
+  height: var(--S);
+  border: solid transparent;
+  border-width: calc(var(--Ft) * var(--u)) calc(var(--Fs) * var(--u)) 0;
+  transform-origin: 50% 100%;
+  transform: perspective(calc(var(--S) * var(--k))) rotateX(var(--tilt));
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .5 -.2'/%3E%3C/filter%3E%3Crect width='96' height='96' filter='url(%23n)'/%3E%3C/svg%3E")
+    padding-box,
+    radial-gradient(
+      60% 60% at 44% 42%,
+      var(--felt-light),
+      var(--felt-center) 45%,
+      var(--felt-edge) 88%
+    )
+    padding-box,
+    linear-gradient(
+      to top,
+      var(--rail-lip) 0 var(--f1),
+      var(--rail-edge) var(--f1) var(--f2),
+      var(--rail-top-0) var(--f2),
+      var(--rail-top-1) var(--f3)
+    )
+    left top / 100% calc(var(--Ft) * var(--u)) no-repeat border-box,
+    linear-gradient(
+      to left,
+      var(--rail-lip) 0 var(--b1),
+      var(--rail-edge) var(--b1) var(--b2),
+      var(--rail-top-0) var(--b2),
+      var(--rail-top-1) var(--b3)
+    )
+    left top / calc(var(--Fs) * var(--u)) 100% no-repeat border-box,
+    linear-gradient(
+      to right,
+      var(--rail-lip) 0 var(--b1),
+      var(--rail-edge) var(--b1) var(--b2),
+      var(--rail-top-0) var(--b2),
+      var(--rail-top-1) var(--b3)
+    )
+    right top / calc(var(--Fs) * var(--u)) 100% no-repeat border-box,
+    var(--rail-top-1);
+}
+
+/*
+ * Felt markings painted in the plane: the chamfered play square (2.1 units in, 14% white) and
+ * seams from the console's corners (10%); the inset shadow is the rails' shade on the felt.
+ */
+.plane::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200' fill='none' stroke='%23fff'%3E%3Cpath stroke-opacity='.14' stroke-width='.6' d='M30 21H170L179 30V170L170 179H30L21 170V30Z'/%3E%3Cpath stroke-opacity='.10' stroke-width='.5' d='M70 70L25.5 25.5M130 70L174.5 25.5M130 130L174.5 174.5M70 130L25.5 174.5'/%3E%3C/svg%3E")
+    0 0 / 100% 100%;
+  box-shadow: inset 0 calc(var(--u) * 0.3) calc(var(--u) * 0.5) rgb(0 0 0 / 0.32);
+}
+
+@media (forced-colors: active) {
+  /* Only the border colour: the plane's border box holds the rails. */
+  .plane {
+    border-color: Canvas;
+  }
+
+  .plane::before {
+    outline: 1px solid CanvasText;
+    box-shadow: none;
+  }
+}

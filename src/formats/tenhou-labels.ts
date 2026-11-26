@@ -5,7 +5,7 @@
  * localizes the structured fields; the labels here are only matched against source text or, for
  * mjlog, written as the description Tenhou itself would show.
  */
-import type { GameRules } from "../core/model";
+import type { GameRules, PlayerCount } from "../core/model";
 
 /** Tenhou dan labels by dan index (mjlog UN `dan`), as Tenhou writes them (full-width kyu digits). */
 export const TENHOU_DAN_LABELS = [
@@ -37,11 +37,16 @@ function halfWidthDigits(text: string): string {
   return text.replace(/[０-９]/g, (digit) => String.fromCharCode(digit.charCodeAt(0) - 0xfee0));
 }
 
-const DAN_INDEX = new Map<string, number>(
-  TENHOU_DAN_LABELS.map((label, index) => [halfWidthDigits(label), index]),
-);
+const DAN_INDEX = new Map<string, number>([
+  ...TENHOU_DAN_LABELS.map((label, index): [string, number] => [halfWidthDigits(label), index]),
+  // Tenhou's tenhou.net/6 export writes 天鳳位 as "天鳳".
+  ["天鳳", TENHOU_DAN_LABELS.indexOf("天鳳位")],
+]);
 
-/** Dan index of a Tenhou rank label such as "七段" or "１級", or undefined for any other text. */
+/**
+ * Dan index of a Tenhou rank label such as "七段", "１級" or "天鳳" (天鳳位), or undefined for any
+ * other text.
+ */
 export function tenhouDanIndex(label: string): number | undefined {
   return DAN_INDEX.get(halfWidthDigits(label.trim()));
 }
@@ -56,8 +61,10 @@ const ROOM_LABELS: ReadonlyArray<[TenhouRoom, string]> = [
   ["phoenix", "鳳"],
 ];
 
-/** Everything Tenhou's rule text says about a four-player game. */
+/** Everything Tenhou's rule text says about a game. */
 export interface TenhouRules {
+  /** 3 when the text starts with 三 (three-player). Not a GameRules field: GameLog.playerCount. */
+  players: PlayerCount;
   room: TenhouRoom;
   length: "east" | "south";
   openTanyao: boolean;
@@ -65,10 +72,14 @@ export interface TenhouRules {
   fast: boolean;
 }
 
-/** Tenhou's rule text for these rules, e.g. "鳳南喰赤" or "上東喰赤速". */
+/**
+ * Tenhou's rule text for these rules, e.g. "鳳南喰赤", "上東喰赤速" or "三鳳南喰赤". Four-player text
+ * has no "四", as in Tenhou's own logs.
+ */
 export function tenhouRuleText(rules: TenhouRules): string {
   const room = ROOM_LABELS.find(([key]) => key === rules.room)?.[1] ?? "";
   return [
+    rules.players === 3 ? "三" : "",
     room,
     rules.length === "south" ? "南" : "東",
     rules.openTanyao ? "喰" : "",
@@ -78,10 +89,10 @@ export function tenhouRuleText(rules: TenhouRules): string {
 }
 
 /**
- * Tenhou's four-player rule text: an optional "四", the room, 東 or 南, then 喰 (open tanyao), 赤
- * (red fives) and 速 (fast) when they apply. Anything else is not guessed at.
+ * Tenhou's rule text: 三 (three-player) or an optional 四, the room, 東 or 南, then 喰 (open
+ * tanyao), 赤 (red fives) and 速 (fast) when they apply. Anything else is not guessed at.
  */
-const RULE_TEXT = /^四?([般上特鳳])([東南])(喰?)(赤?)(速?)$/;
+const RULE_TEXT = /^([三四]?)([般上特鳳])([東南])(喰?)(赤?)(速?)$/;
 
 /**
  * Reads a Tenhou rule text such as "鳳南喰赤". Returns undefined for any other text, e.g. the
@@ -92,12 +103,13 @@ export function parseTenhouRuleText(text: string): TenhouRules | undefined {
   if (!match) {
     return undefined;
   }
-  const [, roomLabel, length, kuitan, aka, fast] = match;
+  const [, players, roomLabel, length, kuitan, aka, fast] = match;
   const room = ROOM_LABELS.find(([, label]) => label === roomLabel)?.[0];
   if (!room) {
     return undefined;
   }
   return {
+    players: players === "三" ? 3 : 4,
     room,
     length: length === "南" ? "south" : "east",
     openTanyao: kuitan !== "",

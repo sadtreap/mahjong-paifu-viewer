@@ -1,69 +1,186 @@
-.viewer {
+/*
+ * The page layout (SPEC-v2 §1). Every grid track from .app down to the stage is definite in the
+ * app-shell layouts: with an implicit auto row Chrome lays the size-container stage out twice per
+ * relayout and recomputes the table's container-unit styles on every status-text change.
+ *
+ * Areas: .app has "player" and "panel"; .player has "stage", "dock", "hud", "tools" and, on
+ * phones in landscape (where the dock dissolves), "status", "nav" and "bands". The HUD and the
+ * toolbar are children of .player, not of the stage; the HUD ignores the pointer, so clicks and
+ * the wheel fall through to the table. The media queries are breakpoints.ts's strings, verbatim.
+ */
+.app {
   display: grid;
-  grid-template-areas:
-    "board header"
-    "board controls"
-    "board details";
-  grid-template-rows: auto auto 1fr;
-  grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
-  gap: 1rem 1.25rem;
-  align-items: start;
+  height: 100dvh;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "player";
 }
 
-.header {
-  grid-area: header;
-  min-width: 0;
+/*
+ * The landscape layouts are an app shell: the page itself never scrolls (Page Down used to move the
+ * whole app up). clip, unlike hidden, makes no scroll container that scrollIntoView could move.
+ */
+@media (orientation: landscape) {
+  .app {
+    overflow: clip;
+  }
 }
 
-.board {
-  grid-area: board;
-  justify-self: center;
-  /* As large as fits: the full column width, but no taller than the window below the app bar. */
-  width: min(100%, calc(100dvh - var(--app-bar-height) - 2.5rem));
-  min-width: 0;
-}
-
-.controls {
+.player {
+  grid-area: player;
+  position: relative;
   display: grid;
-  grid-area: controls;
-  gap: 0.75rem;
   min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas: "stage" "dock";
+  color: var(--color-fg);
+  background: var(--color-bg);
 }
 
-.details {
+/* Wide and laptop: the HUD floats at the stage's top left. */
+.hud {
+  position: absolute;
+  z-index: 2;
+  left: 12px;
+  top: 10px;
+  max-width: calc(50% - 24px);
+  pointer-events: none;
+}
+
+/* The review rail's slot. Outside the wide column it holds a sheet (a dialog) or nothing. */
+.rail {
+  display: contents;
+}
+
+.rail[hidden] {
+  display: none;
+}
+
+/* A round that could not be replayed: the message takes the stage's place. */
+.failed {
+  grid-area: stage;
+  position: relative;
   display: grid;
-  grid-area: details;
-  gap: 1rem;
+  place-items: center;
   min-width: 0;
+  min-height: 0;
+  padding: 16px;
+  background: var(--room-1);
 }
 
-.status {
-  min-height: 1.5em;
-  margin: 0;
-  font-size: 0.9375rem;
-  font-weight: 600;
-}
-
-.error {
+.failed > p {
   margin: 0;
   padding: 1rem;
   border: 1px solid var(--color-danger);
   border-radius: 0.5rem;
-  color: var(--color-danger);
+  color: var(--color-fg);
 }
 
-@media (max-width: 56rem) {
-  .viewer {
-    grid-template-areas:
-      "header"
-      "board"
-      "controls"
-      "details";
-    grid-template-rows: none;
-    grid-template-columns: minmax(0, 1fr);
+.failed:focus {
+  outline: none;
+}
+
+/* Wide: the rail is a 300 px column, open by default (setting panelOpen). */
+@media (orientation: landscape) and (min-width: 1200px) and (min-height: 501px) {
+  .app[data-panel="open"] {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-areas: "player panel";
   }
 
-  .board {
-    width: min(100%, 40rem);
+  .app[data-panel="open"] .rail {
+    grid-area: panel;
+    display: block;
+    min-width: 0;
+    min-height: 0;
+  }
+}
+
+/* Laptop: the same player; the rail is a side sheet. */
+@media (orientation: landscape) and (max-width: 1199px) and (min-height: 501px) {
+  .hud {
+    max-width: calc(50% - 30px);
+  }
+}
+
+/* Phone landscape: stage plus a right rail (HUD, status, transport, tools); band 2 under the stage. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .player {
+    --rail: clamp(168px, 23vw, 204px);
+
+    grid-template-columns: minmax(0, 1fr) var(--rail);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "stage hud"
+      "stage status"
+      "stage nav"
+      "bands tools";
+  }
+
+  .player > :first-child {
+    border-right: 1px solid var(--color-border);
+  }
+
+  .hud {
+    grid-area: hud;
+    position: static;
+    max-width: none;
+    min-width: 0;
+    padding: 6px 6px 2px;
+    background: var(--dock-bg);
+  }
+}
+
+/* Portrait: one scrolling column; a top strip (HUD and tools), the stage, the dock, the rail inline. */
+@media (orientation: portrait) {
+  .app {
+    height: auto;
+    min-height: 100dvh;
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "player" "panel";
+  }
+
+  .player {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+      "hud tools"
+      "stage stage"
+      "dock dock";
+  }
+
+  .hud {
+    grid-area: hud;
+    position: static;
+    align-self: center;
+    max-width: none;
+    min-width: 0;
+    margin: 6px 0 4px 6px;
+  }
+
+  .rail {
+    grid-area: panel;
+    display: block;
+    min-width: 0;
+  }
+}
+
+/* Tablet portrait: --chrome is the top strip plus the dock (the stage takes the rest of the screen). */
+@media (orientation: portrait) and (min-width: 600px) {
+  .player {
+    --chrome: 202px;
+  }
+}
+
+@media (orientation: portrait) and (max-width: 599px) {
+  .player {
+    --chrome: 200px;
+  }
+}
+
+@media (forced-colors: active) {
+  .failed > p {
+    border-color: CanvasText;
   }
 }

@@ -1,11 +1,18 @@
 import { useId } from "react";
-import type { Quad } from "../core/model";
+import type { PlayerCount, Quad } from "../core/model";
 import { useI18n } from "../i18n/context";
 import styles from "./FinalStandings.module.css";
 import { formatPoints, standings } from "./labels";
 
-/** Final ranking after the last round. */
-export function FinalStandings({ scores, names }: { scores: Quad<number>; names: Quad<string> }) {
+export interface FinalStandingsProps {
+  scores: Quad<number>;
+  names: Quad<string>;
+  /** Three-player games rank seats 0-2 only (seat 3 is the empty chair). */
+  playerCount?: PlayerCount;
+}
+
+/** Final ranking after the last round (inside the result card, which draws the box). */
+export function FinalStandings({ scores, names, playerCount = 4 }: FinalStandingsProps) {
   const { m, locale } = useI18n();
   const headingId = useId();
   return (
@@ -14,7 +21,7 @@ export function FinalStandings({ scores, names }: { scores: Quad<number>; names:
         {m.standings.heading}
       </h2>
       <ol className={styles.list}>
-        {standings(scores).map(({ seat, score, place }) => (
+        {standings(scores, playerCount).map(({ seat, score, place }) => (
           <li key={seat} className={styles.row}>
             <span className={styles.place}>{m.standings.place(place)}</span>
             <span className={styles.name}>{names[seat]}</span>

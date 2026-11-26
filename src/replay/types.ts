@@ -28,6 +28,11 @@ export interface SeatView {
   /** The tile just drawn, shown apart from the hand until the player discards. */
   drawn: Tile | null;
   melds: MeldView[];
+  /**
+   * Three-player: North tiles set aside as kita (nukidora), in the order they were set aside. Not
+   * part of `hand` or `melds`, and not counted in the hand size.
+   */
+  kita: Tile[];
   discards: DiscardView[];
   /** Current points, after riichi deposits and (once the round ends) the result deltas. */
   score: number;
@@ -43,7 +48,8 @@ export interface SeatView {
 
 /**
  * Snapshot of the table after a replay step. A step can apply several events (see buildTimeline:
- * dora and riichiAccepted fold into the step before them, a multiple ron is one step).
+ * dora and riichiAccepted fold into the step before them, a multiple ron is one step). A kita is a
+ * step of its own. In a three-player game seat 3 is the empty chair and its SeatView stays empty.
  */
 export interface BoardState {
   seats: Quad<SeatView>;
@@ -51,7 +57,10 @@ export interface BoardState {
   /** Riichi deposits on the table. */
   riichiSticks: number;
   honba: number;
-  /** Tiles left in the live wall. */
+  /**
+   * Tiles left in the live wall: 70 after the deal (55 with three players), one fewer for every
+   * draw, replacement draws after a kan or kita included.
+   */
   wallRemaining: number;
   /** Index in round.events of the last event the step applied (-1 for the initial deal). */
   eventIndex: number;

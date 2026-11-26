@@ -63,9 +63,22 @@ const TENHOU_YAKU = [
 /** Generic keys for sources that do not say which wind or dragon a yakuhai is. */
 const GENERIC_KEYS = ["seatWind", "roundWind", "yakuhai"] as const;
 
-export type YakuKey = (typeof TENHOU_YAKU)[number][0] | (typeof GENERIC_KEYS)[number];
+/**
+ * Yaku with no Tenhou id. Nukidora (抜きドラ, the han of set-aside North tiles in three-player
+ * games): Tenhou counts it inside ドラ, but Mahjong Soul logs converted by tensoul list it apart.
+ */
+const EXTRA_KEYS = ["nukidora"] as const;
 
-export const YAKU_KEYS: readonly YakuKey[] = [...TENHOU_YAKU.map(([key]) => key), ...GENERIC_KEYS];
+export type YakuKey =
+  | (typeof TENHOU_YAKU)[number][0]
+  | (typeof GENERIC_KEYS)[number]
+  | (typeof EXTRA_KEYS)[number];
+
+export const YAKU_KEYS: readonly YakuKey[] = [
+  ...TENHOU_YAKU.map(([key]) => key),
+  ...GENERIC_KEYS,
+  ...EXTRA_KEYS,
+];
 
 export function yakuKeyFromTenhouId(id: number): YakuKey | undefined {
   return TENHOU_YAKU[id]?.[0];
@@ -87,6 +100,7 @@ const TENHOU_NAME_ALIASES: ReadonlyArray<readonly [YakuKey, string]> = [
   ["roundWind", "役牌:場風牌"],
   ["doubleRiichi", "ダブル立直"],
   ["kokushiMusou13", "国士無双十三面待ち"],
+  ["nukidora", "抜きドラ"],
 ];
 
 const TENHOU_NAME_TO_KEY = new Map<string, YakuKey>(
@@ -96,6 +110,19 @@ const TENHOU_NAME_TO_KEY = new Map<string, YakuKey>(
 /** Looks up a Tenhou yaku name such as "立直" or "役牌 中" (without the "(1飜)" suffix). */
 export function yakuKeyFromTenhouName(name: string): YakuKey | undefined {
   return TENHOU_NAME_TO_KEY.get(normalizeTenhouName(name));
+}
+
+const KEY_TO_TENHOU_NAME = new Map<YakuKey, string>(
+  [...TENHOU_NAME_ALIASES, ...TENHOU_YAKU].map(([key, name]) => [key, name]),
+);
+
+/**
+ * The Japanese name tenhou.net/6 JSON writes for a yaku ("立直", "役牌 中"), or the spelling
+ * yakuKeyFromTenhouName reads for keys Tenhou itself has no name for (the generic wind yakuhai and
+ * nukidora, as tensoul writes them). Undefined for the generic "yakuhai".
+ */
+export function tenhouYakuName(key: YakuKey): string | undefined {
+  return KEY_TO_TENHOU_NAME.get(key);
 }
 
 /**

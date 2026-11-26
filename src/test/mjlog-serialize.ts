@@ -28,16 +28,26 @@
  * - RYUUKYOKU hands the model does not record are the ones Tenhou shows, taken from the replay: the
  *   tenpai hands of an exhaustive draw or nagashi mangan and the declarer's at kyuushu kyuuhai.
  *
+ * Three-player games are written as Tenhou writes them, with four seat slots and seat 3 empty:
+ * GO type bit 0x10; UN with n3="", and with a fourth dan 0 and rate 1500.00 when the three players
+ * have them, sx "M,M,M,C"; INIT hai3="" and seat 3's score 0; 0,0 for seat 3 in every sc and
+ * owari; owari with Tenhou's three-player result (see tenhouUma). A kita is
+ * `<N who=".." m="(id << 8) | 0x20" />` with the id of the North set aside (the lowest copy in the
+ * hand); it stays in the seat's melds, so AGARI m lists it among them (newest first), and a ron on
+ * it names that id as machi. The relative seat in call codes stays mod 4, as Tenhou writes it.
+ *
  * Throws on what mjlog cannot express or the replay contradicts: unknown tiles, more than one
  * starting dora indicator, more copies of a tile than the game has, a call of a tile that was not
  * just discarded, a tsumogiri discard that is not the tile just drawn, a win without points or
- * yaku, yaku without a Tenhou id, a ryuukyoku of unknown reason, points that are not whole hundreds.
+ * yaku, yaku without a Tenhou id, a ryuukyoku of unknown reason, points that are not whole hundreds,
+ * a kita in a four-player game, 2m-8m or anything for the empty seat 3 in a three-player game.
  */
 import type {
   CallEvent,
   GameLog,
   GameRules,
   LimitName,
+  PlayerCount,
   PlayerInfo,
   Quad,
   Round,
@@ -48,6 +58,7 @@ import type {
   WinEvent,
   YakuEntry,
 } from "../core/model";
+import { activeSeats, isActiveSeat, SANMA_UNUSED_KINDS } from "../core/players";
 import { isKnownTile, isRedFive, sortTiles, type Tile, tileKind } from "../core/tile";
 import { type YakuKey, yakuKeyFromTenhouId } from "../core/yaku";
 import { tileFromId } from "../formats/mjlog/meld";
@@ -86,25 +97,39 @@ for (let id = 0; yakuKeyFromTenhouId(id) !== undefined; id++) {
 }
 const URA_DORA_ID = YAKU_IDS.get("uraDora") as number;
 
-/** The 0-based rank of each seat by points, ties going to the lower seat, as Tenhou ranks them. */
-function ranks(points: Quad<number>): Quad<number> {
-  const order = [0, 1, 2, 3].sort((a, b) => (points[b] as number) - (points[a] as number) || a - b);
-  return [0, 1, 2, 3].map((seat) => order.indexOf(seat)) as Quad<number>;
+/**
+ * The 0-based rank of each playing seat by points, ties going to the lower seat, as Tenhou ranks
+ * them; -1 for the empty seat 3 of a three-player game.
+ */
+function ranks(points: Quad<number>, playerCount: PlayerCount): Quad<number> {
+  const order = [...activeSeats(playerCount)].sort(
+    (a, b) => (points[b] as number) - (points[a] as number) || a - b,
+  );
+  return [0, 1, 2, 3].map((seat) => order.indexOf(seat as Seat)) as Quad<number>;
 }
+
+/** Tenhou's return (the points a player needs for a result of 0 before uma) and uma by rank. */
+const RANKED_RESULT: Record<PlayerCount, { returned: number; uma: readonly number[] }> = {
+  // 30000 return, uma +20 (top, through the remainder), +10, -10, -20.
+  4: { returned: 30000, uma: [0, 100, -100, -200] },
+  // 40000 return, uma +20 (top, through the remainder), 0, -20.
+  3: { returned: 40000, uma: [0, 0, -200] },
+};
 
 /**
  * Tenhou's ranked-game result per seat, as the `owari` text it writes ("-17.4"): (points - 30000) /
  * 1000 plus the uma (+10, -10, -20 for 2nd to 4th); the top player gets what makes the four add up
- * to 0 (oka and +20 uma included). Computed in tenths, so there is no float rounding.
+ * to 0 (oka and +20 uma included). With three players the return is 40000 and the uma 0 and -20 for
+ * 2nd and 3rd; the empty seat 3 gets "0.0". Computed in tenths, so there is no float rounding.
  */
-export function tenhouUma(points: Quad<number>): Quad<string> {
-  const rank = ranks(points);
-  const uma = [0, 100, -100, -200];
+export function tenhouUma(points: Quad<number>, playerCount: PlayerCount = 4): Quad<string> {
+  const rank = ranks(points, playerCount);
+  const { returned, uma } = RANKED_RESULT[playerCount];
   const tenths = [0, 0, 0, 0];
   let others = 0;
-  for (const seat of [0, 1, 2, 3] as Seat[]) {
+  for (const seat of activeSeats(playerCount)) {
     if (rank[seat] !== 0) {
-      tenths[seat] = ((points[seat] as number) - 30000) / 100 + (uma[rank[seat]] as number);
+      tenths[seat] = ((points[seat] as number) - returned) / 100 + (uma[rank[seat]] as number);
       others += tenths[seat] as number;
     }
   }
@@ -150,12 +175,13 @@ function encodeName(name: string): string {
     .join("");
 }
 
-/** The GO `type` bits for these rules (see parse.ts). */
-export function goType(rules: GameRules): number {
+/** The GO `type` bits for these rules and player count (see parse.ts). */
+export function goType(rules: GameRules, playerCount: PlayerCount = 4): number {
   let type = 0x01 | ROOM_BITS[rules.room ?? "general"];
   if (!rules.redFives) type |= 0x02;
   if (rules.openTanyao === false) type |= 0x04;
   if (rules.length === "south") type |= 0x08;
+  if (playerCount === 3) type |= 0x10;
   if (rules.fast) type |= 0x40;
   return type;
 }
@@ -164,18 +190,29 @@ function hasDan(player: PlayerInfo): boolean {
   return player.danIndex !== undefined && TENHOU_DAN_LABELS[player.danIndex] !== undefined;
 }
 
-function unTag(players: Quad<PlayerInfo>): string {
-  const attributes: Attributes = players.map((player, seat): [string, string] => [
+/** The players who play: seat 3 is left out of a three-player game. */
+function playing(players: Quad<PlayerInfo>, playerCount: PlayerCount): PlayerInfo[] {
+  return players.slice(0, playerCount);
+}
+
+/**
+ * UN. Tenhou lists the empty seat 3 of a three-player game as n3="", dan 0, rate 1500.00 and sx C.
+ */
+function unTag(players: Quad<PlayerInfo>, playerCount: PlayerCount): string {
+  const seated = playing(players, playerCount);
+  const empty = playerCount === 3 ? [{ name: "", danIndex: 0, rating: 1500 }] : [];
+  const listed = [...seated, ...empty];
+  const attributes: Attributes = listed.map((player, seat): [string, string] => [
     `n${seat}`,
     encodeName(player.name),
   ]);
   attributes.push([
     "dan",
-    players.every(hasDan) ? players.map((p) => p.danIndex).join(",") : undefined,
+    seated.every(hasDan) ? listed.map((p) => p.danIndex).join(",") : undefined,
   ]);
-  const rated = players.every((player) => player.rating !== undefined);
-  attributes.push(["rate", rated ? players.map((p) => p.rating?.toFixed(2)).join(",") : undefined]);
-  attributes.push(["sx", "M,M,M,M"]);
+  const rated = seated.every((player) => player.rating !== undefined);
+  attributes.push(["rate", rated ? listed.map((p) => p.rating?.toFixed(2)).join(",") : undefined]);
+  attributes.push(["sx", playerCount === 3 ? "M,M,M,C" : "M,M,M,M"]);
   return tag("UN", attributes);
 }
 
@@ -192,16 +229,16 @@ function isFiveKind(kind: number): boolean {
   return kind < 27 && kind % 9 === 4;
 }
 
-/** A meld written so far, kept for AGARI `m` and to turn a pon into a kakan. */
+/** A meld (or kita) written so far, kept for AGARI `m` and to turn a pon into a kakan. */
 interface WrittenMeld {
-  type: "chi" | "pon" | "daiminkan" | "ankan" | "kakan";
+  type: "chi" | "pon" | "daiminkan" | "ankan" | "kakan" | "kita";
   m: number;
   kind: number;
   /** Copy left out of a pon (the copy a kakan adds). */
   unused?: number;
 }
 
-/** The tile others can win on: the last discard, kakan tile or ankan. */
+/** The tile others can win on: the last discard, kakan tile, ankan or kita. */
 interface Offer {
   seat: Seat;
   ids: number[];
@@ -210,6 +247,7 @@ interface Offer {
 
 interface GameContext {
   redFives: boolean;
+  playerCount: PlayerCount;
   /** Owari attribute for the game's last result tag, if the game has final scores. */
   owari?: string;
   /** The round and event index of the game's last result. */
@@ -268,6 +306,9 @@ class RoundWriter {
       return this.fail(`${what} is a red five in a game without red fives`);
     }
     const kind = tileKind(tile);
+    if (this.game.playerCount === 3 && SANMA_UNUSED_KINDS.has(kind)) {
+      return this.fail(`${what} is ${tile}, which a three-player game does not have`);
+    }
     let copies = [0, 1, 2, 3];
     if (this.game.redFives && isFiveKind(kind)) {
       copies = isRedFive(tile) ? [0] : [1, 2, 3];
@@ -310,11 +351,14 @@ class RoundWriter {
       this.fail(`no INIT seed for wind ${round.wind} round ${round.number}`);
     }
     round.hands.forEach((hand, seat) => {
-      if (hand.length !== 13) {
-        this.fail(`seat ${seat} starts with ${hand.length} tiles instead of 13`);
+      // The empty seat 3 of a three-player game gets hai3="".
+      const size = isActiveSeat(seat as Seat, this.game.playerCount) ? 13 : 0;
+      if (hand.length !== size) {
+        this.fail(`seat ${seat} starts with ${hand.length} tiles instead of ${size}`);
       }
       this.hands[seat as Seat] = hand.map((tile) => this.allocate(tile, `seat ${seat}'s deal`));
     });
+    this.checkEmptySeat(round.scores, "start score");
     const indicator = this.allocate(round.doraIndicators[0] as Tile, "the dora indicator");
     this.doraIds.push(indicator);
     const seed = [index, round.honba, round.riichiSticks, 0, 0, indicator];
@@ -329,7 +373,23 @@ class RoundWriter {
     this.tags.push(tag("INIT", attributes));
   }
 
+  /** Seat 3 of a three-player game is empty: it scores and gains nothing. */
+  private checkEmptySeat(points: Quad<number>, what: string): void {
+    if (this.game.playerCount === 3 && points[3] !== 0) {
+      this.fail(`the empty seat 3 of a three-player game has a ${what} of ${points[3]}`);
+    }
+  }
+
+  private checkSeat(seat: Seat | undefined, what: string): void {
+    if (seat !== undefined && !isActiveSeat(seat, this.game.playerCount)) {
+      this.fail(`${what} is the empty seat ${seat} of a three-player game`);
+    }
+  }
+
   private writeEvent(event: RoundEvent, index: number): void {
+    if ("seat" in event) {
+      this.checkSeat(event.seat, `the seat of a ${event.type}`);
+    }
     switch (event.type) {
       case "draw": {
         const id = this.allocate(event.tile, `seat ${event.seat}'s draw`);
@@ -399,6 +459,23 @@ class RoundWriter {
         this.lastDraw[seat] = null;
         this.offer = { seat, ids: [id], discard: false };
         this.tags.push(meldTag(seat, pon.m));
+        return;
+      }
+      case "kita": {
+        // Tenhou writes the North's id in bits 8-15 and 0x20; the same seat then draws again.
+        const seat = event.seat;
+        if (this.game.playerCount !== 3) {
+          this.fail("a kita in a four-player game");
+        }
+        const id = this.take(seat, event.tile, "a kita");
+        if (this.tileOf(id) !== "4z") {
+          this.fail(`a kita of ${event.tile}, which is not a North`);
+        }
+        const m = (id << 8) | 0x20;
+        this.melds[seat].push({ type: "kita", m, kind: id >> 2 });
+        this.lastDraw[seat] = null;
+        this.offer = { seat, ids: [id], discard: false };
+        this.tags.push(meldTag(seat, m));
         return;
       }
       case "riichiAccepted": {
@@ -485,6 +562,7 @@ class RoundWriter {
 
   /** `ba`, `sc` and `owari`, shared by AGARI and RYUUKYOKU. */
   private resultAttributes(deltas: Quad<number>, index: number): Record<string, string> {
+    this.checkEmptySeat(deltas, "point change");
     const ba = `${this.round.honba},${this.wins === 0 ? this.sticks : 0}`;
     const sc = this.scores
       .flatMap((points, seat) => [
@@ -517,6 +595,8 @@ class RoundWriter {
 
   private agari(event: WinEvent, index: number): string {
     const { seat, from } = event;
+    this.checkSeat(from, "the seat dealing in");
+    this.checkSeat(event.pao, "the liable seat");
     let machi: number;
     let hai: number[];
     if (seat === from) {
@@ -560,7 +640,7 @@ class RoundWriter {
       this.uraIds[i] = id;
       return id;
     });
-    // Tenhou lists the winner's melds newest first.
+    // Tenhou lists the winner's melds newest first, kita included.
     const melds = this.melds[seat].map((meld) => meld.m).reverse();
     const { ba, sc, owari } = this.resultAttributes(event.deltas, index);
     this.wins += 1;
@@ -626,6 +706,10 @@ class RoundWriter {
       return this.fail("mjlog has no ryuukyoku type for a draw of unknown reason");
     }
     const type = RYUUKYOKU_TYPES[event.reason];
+    this.checkSeat(event.hands?.[3] ? 3 : undefined, "a hand shown at the draw");
+    for (const seat of event.tenpai ?? []) {
+      this.checkSeat(seat, "a tenpai seat");
+    }
     const shown: Array<number[] | null> = [null, null, null, null];
     if (event.hands) {
       event.hands.forEach((hand, seat) => {
@@ -664,15 +748,19 @@ function isResult(event: RoundEvent | undefined): boolean {
   return event?.type === "win" || event?.type === "ryukyoku";
 }
 
-/** Encodes a four-player game as Tenhou mjlog XML (see the top of this file). */
+/** Encodes a three- or four-player game as Tenhou mjlog XML (see the top of this file). */
 export function toMjlogXml(game: GameLog): string {
+  const { playerCount } = game;
   const lastRound = game.rounds.length - 1;
   const events = game.rounds[lastRound]?.events ?? [];
-  const context: GameContext = { redFives: game.rules.redFives };
+  const context: GameContext = { redFives: game.rules.redFives, playerCount };
   if (isResult(events[events.length - 1])) {
     context.lastResult = [lastRound, events.length - 1];
     if (game.finalScores) {
-      const uma = tenhouUma(game.finalScores);
+      if (playerCount === 3 && game.finalScores[3] !== 0) {
+        throw new Error("toMjlogXml: the empty seat 3 of a three-player game has final points");
+      }
+      const uma = tenhouUma(game.finalScores, playerCount);
       context.owari = game.finalScores
         .flatMap((points, seat) => [hundreds(points, "a final score"), uma[seat as Seat]])
         .join(",");
@@ -681,10 +769,10 @@ export function toMjlogXml(game: GameLog): string {
   const parts = [
     '<mjloggm ver="2.3">',
     tag("GO", [
-      ["type", goType(game.rules)],
+      ["type", goType(game.rules, playerCount)],
       ["lobby", 0],
     ]),
-    unTag(game.players),
+    unTag(game.players, playerCount),
     tag("TAIKYOKU", [["oya", 0]]),
   ];
   game.rounds.forEach((round, index) => {
@@ -710,6 +798,7 @@ function concealedBefore(round: Round, end: number): Quad<Tile[]> {
         break;
       case "discard":
       case "kakan":
+      case "kita":
         remove(event.seat, event.tile);
         break;
       case "chi":
@@ -737,6 +826,7 @@ function winningTile(round: Round, index: number, win: WinEvent): Tile | undefin
   switch (previous?.type) {
     case "discard":
     case "kakan":
+    case "kita":
       return previous.tile;
     case "ankan":
       return previous.tiles[0];
@@ -810,6 +900,9 @@ function stripRound(round: Round): Round {
       }
       case "dora":
         events.push({ type: "dora", indicator: event.indicator });
+        return;
+      case "kita":
+        events.push({ type: "kita", seat: event.seat, tile: event.tile });
         return;
       case "win": {
         const tile = event.tile ?? winningTile(round, index, event);
@@ -898,9 +991,11 @@ function stripRound(round: Round): Round {
  * what mjlog states that the model may leave out. Changed:
  * - format is "mjlog" and there is no id (an mjlog file does not contain its log id);
  * - rules: GO states room, length, open tanyao and fast, so unknown ones come back as Tenhou's
- *   defaults (general room, east-only, open tanyao, not fast); description is Tenhou's rule text;
+ *   defaults (general room, east-only, open tanyao, not fast); description is Tenhou's rule text
+ *   (三 first with three players);
  * - players: UN has a dan index, not a label, so rank is Tenhou's label for danIndex; dan and rate
- *   are kept only when all four players have one; ratings are rounded to two decimals;
+ *   are kept only when all (three or four) players have one; ratings are rounded to two decimals;
+ *   the empty seat 3 of a three-player game is { name: "" };
  * - riichiAccepted sits right after its declaration discard (parseMjlog places REACH step 2 there);
  * - chi/pon/daiminkan consumed tiles and ankan tiles are in tile order (melds list tiles by id);
  * - win: hand in tile order (AGARI hai is sorted by id); tile and hand filled in from the replay
@@ -914,16 +1009,22 @@ function stripRound(round: Round): Round {
  * - finalScores only when the game's last round ends with a result (owari is on its last tag).
  */
 export function stripMjlogUnsupported(game: GameLog): GameLog {
+  const { playerCount } = game;
   const tenhou: TenhouRules = {
+    players: playerCount,
     room: game.rules.room ?? "general",
     length: game.rules.length ?? "east",
     openTanyao: game.rules.openTanyao ?? true,
     redFives: game.rules.redFives,
     fast: game.rules.fast ?? false,
   };
-  const ranked = game.players.every(hasDan);
-  const rated = game.players.every((player) => player.rating !== undefined);
-  const players = game.players.map((player) => {
+  const seated = playing(game.players, playerCount);
+  const ranked = seated.every(hasDan);
+  const rated = seated.every((player) => player.rating !== undefined);
+  const players = game.players.map((player, seat) => {
+    if (!isActiveSeat(seat as Seat, playerCount)) {
+      return { name: "" };
+    }
     const stripped: PlayerInfo = { name: player.name };
     if (ranked && player.danIndex !== undefined) {
       stripped.rank = TENHOU_DAN_LABELS[player.danIndex] as string;
@@ -934,10 +1035,13 @@ export function stripMjlogUnsupported(game: GameLog): GameLog {
     }
     return stripped;
   }) as Quad<PlayerInfo>;
+  // TenhouRules.players is GameLog.playerCount, not a GameRules field.
+  const { room, length, openTanyao, redFives, fast } = tenhou;
   const stripped: GameLog = {
     format: "mjlog",
+    playerCount,
     players,
-    rules: { ...tenhou, description: tenhouRuleText(tenhou) },
+    rules: { redFives, length, room, openTanyao, fast, description: tenhouRuleText(tenhou) },
     rounds: game.rounds.map(stripRound),
   };
   const lastEvents = game.rounds.at(-1)?.events ?? [];

@@ -8,7 +8,7 @@ import { revealedSeats, withRevealedHands } from "./reveal";
 const deltas: Quad<number> = [0, 0, 0, 0];
 
 function view(hand: Tile[], drawn: Tile | null = null): SeatView {
-  return { hand, drawn, melds: [], discards: [], score: 25000, riichi: false };
+  return { hand, drawn, melds: [], kita: [], discards: [], score: 25000, riichi: false };
 }
 
 /** Seat 0 is the point of view (all tiles known); the others hold 13 unknown tiles. */

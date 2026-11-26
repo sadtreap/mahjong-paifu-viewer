@@ -1,4 +1,4 @@
-import type { Round } from "../core/model";
+import type { PlayerCount, Round } from "../core/model";
 import { buildTimeline } from "../replay/timeline";
 import type { BoardState } from "../replay/types";
 
@@ -10,10 +10,14 @@ export interface TimelineCache {
   stepCount: (round: number) => number;
 }
 
-/** Replays rounds lazily, once each. A round that fails to replay is reported, not thrown. */
+/**
+ * Replays rounds lazily, once each. A round that fails to replay is reported, not thrown.
+ * `playerCount` is the game's (GameLog.playerCount); `build` replaces the replay in tests.
+ */
 export function createTimelineCache(
   rounds: readonly Round[],
-  build: (round: Round) => BoardState[] = buildTimeline,
+  playerCount: PlayerCount,
+  build: (round: Round) => BoardState[] = (round) => buildTimeline(round, playerCount),
 ): TimelineCache {
   const cache = new Map<number, TimelineResult>();
   const get = (index: number): TimelineResult => {

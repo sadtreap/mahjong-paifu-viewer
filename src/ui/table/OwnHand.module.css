@@ -1,0 +1,63 @@
+/* Flat DOM at the frame's bottom, centred; tiles fit 96% of S (at most 1.3 units wide). */
+.own {
+  --tile-w: min(calc(var(--u) * 1.3), calc(var(--S) * 0.96 / var(--units, 15)));
+  --dx: 0;
+  --dy: 1;
+
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  translate: -50% 0;
+  display: flex;
+  align-items: flex-end;
+}
+
+.concealed {
+  display: flex;
+  align-items: flex-end;
+}
+
+.drawn {
+  margin-left: calc(var(--tile-w) * 0.4);
+}
+
+/* The drawn tile's place between turns (layout.ts ownRowUnits counts it either way). */
+.slot {
+  flex: none;
+  width: var(--tile-w);
+}
+
+.melds {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: flex-end;
+  gap: calc(var(--tile-w) * 0.25);
+  padding-left: calc(var(--tile-w) * 0.25);
+}
+
+/* Standing tiles: looking down on upright tiles, the lid shows above the face. */
+.concealed .standing {
+  box-shadow:
+    0 0 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
+    0 calc(var(--w) * -0.055) 0 var(--tile-lid),
+    0 calc(var(--w) * -0.15) 0 var(--tile-back-face),
+    0 calc(var(--w) * -0.15) 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
+    0 calc(var(--w) * 0.06) calc(var(--w) * 0.16) rgb(0 0 0 / 0.55);
+}
+
+/* The tile the point of view discards next (a review aid; off by default). */
+.concealed .next {
+  translate: 0 -16%;
+  outline: max(2px, calc(var(--w) * 0.06)) solid var(--next);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  .concealed .standing {
+    outline: 1px solid CanvasText;
+  }
+
+  .concealed .next {
+    outline: 3px dashed Highlight;
+  }
+}

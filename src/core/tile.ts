@@ -5,6 +5,9 @@
  * - "1z".."7z" honors: East, South, West, North, White (haku), Green (hatsu), Red (chun)
  * - "?" a tile whose face is not recorded (e.g. opponents' draws in a log recorded from one seat)
  */
+
+import type { PlayerCount } from "./model";
+
 export type Suit = "m" | "p" | "s";
 export type NumberTile = `${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}${Suit}`;
 export type RedFive = `0${Suit}`;
@@ -87,8 +90,17 @@ export function sortTiles(tiles: readonly Tile[]): Tile[] {
   return [...tiles].sort(compareTiles);
 }
 
-/** The dora a revealed indicator points to (9 wraps to 1, North to East, Red dragon to White). */
-export function doraFromIndicator(indicator: KnownTile): NumberTile | HonorTile {
+/**
+ * The dora a revealed indicator points to (9 wraps to 1, North to East, Red dragon to White).
+ * Three-player games leave out 2m-8m, so there a 1m indicator points to 9m and 9m back to 1m.
+ */
+export function doraFromIndicator(
+  indicator: KnownTile,
+  playerCount: PlayerCount = 4,
+): NumberTile | HonorTile {
+  if (playerCount === 3 && (indicator === "1m" || indicator === "9m")) {
+    return indicator === "1m" ? "9m" : "1m";
+  }
   const kind = tileKind(indicator);
   if (kind >= 27) {
     const base = kind < 31 ? 27 : 31;

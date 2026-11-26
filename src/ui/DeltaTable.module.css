@@ -32,3 +32,31 @@
 .loss {
   color: var(--color-loss);
 }
+
+/* With "before → after": a fixed layout, so the scores never wrap in a 300 px rail. */
+.withScores {
+  table-layout: fixed;
+}
+
+.nameColumn {
+  width: 26%;
+}
+
+.deltaColumn {
+  width: 24%;
+}
+
+.withScores .delta {
+  width: auto;
+}
+
+.scores {
+  padding-inline: 0.25rem;
+  overflow: hidden;
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}

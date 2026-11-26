@@ -12,17 +12,22 @@ import {
   dora,
   draw,
   kakan,
+  kita,
   makeRound,
+  makeSanmaRound,
   pon,
   riichiAccepted,
   ryukyoku,
   sampleRound,
+  sampleSanmaRound,
   tiles,
   tsumogiri,
   wallDraw,
   wallRound,
   win,
 } from "../test/round-builder";
+import { checkRound } from "./check";
+import { RoundReplay } from "./engine";
 import { buildTimeline } from "./timeline";
 
 const unknownHand = (): Tile[] => tiles("?????????????");
@@ -74,6 +79,7 @@ describe("buildTimeline", () => {
       hand: tiles("123405678m19p1z?"),
       drawn: null,
       melds: [],
+      kita: [],
       discards: [],
       score: 26000,
       riichi: false,
@@ -616,5 +622,233 @@ describe("buildTimeline", () => {
       expect(() => buildTimeline(value as unknown as Round)).not.toThrow();
     }
     expect(buildTimeline(null as unknown as Round)).toHaveLength(1);
+  });
+});
+
+describe("buildTimeline with three players", () => {
+  const hiddenHands = (): Round["hands"] => [unknownHand(), unknownHand(), unknownHand(), []];
+
+  it("starts with a 55-tile wall and an empty seat 3", () => {
+    const start = at(buildTimeline(makeSanmaRound(), 3), 0);
+    expect(start.wallRemaining).toBe(55);
+    expect(start.seats[3]).toEqual({
+      hand: [],
+      drawn: null,
+      melds: [],
+      kita: [],
+      discards: [],
+      score: 0,
+      riichi: false,
+    });
+    expect(start.seats.map((seat) => seat.score)).toEqual([35000, 35000, 35000, 0]);
+    // Four players stay the default.
+    expect(at(buildTimeline(makeSanmaRound()), 0).wallRemaining).toBe(70);
+  });
+
+  it("makes each kita a step of its own and the replacement draw the next step", () => {
+    const hands: Round["hands"] = [
+      tiles("111234567899p4z"),
+      tiles("1112345678999s"),
+      tiles("1199m112233556z"),
+      [],
+    ];
+    const events = [
+      draw(0, "4z"),
+      kita(0), // the drawn North
+      draw(0, "4z"),
+      kita(0), // the replacement is a North too
+      draw(0, "7z"),
+      kita(0), // the dealt North, from the hand
+      draw(0, "2z"),
+      tsumogiri(0, "2z"),
+    ];
+    const timeline = buildTimeline(makeSanmaRound({ hands, events }), 3);
+    expect(timeline).toHaveLength(9);
+    expect(timeline.map((state) => state.wallRemaining)).toEqual([
+      55, 54, 54, 53, 53, 52, 52, 51, 51,
+    ]);
+    expect(timeline.map((state) => state.lastEvent?.type ?? null)).toEqual([
+      null,
+      "draw",
+      "kita",
+      "draw",
+      "kita",
+      "draw",
+      "kita",
+      "draw",
+      "discard",
+    ]);
+    const dealt = tiles("111234567899p4z");
+    expect(at(timeline, 2)).toMatchObject({ eventIndex: 1, activeSeat: 0 });
+    expect(at(timeline, 2).seats[0]).toMatchObject({ hand: dealt, drawn: null, kita: ["4z"] });
+    expect(at(timeline, 3).seats[0]).toMatchObject({ hand: dealt, drawn: "4z", kita: ["4z"] });
+    expect(at(timeline, 4).seats[0]).toMatchObject({
+      hand: dealt,
+      drawn: null,
+      kita: ["4z", "4z"],
+    });
+    // A North from the hand: the drawn 7z joins the hand.
+    expect(at(timeline, 6).seats[0]).toMatchObject({
+      hand: tiles("111234567899p7z"),
+      drawn: null,
+      kita: ["4z", "4z", "4z"],
+    });
+    expect(at(timeline, 7).seats[0].drawn).toBe("2z");
+    expect(at(timeline, 8).seats[0]).toMatchObject({
+      hand: tiles("111234567899p7z"),
+      drawn: null,
+      kita: ["4z", "4z", "4z"],
+      discards: [{ tile: "2z", tsumogiri: true, riichi: false, called: false }],
+    });
+    // Snapshots own their kita lists.
+    expect(at(timeline, 2).seats[0].kita).toEqual(["4z"]);
+    expect(at(timeline, 1).seats[0].kita).toEqual([]);
+  });
+
+  it("sets aside a North from a hand recorded from another seat", () => {
+    const events = [draw(0, "?"), kita(0), draw(0, "?"), tsumogiri(0, "1p")];
+    const timeline = buildTimeline(makeSanmaRound({ hands: hiddenHands(), events }), 3);
+    expect(at(timeline, 2).seats[0]).toMatchObject({
+      hand: unknownHand(),
+      drawn: null,
+      kita: ["4z"],
+    });
+    expect(at(timeline, 4).seats[0].hand).toEqual(unknownHand());
+  });
+
+  it("folds a kan dora revealed after a kita into the kita step", () => {
+    // Tenhou writes KAKAN, the rinshan draw, KITA, DORA, then the replacement draw.
+    const events: RoundEvent[] = [
+      draw(0, "?"),
+      tsumogiri(0, "1z"),
+      draw(1, "?"),
+      tsumogiri(1, "2z"),
+      draw(2, "?"),
+      tsumogiri(2, "5z"),
+      pon(0, 2, "5z", "55z"),
+      discard(0, "3z"),
+      draw(1, "?"),
+      tsumogiri(1, "6z"),
+      draw(2, "?"), // 10
+      tsumogiri(2, "7z"),
+      draw(0, "5z"),
+      kakan(0, "5z"),
+      draw(0, "4z"),
+      kita(0), // 15
+      dora("1p"),
+      draw(0, "?"),
+      tsumogiri(0, "6p"),
+      ryukyoku("unknown"),
+    ];
+    const round = makeSanmaRound({ hands: hiddenHands(), events });
+    expect(checkRound(round, 3)).toEqual([]);
+    const timeline = buildTimeline(round, 3);
+    expect(timeline).toHaveLength(20);
+    const kitaStep = timeline.find((state) => state.lastEvent === events[15]);
+    expect(kitaStep).toMatchObject({ eventIndex: 16, activeSeat: 0, doraIndicators: ["1z", "1p"] });
+    expect(kitaStep?.seats[0].kita).toEqual(["4z"]);
+    expect(kitaStep?.seats[0].melds).toEqual([
+      { type: "kakan", tiles: ["5z", "5z"], from: 2, calledTile: "5z", addedTile: "5z" },
+    ]);
+    expect(timeline[timeline.indexOf(kitaStep as never) + 1]?.lastEvent).toBe(events[17]);
+  });
+
+  it("applies a ron on a set-aside North", () => {
+    const ron = win(1, 0, [-3900, 3900, 0, 0], { tile: "4z" });
+    const events = [draw(0, "4z"), kita(0), ron];
+    const timeline = buildTimeline(makeSanmaRound({ hands: hiddenHands(), events }), 3);
+    expect(timeline).toHaveLength(4);
+    const end = at(timeline, 3);
+    expect(end).toMatchObject({ lastEvent: ron, activeSeat: 1, results: [ron], wallRemaining: 54 });
+    expect(end.seats.map((seat) => seat.score)).toEqual([31100, 38900, 35000, 0]);
+    expect(end.seats[0].kita).toEqual(["4z"]);
+  });
+
+  it("replays the three-player sample round step by step", () => {
+    const round = sampleSanmaRound();
+    const timeline = buildTimeline(round, 3);
+    expect(timeline.map((state) => state.eventIndex)).toEqual([
+      -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 19, 20, 21, 22, 23, 24,
+    ]);
+    // Seat 1 sets aside its dealt North; the drawn 5z joins the hand.
+    expect(at(timeline, 6).seats[1]).toMatchObject({
+      hand: tiles("9p789s2223335z55z"),
+      drawn: null,
+      kita: ["4z"],
+    });
+    // The pon across the empty chair.
+    expect(at(timeline, 11).seats[0].melds).toEqual([
+      { type: "pon", tiles: ["6z", "6z"], from: 2, calledTile: "6z" },
+    ]);
+    expect(at(timeline, 11).seats[2].discards.at(-1)?.called).toBe(true);
+    const end = at(timeline, 23);
+    expect(end).toMatchObject({
+      wallRemaining: 45,
+      doraIndicators: ["1m", "8p"],
+      riichiSticks: 0,
+      activeSeat: 2,
+      lastEvent: round.events[24],
+      results: [round.events[24]],
+    });
+    expect(end.seats.map((seat) => seat.score)).toEqual([35000, 28800, 41200, 0]);
+    expect(end.seats.map((seat) => seat.kita)).toEqual([["4z"], ["4z", "4z"], [], []]);
+    expect(end.seats.map((seat) => seat.riichi)).toEqual([false, true, false, false]);
+    expect(end.seats[0].melds.map((meld) => meld.type)).toEqual(["pon", "ankan"]);
+    expect(end.seats[1].hand).toEqual(tiles("9m789s222333555z"));
+  });
+
+  it("passes the turn from seat 2 back to seat 0 and never counts the wall below zero", () => {
+    const events = Array.from({ length: 58 }, (_, n) => {
+      const seat = (n % 3) as Seat;
+      return [draw(seat, "?"), tsumogiri(seat, "1m")];
+    }).flat();
+    const round = makeSanmaRound({ hands: [[], [], [], []], events });
+    const issues = checkRound(round, 3);
+    expect(issues.filter((found) => /out of turn/.test(found.message))).toEqual([]);
+    expect(issues.filter((found) => /empty wall/.test(found.message))).toHaveLength(3);
+    const timeline = buildTimeline(round, 3);
+    expect(at(timeline, 109).wallRemaining).toBe(0);
+    expect(at(timeline, 108).wallRemaining).toBe(1);
+    expect(timeline.at(-1)?.wallRemaining).toBe(0);
+  });
+
+  it("shows the North it took for a kita whose tile is not recorded", () => {
+    const hands: Round["hands"] = [tiles("1112345678999p"), unknownHand(), unknownHand(), []];
+    const fromDraw = buildTimeline(
+      makeSanmaRound({ hands, events: [draw(0, "4z"), kita(0, "?")] }),
+      3,
+    );
+    expect(at(fromDraw, 2).seats[0]).toMatchObject({
+      hand: tiles("1112345678999p"),
+      drawn: null,
+      kita: ["4z"],
+    });
+    const hidden = buildTimeline(
+      makeSanmaRound({ hands, events: [draw(1, "?"), kita(1, "?")] }),
+      3,
+    );
+    expect(at(hidden, 2).seats[1]).toMatchObject({ hand: unknownHand(), drawn: null, kita: ["?"] });
+  });
+
+  it("never throws on malformed kita events", () => {
+    const events = [
+      { type: "kita", seat: 9, tile: "4z" },
+      { type: "kita", seat: 0 },
+      { type: "kita", seat: 1, tile: 42 },
+      { type: "kita", seat: 2, tile: "5p" },
+      null,
+    ] as unknown as RoundEvent[];
+    const timeline = buildTimeline(makeSanmaRound({ events }), 3);
+    expect(timeline).toHaveLength(6);
+    expect(at(timeline, 1).seats.map((seat) => seat.kita)).toEqual([[], [], [], []]);
+    expect(timeline.at(-1)?.seats.map((seat) => seat.kita)).toEqual([["?"], ["?"], ["5p"], []]);
+    expect(timeline.at(-1)?.seats.map((seat) => seat.hand.length)).toEqual([13, 13, 13, 0]);
+  });
+
+  it("replays four-player rounds the same with an explicit or invalid player count", () => {
+    expect(buildTimeline(sampleRound(), 4)).toEqual(buildTimeline(sampleRound()));
+    expect(new RoundReplay(sampleRound(), undefined, 9 as unknown as 4).playerCount).toBe(4);
+    expect(new RoundReplay(sampleRound(), undefined, 3).playerCount).toBe(3);
+    expect(buildTimeline(sampleRound(), 9 as unknown as 4)).toEqual(buildTimeline(sampleRound()));
   });
 });

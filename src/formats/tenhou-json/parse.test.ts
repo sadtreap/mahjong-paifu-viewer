@@ -1,7 +1,10 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { GameLog, Round, RoundEvent, RyukyokuEvent, WinEvent } from "../../core/model";
+import type { GameLog, Round, RoundEvent, RyukyokuEvent, Seat, WinEvent } from "../../core/model";
+import type { Tile } from "../../core/tile";
+import { checkGame } from "../../replay/check";
+import { corpusFiles, SANMA_TENHOU_JSON_CORPUS } from "../../test/corpus";
 import { closeJson, cutPoints, garbled, parseOutcome } from "../../test/fuzz";
 import { LogParseError } from "../errors";
 import { parseLogText } from "../index";
@@ -65,6 +68,7 @@ describe("parseTenhouJson on the convlog fixtures", () => {
   it.each(FIXTURES)("parses %s", (name) => {
     const game = loadFixture(name);
     expect(game.format).toBe("tenhou-json");
+    expect(game.playerCount).toBe(4);
     expect(game.players.map((player) => player.name)).toEqual(["A", "B", "C", "D"]);
     expect(game.id).toBeUndefined();
     expect(game.rounds.length).toBeGreaterThan(0);
@@ -704,25 +708,18 @@ describe("synthetic logs", () => {
     expect(game.finalScores).toEqual([25000, 25000, 25000, 25000]);
   });
 
-  it("rejects three-player logs", () => {
-    const sanmaRound = [
-      [0, 0, 0],
-      [35000, 35000, 35000],
-      [11],
-      [],
-      ...HANDS.slice(0, 3).flatMap((hand) => [hand, [12], [60]]),
-      ["流局", [0, 0, 0]],
+  it("keeps a four-player log with an empty fourth name four-player", () => {
+    const lists = [
+      [[12], [60]],
+      [[22], [60]],
+      [[32], [60]],
+      [[23], [60]],
     ];
-    const sanma = JSON.stringify({
-      name: ["A", "B", "C"],
-      rule: { disp: "三般南喰赤", aka: 1 },
-      log: [sanmaRound],
-    });
-    expect(errorCode(() => parseTenhouJson(sanma))).toBe("unsupportedPlayers");
-    // Detected from the structure alone, without the rule text.
-    const bare = JSON.stringify({ log: [sanmaRound] });
-    expect(errorCode(() => parseTenhouJson(bare))).toBe("unsupportedPlayers");
-    expect(errorCode(() => parseLogText(sanma))).toBe("unsupportedPlayers");
+    const game = parseTenhouJson(
+      syntheticLog(exhaustive(lists), { name: ["A", "B", "C", ""], ratingc: "PF4" }),
+    );
+    expect(game.playerCount).toBe(4);
+    expect(game.rounds[0]?.hands[3]).toHaveLength(13);
   });
 
   it("rejects a round with more actions than any real game before replaying it", () => {
@@ -781,6 +778,581 @@ describe("synthetic logs", () => {
     // Seat 3 still has a draw left after the round ends.
     const leftover = exhaustive([...lists.slice(0, 3), [[23, 24], [60]]]);
     expect(errorCode(() => parseTenhouJson(syntheticLog(leftover)))).toBe("invalid");
+    // A North set aside (kita) only exists in three-player games.
+    const kita = exhaustive([
+      [
+        [44, 12],
+        ["f44", 60],
+      ],
+      ...lists.slice(1),
+    ]);
+    expect(errorCode(() => parseTenhouJson(syntheticLog(kita)))).toBe("invalid");
+    expect(() => parseTenhouJson(syntheticLog(kita))).toThrow(/kita\) in a four-player game/);
+  });
+});
+
+/** Starting hands of seats 0-2 in the three-player examples (no 2m-8m, as in sanma). */
+const SANMA_HANDS: [number[], number[], number[]] = [
+  [19, 19, 21, 22, 23, 27, 28, 29, 32, 46, 46, 47, 41],
+  [11, 11, 24, 25, 26, 34, 35, 36, 39, 39, 43, 43, 45],
+  [21, 24, 26, 31, 34, 36, 39, 41, 42, 45, 45, 47, 19],
+];
+
+interface SanmaRoundOptions {
+  kyoku?: number;
+  hands?: number[][];
+  dora?: number[];
+}
+
+/** A three-player round in Tenhou's layout: 17 entries, seat 3's lists empty. */
+function sanmaRound(
+  seatLists: unknown[][],
+  result: unknown[],
+  { kyoku = 0, hands = SANMA_HANDS, dora = [41] }: SanmaRoundOptions = {},
+): unknown[] {
+  return [
+    [kyoku, 0, 0],
+    [35000, 35000, 35000, 0],
+    dora,
+    [],
+    ...hands.flatMap((hand, seat) => [hand, ...(seatLists[seat] ?? [[], []])]),
+    [],
+    [],
+    [],
+    result,
+  ];
+}
+
+/** tensoul-py's layout of the same round: seat 3's lists left out, 14 entries. */
+function shortLayout(round: unknown[]): unknown[] {
+  return [...round.slice(0, 13), ...round.slice(16)];
+}
+
+/** A three-player log as Tenhou exports it: four seats, seat 3 empty. */
+function sanmaLog(rounds: unknown[][], extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    name: ["A", "B", "C", ""],
+    dan: ["初段", "初段", "初段", "新人"],
+    rate: [1500, 1500, 1500, 1500],
+    sx: ["M", "F", "M", "C"],
+    sc: [37000, 32, 34000, -6, 34000, -26, 0, 0],
+    rule: { disp: "三般南喰赤", aka53: 1, aka52: 1, aka51: 1 },
+    ratingc: "PF3",
+    ver: 2.3,
+    log: rounds,
+    ...extra,
+  });
+}
+
+/**
+ * A hand-made round: the dealer pons 發 from seat 2 (across the empty seat 3), sets aside the North
+ * it draws, discards the replacement and wins by tsumo.
+ */
+const MINIMAL_LISTS = [
+  [
+    [33, "46p4646", 44, 11, 31],
+    [47, 41, "f44", 60],
+  ],
+  [
+    [42, 37, 38],
+    [60, 60, 60],
+  ],
+  [
+    [46, 22, 23],
+    [60, 60, 60],
+  ],
+];
+const MINIMAL_RESULT = [
+  "和了",
+  [2000, -1000, -1000, 0],
+  [0, 0, 0, "30符2飜1000点∀", "役牌 發(1飜)", "ドラ(1飜)"],
+];
+
+/** Each seat draws once and discards the tile drawn. */
+const QUIET = [
+  [[33], [60]],
+  [[37], [60]],
+  [[22], [60]],
+];
+
+function draw(seat: Seat, tile: Tile): RoundEvent {
+  return { type: "draw", seat, tile };
+}
+
+function discard(seat: Seat, tile: Tile, tsumogiri = true, riichi = false): RoundEvent {
+  return { type: "discard", seat, tile, tsumogiri, riichi };
+}
+
+function kita(seat: Seat): RoundEvent {
+  return { type: "kita", seat, tile: "4z" };
+}
+
+function onlyRound(text: string): Round {
+  const [round, ...rest] = parseTenhouJson(text).rounds;
+  expect(rest).toEqual([]);
+  if (!round) {
+    throw new Error("No round");
+  }
+  return round;
+}
+
+describe("three-player logs", () => {
+  it("reads Tenhou's layout, with seat 3 as the empty chair", () => {
+    const game = parseTenhouJson(sanmaLog([sanmaRound(MINIMAL_LISTS, MINIMAL_RESULT)]));
+    expect(game.playerCount).toBe(3);
+    // Tenhou writes rank 新人 and rating 1500 for the empty seat; the model has only an empty name.
+    expect(game.players).toStrictEqual([
+      { name: "A", rank: "初段", danIndex: 10, rating: 1500 },
+      { name: "B", rank: "初段", danIndex: 10, rating: 1500 },
+      { name: "C", rank: "初段", danIndex: 10, rating: 1500 },
+      { name: "" },
+    ]);
+    // The rule text's 三 makes playerCount, not a rule.
+    expect(game.rules).toStrictEqual({
+      redFives: true,
+      length: "south",
+      room: "general",
+      openTanyao: true,
+      fast: false,
+      description: "三般南喰赤",
+    });
+    expect(game.finalScores).toEqual([37000, 34000, 34000, 0]);
+    expect(game.rounds).toStrictEqual<Round[]>([
+      {
+        wind: 0,
+        number: 1,
+        dealer: 0,
+        honba: 0,
+        riichiSticks: 0,
+        scores: [35000, 35000, 35000, 0],
+        doraIndicators: ["1z"],
+        hands: [
+          ["9m", "9m", "1p", "2p", "3p", "7p", "8p", "9p", "2s", "6z", "6z", "7z", "1z"],
+          ["1m", "1m", "4p", "5p", "6p", "4s", "5s", "6s", "9s", "9s", "3z", "3z", "5z"],
+          ["1p", "4p", "6p", "1s", "4s", "6s", "9s", "1z", "2z", "5z", "5z", "7z", "9m"],
+          [],
+        ],
+        events: [
+          draw(0, "3s"),
+          discard(0, "7z", false),
+          draw(1, "2z"),
+          discard(1, "2z"),
+          draw(2, "6z"),
+          discard(2, "6z"),
+          // "46p4646" marks the toimen: seats 0 and 2 sit across the empty seat 3.
+          { type: "pon", seat: 0, from: 2, tile: "6z", consumed: ["6z", "6z"] },
+          discard(0, "1z", false),
+          draw(1, "7s"),
+          discard(1, "7s"),
+          draw(2, "2p"),
+          discard(2, "2p"),
+          // "f44": the North just drawn is set aside and the next take is the replacement draw.
+          draw(0, "4z"),
+          kita(0),
+          draw(0, "1m"),
+          discard(0, "1m"),
+          draw(1, "8s"),
+          discard(1, "8s"),
+          draw(2, "3p"),
+          discard(2, "3p"),
+          draw(0, "1s"),
+          {
+            type: "win",
+            seat: 0,
+            from: 0,
+            deltas: [2000, -1000, -1000, 0],
+            fu: 30,
+            han: 2,
+            // Tenhou's tsumo loss: each of the two others pays the four-player 1000.
+            points: 2000,
+            yaku: [
+              { key: "hatsu", han: 1 },
+              { key: "dora", han: 1 },
+            ],
+            tile: "1s",
+            hand: ["9m", "9m", "1p", "2p", "3p", "7p", "8p", "9p", "1s", "2s", "3s"],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("reads tensoul-py's short layout as the same game", () => {
+    const official = parseTenhouJson(sanmaLog([sanmaRound(MINIMAL_LISTS, MINIMAL_RESULT)]));
+    // 14-entry rounds, and three names, ranks and ratings and six final values.
+    const tensoulPy = JSON.stringify({
+      name: ["A", "B", "C"],
+      dan: ["初段", "初段", "初段"],
+      rate: [1500, 1500, 1500],
+      sx: ["M", "F", "M"],
+      sc: [37000, 32, 34000, -6, 34000, -26],
+      rule: { disp: "三般南喰赤", aka53: 1, aka52: 1, aka51: 1 },
+      ratingc: "PF3",
+      ver: "2.3",
+      log: [shortLayout(sanmaRound(MINIMAL_LISTS, MINIMAL_RESULT))],
+    });
+    expect(parseTenhouJson(tensoulPy)).toStrictEqual(official);
+    // Three scores and three-entry deltas are padded, and the layout alone says three players.
+    const bare = shortLayout(sanmaRound(MINIMAL_LISTS, MINIMAL_RESULT));
+    bare[1] = [35000, 35000, 35000];
+    bare[13] = ["和了", [2000, -1000, -1000], MINIMAL_RESULT[2]];
+    const game = parseTenhouJson(JSON.stringify({ log: [bare] }));
+    expect(game.playerCount).toBe(3);
+    expect(game.players).toStrictEqual([{ name: "" }, { name: "" }, { name: "" }, { name: "" }]);
+    expect(game.rounds).toStrictEqual(official.rounds);
+    expect(parseLogText(JSON.stringify({ log: [bare] }))).toStrictEqual(game);
+  });
+
+  it("keeps an unfinished three-player round in either layout", () => {
+    const round = sanmaRound(QUIET, []).slice(0, -1);
+    const official = onlyRound(sanmaLog([round]));
+    expect(official.events.at(-1)).toEqual({
+      type: "ryukyoku",
+      reason: "unknown",
+      deltas: [0, 0, 0, 0],
+    });
+    expect(round).toHaveLength(16);
+    expect(onlyRound(JSON.stringify({ log: [shortLayout(round)] }))).toStrictEqual(official);
+  });
+
+  it("reads a log converted from Mahjong Soul by tensoul", () => {
+    const result = [
+      "和了",
+      [2000, -1000, -1000, 0],
+      [0, 0, 0, "30符2飜1000点∀", "役牌 發(1飜)", "抜きドラ(1飜)"],
+    ];
+    const game = parseTenhouJson(
+      sanmaLog([sanmaRound(MINIMAL_LISTS, result)], {
+        name: ["A", "B", "C", ""],
+        dan: ["", "", "", ""],
+        rate: [0, 0, 0, 0],
+        sx: ["C", "C", "C", ""],
+        rule: { disp: "三玉の間南喰赤", aka53: 1, aka52: 1, aka51: 0 },
+      }),
+    );
+    expect(game.players).toStrictEqual([
+      { name: "A", rating: 0 },
+      { name: "B", rating: 0 },
+      { name: "C", rating: 0 },
+      { name: "" },
+    ]);
+    expect(game.rules).toStrictEqual({
+      redFives: true,
+      length: "south",
+      description: "三玉の間南喰赤",
+    });
+    // Tenhou counts the North tiles inside ドラ; Mahjong Soul lists them apart.
+    expect(game.rounds[0]?.events.at(-1)).toMatchObject({
+      yaku: [
+        { key: "hatsu", han: 1 },
+        { key: "nukidora", han: 1 },
+      ],
+    });
+  });
+
+  it("passes the turn from seat 2 to seat 0 and numbers rounds like Tenhou", () => {
+    // Kyoku 6 is South 3, dealt by seat 2.
+    const south3 = onlyRound(sanmaLog([sanmaRound(QUIET, ["流局", [0, 0, 0, 0]], { kyoku: 6 })]));
+    expect(south3).toMatchObject({ wind: 1, number: 3, dealer: 2 });
+    expect(south3.events.slice(0, 6)).toEqual([
+      draw(2, "2p"),
+      discard(2, "2p"),
+      draw(0, "3s"),
+      discard(0, "3s"),
+      draw(1, "7s"),
+      discard(1, "7s"),
+    ]);
+    // Kyoku 9 is West 2 (a West round extension), dealt by seat 1.
+    const west2 = onlyRound(sanmaLog([sanmaRound(QUIET, ["流局", [0, 0, 0, 0]], { kyoku: 9 })]));
+    expect(west2).toMatchObject({ wind: 2, number: 2, dealer: 1 });
+    expect(west2.events[0]).toEqual(draw(1, "7s"));
+    // Kyoku 3 and 7 would be dealt by the empty seat.
+    for (const kyoku of [3, 7]) {
+      const log = sanmaLog([sanmaRound(QUIET, ["流局", [0, 0, 0, 0]], { kyoku })]);
+      expect(() => parseTenhouJson(log), `kyoku ${kyoku}`).toThrow(
+        /dealer would be the empty seat/,
+      );
+    }
+  });
+
+  it("passes the turn to seat 0 after seat 2 calls seat 0's discard across the empty seat", () => {
+    const hands = [
+      SANMA_HANDS[0],
+      SANMA_HANDS[1],
+      [21, 24, 26, 31, 34, 36, 39, 47, 42, 45, 45, 47, 19],
+    ];
+    const lists: unknown[][] = [
+      [
+        [33, 37],
+        [47, 60],
+      ],
+      [[], []],
+      [["47p4747"], [42]],
+    ];
+    const round = onlyRound(sanmaLog([sanmaRound(lists, ["流局", [0, 0, 0, 0]], { hands })]));
+    expect(round.events.slice(0, -1)).toEqual([
+      draw(0, "3s"),
+      discard(0, "7z", false),
+      { type: "pon", seat: 2, from: 0, tile: "7z", consumed: ["7z", "7z"] },
+      discard(2, "2z", false),
+      draw(0, "7s"),
+      discard(0, "7s"),
+    ]);
+  });
+
+  it("sets Norths aside from the hand, several in a row and in riichi", () => {
+    const hands = [
+      [19, 19, 21, 22, 23, 27, 28, 29, 32, 46, 46, 44, 41],
+      SANMA_HANDS[1],
+      SANMA_HANDS[2],
+    ];
+    const lists = [
+      [
+        [42, 24, 33, 44, 44, 11],
+        ["f44", 60, "r41", "f44", "f44", 60],
+      ],
+      [
+        [37, 38, 35],
+        [60, 60, 60],
+      ],
+      [
+        [22, 23, 25],
+        [60, 60, 60],
+      ],
+    ];
+    const round = onlyRound(
+      sanmaLog([sanmaRound(lists, ["流局", [2000, -1000, -1000, 0]], { hands })]),
+    );
+    expect(round.events).toStrictEqual<RoundEvent[]>([
+      // The take at the kita's index (2z) is the tile drawn; the North comes from the hand.
+      draw(0, "2z"),
+      kita(0),
+      draw(0, "4p"),
+      // 60 discards the replacement draw.
+      discard(0, "4p"),
+      draw(1, "7s"),
+      discard(1, "7s"),
+      draw(2, "2p"),
+      discard(2, "2p"),
+      draw(0, "3s"),
+      discard(0, "1z", false, true),
+      { type: "riichiAccepted", seat: 0 },
+      draw(1, "8s"),
+      discard(1, "8s"),
+      draw(2, "3p"),
+      discard(2, "3p"),
+      draw(0, "4z"),
+      kita(0),
+      draw(0, "4z"),
+      kita(0),
+      draw(0, "1m"),
+      discard(0, "1m"),
+      draw(1, "5s"),
+      discard(1, "5s"),
+      draw(2, "5p"),
+      discard(2, "5p"),
+      // 2000 noten payments in all with three players.
+      { type: "ryukyoku", reason: "exhaustive", deltas: [2000, -1000, -1000, 0], tenpai: [0] },
+    ]);
+  });
+
+  it("lets another seat ron the North set aside", () => {
+    // Seat 2 waits on a single North; seat 1 draws one and sets it aside.
+    const hands = [
+      SANMA_HANDS[0],
+      SANMA_HANDS[1],
+      [21, 22, 23, 24, 25, 26, 27, 28, 29, 31, 32, 33, 44],
+    ];
+    const lists = [
+      [[33], [47]],
+      [[44], ["f44"]],
+      [[], []],
+    ];
+    const result = ["和了", [0, -2600, 2600, 0], [2, 1, 2, "40符2飜2600点", "一気通貫(2飜)"]];
+    const round = onlyRound(sanmaLog([sanmaRound(lists, result, { hands })]));
+    expect(round.events).toStrictEqual<RoundEvent[]>([
+      draw(0, "3s"),
+      discard(0, "7z", false),
+      draw(1, "4z"),
+      kita(1),
+      {
+        type: "win",
+        seat: 2,
+        from: 1,
+        deltas: [0, -2600, 2600, 0],
+        fu: 40,
+        han: 2,
+        points: 2600,
+        yaku: [{ key: "ittsu", han: 2 }],
+        tile: "4z",
+        hand: ["1p", "2p", "3p", "4p", "5p", "6p", "7p", "8p", "9p", "1s", "2s", "3s", "4z", "4z"],
+      },
+    ]);
+  });
+
+  it("wins on the replacement draw of a kita", () => {
+    const lists = [[[44, 31], ["f44"]]];
+    const result = [
+      "和了",
+      [2000, -1000, -1000, 0],
+      [0, 0, 0, "30符2飜1000点∀", "嶺上開花(1飜)", "役牌 發(1飜)"],
+    ];
+    const round = onlyRound(sanmaLog([sanmaRound(lists, result)]));
+    expect(round.events).toMatchObject([
+      draw(0, "4z"),
+      kita(0),
+      draw(0, "1s"),
+      {
+        type: "win",
+        seat: 0,
+        from: 0,
+        tile: "1s",
+        yaku: [{ key: "rinshanKaihou" }, { key: "hatsu" }],
+      },
+    ]);
+  });
+
+  it("reveals an open kan's dora after a kita, before the replacement draw", () => {
+    const hands = [
+      SANMA_HANDS[0],
+      [11, 11, 24, 25, 26, 34, 35, 36, 39, 39, 43, 43, 39],
+      [21, 24, 26, 31, 34, 36, 38, 41, 42, 45, 45, 47, 19],
+    ];
+    const lists = [
+      [[39], [60]],
+      [
+        ["m39393939", 44, 25],
+        [0, "f44", 60],
+      ],
+      [[22], [60]],
+    ];
+    const round = onlyRound(sanmaLog([sanmaRound(lists, ["全員不聴"], { hands, dora: [41, 43] })]));
+    expect(round.events).toStrictEqual<RoundEvent[]>([
+      draw(0, "9s"),
+      discard(0, "9s"),
+      { type: "daiminkan", seat: 1, from: 0, tile: "9s", consumed: ["9s", "9s", "9s"] },
+      draw(1, "4z"),
+      kita(1),
+      { type: "dora", indicator: "3z" },
+      draw(1, "5p"),
+      discard(1, "5p"),
+      draw(2, "2p"),
+      discard(2, "2p"),
+      { type: "ryukyoku", reason: "exhaustive", deltas: [0, 0, 0, 0], tenpai: [] },
+    ]);
+  });
+
+  it("reads three-player draws", () => {
+    const tenpai = (result: unknown[]) =>
+      onlyRound(sanmaLog([sanmaRound(QUIET, result)])).events.at(-1);
+    expect(tenpai(["全員聴牌"])).toEqual({
+      type: "ryukyoku",
+      reason: "exhaustive",
+      deltas: [0, 0, 0, 0],
+      tenpai: [0, 1, 2],
+    });
+    expect(tenpai(["流局", [1000, 1000, -2000]])).toEqual({
+      type: "ryukyoku",
+      reason: "exhaustive",
+      deltas: [1000, 1000, -2000, 0],
+      tenpai: [0, 1],
+    });
+    expect(tenpai(["流局"])).toEqual({
+      type: "ryukyoku",
+      reason: "exhaustive",
+      deltas: [0, 0, 0, 0],
+    });
+  });
+
+  it("reads three-player final scores", () => {
+    const round = sanmaRound(QUIET, ["流局", [0, 0, 0, 0]]);
+    const finalScores = (sc: unknown) => parseTenhouJson(sanmaLog([round], { sc })).finalScores;
+    expect(finalScores([370, 32, 340, -6, 340, -26, 0, 0])).toEqual([37000, 34000, 34000, 0]);
+    expect(finalScores([37000, 32, 34000, -6, 34000, -26])).toEqual([37000, 34000, 34000, 0]);
+    // Points for the empty seat are not a final score of this game.
+    expect(finalScores([37000, 32, 34000, -6, 33000, -26, 1000, 0])).toBeUndefined();
+  });
+
+  it("rejects three-player rounds that do not fit the empty seat 3", () => {
+    const quiet = () => sanmaRound(QUIET, ["流局", [0, 0, 0, 0]]);
+    const parse = (round: unknown[]) => () => parseTenhouJson(sanmaLog([round]));
+    expect(parse(quiet())).not.toThrow();
+    // Seat 3 with points: with an empty hand the round looks four-player, unlike the log; in the
+    // short layout the scores are wrong.
+    const points = quiet();
+    points[1] = [35000, 35000, 34000, 1000];
+    expect(parse(points)).toThrow(/says 3 players, but its rounds are laid out for 4/);
+    expect(parse(shortLayout(points))).toThrow(/round 1 has invalid scores/);
+    // Seat 3 with takes or discards.
+    for (const field of [14, 15]) {
+      const tiles = quiet();
+      tiles[field] = [33];
+      expect(parse(tiles), `field ${field}`).toThrow(/empty seat 3 of round 1 has tiles/);
+    }
+    // A playing seat without 13 tiles.
+    const short = quiet();
+    short[7] = SANMA_HANDS[1].slice(1);
+    expect(parse(short)).toThrow(/Seat 1 of round 1 does not start with 13 tiles/);
+    // A pon from the empty seat: seat 0's kamicha is seat 3.
+    const fromEmpty = sanmaRound([[["p464646"], [41]], ...QUIET.slice(1)], ["流局", [0, 0, 0, 0]]);
+    expect(parse(fromEmpty)).toThrow(/calls "p464646" from the empty seat 3/);
+    // Seat 3 winning, dealing in or receiving points.
+    const win = (deltas: number[], who: number, from: number) =>
+      sanmaRound(QUIET, ["和了", deltas, [who, from, who, "30符1飜1000点"]]);
+    expect(parse(win([0, -1000, 1000, 0], 2, 1))).not.toThrow();
+    expect(parse(win([0, 0, 0, 0], 3, 2))).toThrow(/Invalid winner or dealer-in seat/);
+    expect(parse(win([0, 0, 0, 0], 2, 3))).toThrow(/Invalid winner or dealer-in seat/);
+    expect(parse(win([0, -1000, 1000, 100], 2, 1))).toThrow(/Invalid win entry/);
+    // Every error is a LogParseError.
+    expect(errorCode(parse(short))).toBe("invalid");
+  });
+
+  it("rejects logs whose rounds or declarations disagree on the number of players", () => {
+    const sanma = sanmaRound(QUIET, ["流局", [0, 0, 0, 0]]);
+    const yonma = synthetic(
+      [
+        [[12], [60]],
+        [[22], [60]],
+        [[32], [60]],
+        [[23], [60]],
+      ],
+      ["流局", [0, 0, 0, 0]],
+    );
+    expect(() => parseTenhouJson(sanmaLog([sanma, yonma]))).toThrow(
+      /Some rounds are laid out for three players and others for four/,
+    );
+    for (const extra of [
+      { ratingc: "PF3" },
+      { rule: { disp: "三般南喰赤" } },
+      { name: ["A", "B", "C"] },
+    ]) {
+      expect(() => parseTenhouJson(syntheticLog(yonma, extra)), JSON.stringify(extra)).toThrow(
+        /says 3 players, but its rounds are laid out for 4/,
+      );
+    }
+    for (const extra of [{ ratingc: "PF4" }, { rule: { disp: "四般南喰赤" } }]) {
+      expect(() => parseTenhouJson(sanmaLog([sanma], extra)), JSON.stringify(extra)).toThrow(
+        /says 4 players, but its rounds are laid out for 3/,
+      );
+    }
+    // As in the other parsers, a log that disagrees about its players has an unsupported count.
+    expect(errorCode(() => parseTenhouJson(sanmaLog([sanma], { ratingc: "PF4" })))).toBe(
+      "unsupportedPlayers",
+    );
+    expect(errorCode(() => parseTenhouJson(sanmaLog([sanma, yonma])))).toBe("unsupportedPlayers");
+  });
+
+  it("answers every garbled three-player log with a game or a LogParseError", () => {
+    const text = sanmaLog([sanmaRound(MINIMAL_LISTS, MINIMAL_RESULT)]);
+    const outcomes = new Set<string>();
+    for (const input of garbled(text, '0123456789-.,[]{}"crpkamf', 300)) {
+      outcomes.add(parseOutcome(parseTenhouJson, input));
+    }
+    for (const at of cutPoints(text.length, 100)) {
+      outcomes.add(parseOutcome(parseTenhouJson, closeJson(text.slice(0, at))));
+    }
+    expect(outcomes).toContain("game");
+    expect(outcomes).toContain("invalid");
   });
 });
 
@@ -810,3 +1382,43 @@ describe("parseTenhouJson on truncated and garbled fixtures", () => {
     expect(outcomes).toContain("invalid");
   });
 });
+
+// Real three-player games kept outside the repository (src/test/corpus.ts): set
+// TENHOU_JSON_SANMA_CORPUS_DIR to folders of Tenhou's own tenhou.net/6 JSON exports
+// (tenhou.net/5/mjlog2json.cgi). Never commit them.
+const sanmaCorpusFiles = corpusFiles(SANMA_TENHOU_JSON_CORPUS, ".json");
+
+describe.skipIf(sanmaCorpusFiles.length === 0)(
+  `parseTenhouJson: three-player corpus in ${SANMA_TENHOU_JSON_CORPUS}`,
+  () => {
+    it.each(sanmaCorpusFiles)("%s replays every kita and passes checkGame", (_, path) => {
+      const text = readFileSync(path, "utf-8");
+      const game = parseTenhouJson(text);
+      expect(game.playerCount).toBe(3);
+      expect(game.players[3]).toStrictEqual({ name: "" });
+      const source = JSON.parse(text) as { log: unknown[][] };
+      game.rounds.forEach((round, index) => {
+        const discards = [6, 9, 12].flatMap((field) => source.log[index]?.[field] as unknown[]);
+        const kita = round.events.filter((event) => event.type === "kita");
+        expect(kita, `round ${index + 1}`).toHaveLength(
+          discards.filter((item) => item === "f44").length,
+        );
+        expect(round.hands[3]).toEqual([]);
+        // Wins get a hand only from the strict replay, which tracks every tile. The first winner
+        // gains the hand's points, 200 per honba (100 from each of two players on a tsumo) and
+        // every riichi deposit.
+        const accepted = round.events.filter((event) => event.type === "riichiAccepted").length;
+        round.events
+          .filter((event) => event.type === "win")
+          .forEach((win, order) => {
+            expect(win.hand, `round ${index + 1}`).toBeDefined();
+            const deposits = order === 0 ? (round.riichiSticks + accepted) * 1000 : 0;
+            expect(win.deltas[win.seat], `round ${index + 1}`).toBe(
+              (win.points ?? Number.NaN) + round.honba * 200 + deposits,
+            );
+          });
+      });
+      expect(checkGame(game)).toEqual([]);
+    });
+  },
+);

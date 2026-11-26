@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { GameLog, Round, RyukyokuEvent, WinEvent } from "../../core/model";
+import type { GameLog, Round, RoundEvent, RyukyokuEvent, WinEvent } from "../../core/model";
 import type { Tile } from "../../core/tile";
 import { closeJson, cutPoints, garbled, parseOutcome } from "../../test/fuzz";
 import { toMjaiJsonl } from "../../test/mjai-serialize";
@@ -519,25 +519,14 @@ describe("parseMjai: scores", () => {
 });
 
 describe("parseMjai: errors", () => {
-  it("rejects three-player logs", () => {
-    expectError(events({ type: "start_game", names: ["A", "B", "C"] }), "unsupportedPlayers");
+  it("rejects player counts other than three and four", () => {
+    expectError(events({ type: "start_game", names: ["A", "B"] }), "unsupportedPlayers");
     expectError(
-      events(START_GAME, startKyoku({ tehais: TEHAIS.slice(0, 3) })),
+      events({ type: "start_game", names: ["A", "B", "C", "D", "E"] }, startKyoku()),
       "unsupportedPlayers",
     );
-    expectError(
-      events(START_GAME, startKyoku({ scores: [35000, 35000, 35000] })),
-      "unsupportedPlayers",
-    );
-    expectError(
-      events(
-        START_GAME,
-        startKyoku(),
-        { type: "tsumo", actor: 0, pai: "N" },
-        { type: "nukidora", actor: 0, pai: "N" },
-      ),
-      "unsupportedPlayers",
-    );
+    expectError(events({ type: "start_game", num_players: 2 }, startKyoku()), "unsupportedPlayers");
+    expectError(events({ type: "start_game", num_players: "3" }, startKyoku()), "invalid");
   });
 
   it("rejects empty input", () => {
@@ -584,6 +573,543 @@ describe("parseMjai: errors", () => {
   });
 });
 
+// Three-player (sanma) logs: one invented hand written in the shape of each producer, as read
+// from the producers' source (not captured output). Dealer 0 draws 9s, sets aside North, draws 5s
+// and discards 9s; seats 1 and 2 discard once; seat 0 wins by tsumo on haku.
+
+const H13 = Array.from({ length: 13 }, () => "?");
+const SANMA_TEHAIS = [
+  ["1m", "1m", "2p", "3p", "4p", "6p", "7p", "8p", "3s", "4s", "N", "P", "P"],
+  ["1m", "9m", "1p", "1p", "5p", "9p", "2s", "6s", "7s", "E", "S", "W", "C"],
+  ["9m", "9m", "3p", "5pr", "6p", "1s", "1s", "7s", "8s", "E", "W", "F", "F"],
+];
+const SANMA_KYOKU = {
+  bakaze: "E",
+  dora_marker: "8p",
+  kyoku: 1,
+  honba: 0,
+  kyotaku: 0,
+  oya: 0,
+};
+
+/** The hand's play, with the North event and the hidden draws of `hidden` seats as given. */
+function sanmaPlay(north: object, hidden: number[] = []): object[] {
+  const pai = (seat: number, tile: string) => (hidden.includes(seat) ? "?" : tile);
+  return [
+    { type: "tsumo", actor: 0, pai: "9s" },
+    north,
+    { type: "tsumo", actor: 0, pai: "5s" },
+    { type: "dahai", actor: 0, pai: "9s", tsumogiri: false },
+    { type: "tsumo", actor: 1, pai: pai(1, "F") },
+    { type: "dahai", actor: 1, pai: "C", tsumogiri: false },
+    { type: "tsumo", actor: 2, pai: pai(2, "1p") },
+    { type: "dahai", actor: 2, pai: "E", tsumogiri: false },
+    { type: "tsumo", actor: 0, pai: "P" },
+  ];
+}
+
+const END = [{ type: "end_kyoku" }, { type: "end_game" }];
+const NUKIDORA = { type: "nukidora", actor: 0, pai: "N" };
+const KITA = { type: "kita", actor: 0, pai: "N" };
+
+/** mjai-reviewer3p's convlog: four slots, an empty fourth, nukidora. */
+const DIALECT_A2 = events(
+  { type: "start_game", names: ["A", "B", "C", ""], kyoku_first: 0, aka_flag: true },
+  {
+    type: "start_kyoku",
+    ...SANMA_KYOKU,
+    scores: [35000, 35000, 35000, 0],
+    tehais: [...SANMA_TEHAIS, H13],
+  },
+  ...sanmaPlay(NUKIDORA),
+  { type: "hora", actor: 0, target: 0, deltas: [4000, -2000, -2000, 0], ura_markers: [] },
+  ...END,
+);
+
+/** mortal-sanma's tenhou6_to_mjai.py: three slots, nukidora, Python's spaced separators. */
+const DIALECT_C = [
+  { type: "start_game", names: ["A", "B", "C"] },
+  {
+    type: "start_kyoku",
+    ...SANMA_KYOKU,
+    scores: [35000, 35000, 35000],
+    // The script sorts by Tenhou tile id, which puts the red five last.
+    tehais: [
+      SANMA_TEHAIS[0],
+      SANMA_TEHAIS[1],
+      ["9m", "9m", "3p", "6p", "1s", "1s", "7s", "8s", "E", "W", "F", "F", "5pr"],
+    ],
+  },
+  ...sanmaPlay(NUKIDORA),
+  { type: "hora", actor: 0, target: 0, deltas: [4000, -2000, -2000] },
+  ...END,
+]
+  .map((line) => JSON.stringify(line).replace(/([,:])(?=["[{\d-]|true|false)/g, "$1 "))
+  .join("\n");
+
+/** Akagi v3's history file, recorded from seat 0: three slots, num_players, kita. */
+const DIALECT_D_AKAGI = events(
+  { type: "start_game", names: ["A", "B", "C"], id: 0, num_players: 3 },
+  {
+    type: "start_kyoku",
+    ...SANMA_KYOKU,
+    scores: [35000, 35000, 35000],
+    tehais: [SANMA_TEHAIS[0], H13, H13],
+    num_players: 3,
+  },
+  ...sanmaPlay(KITA, [1, 2]),
+  { type: "hora", actor: 0, target: 0, deltas: [4000, -2000, -2000] },
+  ...END,
+);
+
+/** RiichiEnv's env log: a bare start_game, three slots, kita, keys in alphabetical order. */
+const DIALECT_D_RIICHIENV = [
+  { type: "start_game" },
+  {
+    type: "start_kyoku",
+    ...SANMA_KYOKU,
+    scores: [35000, 35000, 35000],
+    tehais: SANMA_TEHAIS,
+  },
+  ...sanmaPlay(KITA),
+  {
+    type: "hora",
+    actor: 0,
+    target: 0,
+    deltas: [4000, -2000, -2000],
+    tsumo: true,
+    ura_markers: [],
+  },
+  ...END,
+]
+  .map((line) => JSON.stringify(Object.fromEntries(Object.entries(line).sort())))
+  .join("\n");
+
+/** Akagi-NG, recorded from seat 0: four-slot start_kyoku, three-slot results, kita. */
+const DIALECT_E = events(
+  { type: "start_game", names: ["A", "B", "C"], num_players: 3 },
+  {
+    type: "start_kyoku",
+    ...SANMA_KYOKU,
+    scores: [35000, 35000, 35000, 0],
+    tehais: [SANMA_TEHAIS[0], H13, H13, H13],
+  },
+  ...sanmaPlay(KITA, [1, 2]),
+  {
+    type: "hora",
+    actor: 0,
+    target: 0,
+    pai: "P",
+    scores: [39000, 33000, 33000],
+    deltas: [4000, -2000, -2000],
+  },
+  ...END,
+);
+
+/** The Akagi v2 / MahjongCopilot bridge stream for libriichi3p: no names, no result. */
+const DIALECT_A1 = events(
+  { type: "start_game", id: 0 },
+  {
+    type: "start_kyoku",
+    ...SANMA_KYOKU,
+    scores: [35000, 35000, 35000, 0],
+    tehais: [SANMA_TEHAIS[0], H13, H13, H13],
+  },
+  ...sanmaPlay(NUKIDORA, [1, 2]),
+  ...END,
+);
+
+const SANMA_EVENTS: RoundEvent[] = [
+  { type: "draw", seat: 0, tile: "9s" },
+  { type: "kita", seat: 0, tile: "4z" },
+  { type: "draw", seat: 0, tile: "5s" },
+  { type: "discard", seat: 0, tile: "9s", tsumogiri: false, riichi: false },
+  { type: "draw", seat: 1, tile: "6z" },
+  { type: "discard", seat: 1, tile: "7z", tsumogiri: false, riichi: false },
+  { type: "draw", seat: 2, tile: "1p" },
+  { type: "discard", seat: 2, tile: "1z", tsumogiri: false, riichi: false },
+  { type: "draw", seat: 0, tile: "5z" },
+  { type: "win", seat: 0, from: 0, deltas: [4000, -2000, -2000, 0], tile: "5z" },
+];
+
+const SANMA_ROUND: Round = {
+  wind: 0,
+  number: 1,
+  dealer: 0,
+  honba: 0,
+  riichiSticks: 0,
+  scores: [35000, 35000, 35000, 0],
+  doraIndicators: ["8p"],
+  hands: [
+    mpsz("1m 1m 2p 3p 4p 6p 7p 8p 3s 4s N P P"),
+    mpsz("1m 9m 1p 1p 5p 9p 2s 6s 7s E S W C"),
+    mpsz("9m 9m 3p 5pr 6p 1s 1s 7s 8s E W F F"),
+    [],
+  ],
+  events: SANMA_EVENTS,
+};
+
+/** The same round recorded from seat 0: the other hands and draws are hidden. */
+const SANMA_SEAT_VIEW: Round = {
+  ...SANMA_ROUND,
+  hands: [SANMA_ROUND.hands[0], HIDDEN_13, HIDDEN_13, []],
+  events: SANMA_EVENTS.map((event) =>
+    event.type === "draw" && event.seat !== 0 ? { ...event, tile: "?" } : event,
+  ),
+};
+
+const ABC = [{ name: "A" }, { name: "B" }, { name: "C" }, { name: "" }];
+const NO_NAMES = [{ name: "" }, { name: "" }, { name: "" }, { name: "" }];
+
+describe("parseMjai: three-player dialects", () => {
+  it.each<[string, string, object[], GameLog["rules"], Round]>([
+    ["A2 (convlog3p)", DIALECT_A2, ABC, { redFives: true, length: "south" }, SANMA_ROUND],
+    [
+      "C (mortal-sanma)",
+      DIALECT_C,
+      ABC,
+      // No aka_flag: red fives are inferred from the 5pr in seat 2's hand.
+      { redFives: true },
+      {
+        ...SANMA_ROUND,
+        hands: [
+          SANMA_ROUND.hands[0],
+          SANMA_ROUND.hands[1],
+          mpsz("9m 9m 3p 6p 1s 1s 7s 8s E W F F 5pr"),
+          [],
+        ],
+      },
+    ],
+    ["D (RiichiEnv)", DIALECT_D_RIICHIENV, NO_NAMES, { redFives: true }, SANMA_ROUND],
+    // Seat views: no red five is seen.
+    ["D (Akagi v3)", DIALECT_D_AKAGI, ABC, { redFives: false }, SANMA_SEAT_VIEW],
+    ["E (Akagi-NG)", DIALECT_E, ABC, { redFives: false }, SANMA_SEAT_VIEW],
+    [
+      "A1 (Akagi v2 bridge)",
+      DIALECT_A1,
+      NO_NAMES,
+      { redFives: false },
+      // The stream ends the round without a result.
+      { ...SANMA_SEAT_VIEW, events: SANMA_SEAT_VIEW.events.slice(0, -1) },
+    ],
+  ])("reads dialect %s", (_, text, players, rules, round) => {
+    expect(parseMjai(text)).toStrictEqual({
+      format: "mjai",
+      playerCount: 3,
+      players,
+      rules,
+      rounds: [round],
+    });
+  });
+
+  it("is picked by the format detection", () => {
+    expect(parseLogText(DIALECT_A2)).toStrictEqual(parseMjai(DIALECT_A2));
+    expect(parseLogText(DIALECT_D_AKAGI).playerCount).toBe(3);
+  });
+});
+
+/** A three-slot (Akagi v3) log: start_game, then a start_kyoku with `extra` fields. */
+function sanma(kyoku: object = {}, ...lines: object[]): string {
+  return events(
+    { type: "start_game", names: ["A", "B", "C"] },
+    {
+      type: "start_kyoku",
+      ...SANMA_KYOKU,
+      scores: [35000, 35000, 35000],
+      tehais: SANMA_TEHAIS,
+      ...kyoku,
+    },
+    ...lines,
+  );
+}
+
+/** Draw-and-discard turns in three-player order from seat 0, `count` draws in all. */
+function sanmaTurns(count: number): object[] {
+  const lines: object[] = [];
+  for (let index = 0; index < count; index += 1) {
+    lines.push(
+      { type: "tsumo", actor: index % 3, pai: "1s" },
+      { type: "dahai", actor: index % 3, pai: "1s", tsumogiri: true },
+    );
+  }
+  return lines;
+}
+
+describe("parseMjai: three-player games", () => {
+  it("decides the player count", () => {
+    const countOf = (text: string) => parseMjai(text).playerCount;
+    const kyoku = (extra: object) => ({ type: "start_kyoku", ...SANMA_KYOKU, ...extra });
+    const fourSlot = (names: unknown[], ...lines: object[]) =>
+      events(
+        { type: "start_game", names },
+        kyoku({ scores: [35000, 35000, 35000, 0], tehais: [...SANMA_TEHAIS, H13] }),
+        ...lines,
+      );
+    expect(countOf(sanma())).toBe(3);
+    // num_players, and three-entry arrays without names.
+    expect(
+      countOf(
+        events(
+          { type: "start_game", names: ["A", "B", "C", ""], num_players: 3 },
+          kyoku({ scores: [35000, 35000, 35000, 0], tehais: [...SANMA_TEHAIS, []] }),
+        ),
+      ),
+    ).toBe(3);
+    expect(countOf(events(kyoku({ scores: [35000, 35000, 35000, 0], tehais: SANMA_TEHAIS })))).toBe(
+      3,
+    );
+    expect(
+      countOf(events(kyoku({ scores: [35000, 35000, 35000], tehais: [...SANMA_TEHAIS, H13] }))),
+    ).toBe(3);
+    // A four-slot log whose seat 3 is an empty chair that never plays, with or without a North.
+    expect(countOf(fourSlot(["A", "B", "C", ""], ...sanmaTurns(3)))).toBe(3);
+    expect(countOf(fourSlot(["A", "B", "C", ""], ...sanmaPlay(NUKIDORA)))).toBe(3);
+    // Seat 3 plays, or has a name: four players, one of them at 0 points.
+    expect(countOf(fourSlot(["A", "B", "C", "D"], ...sanmaTurns(3)))).toBe(4);
+    expect(
+      countOf(
+        fourSlot(
+          ["A", "B", "C", ""],
+          ...sanmaTurns(3),
+          { type: "tsumo", actor: 3, pai: "1s" },
+          { type: "dahai", actor: 3, pai: "1s", tsumogiri: true },
+        ),
+      ),
+    ).toBe(4);
+  });
+
+  it("gives the empty chair its placeholders", () => {
+    const game = parseMjai(sanma({}, ...sanmaTurns(3)));
+    expect(game.players[3]).toStrictEqual({ name: "" });
+    expect(game.rounds[0]?.scores).toEqual([35000, 35000, 35000, 0]);
+    expect(game.rounds[0]?.hands[3]).toEqual([]);
+    // Without scores in start_kyoku, each player starts with 35000.
+    expect(parseMjai(sanma({ scores: undefined })).rounds[0]?.scores).toEqual([
+      35000, 35000, 35000, 0,
+    ]);
+  });
+
+  it("reads a kita without pai, and a ron on the North set aside", () => {
+    const round = parseMjai(
+      sanma(
+        { kyoku: 2, oya: 1 },
+        { type: "tsumo", actor: 1, pai: "N" },
+        { type: "kita", actor: 1 },
+        { type: "hora", actor: 2, target: 1, deltas: [0, -3900, 3900] },
+      ),
+    ).rounds[0] as Round;
+    expect(round.dealer).toBe(1);
+    expect(round.events).toStrictEqual<RoundEvent[]>([
+      { type: "draw", seat: 1, tile: "4z" },
+      { type: "kita", seat: 1, tile: "4z" },
+      { type: "win", seat: 2, from: 1, deltas: [0, -3900, 3900, 0], tile: "4z" },
+    ]);
+  });
+
+  it("keeps a kan dora where the log puts it, before or after the kita", () => {
+    const kanThenKita = (doraFirst: boolean) => {
+      const dora = { type: "dora", dora_marker: "1p" };
+      const kita = { type: "kita", actor: 0, pai: "N" };
+      return parseMjai(
+        sanma(
+          {},
+          { type: "tsumo", actor: 0, pai: "P" },
+          { type: "kakan", actor: 0, pai: "P", consumed: ["P", "P", "P"] },
+          { type: "tsumo", actor: 0, pai: "N" },
+          ...(doraFirst ? [dora, kita] : [kita, dora]),
+          { type: "tsumo", actor: 0, pai: "1s" },
+          { type: "dahai", actor: 0, pai: "1s", tsumogiri: true },
+        ),
+      ).rounds[0]?.events.map((event) => event.type);
+    };
+    // Akagi v3 (Mahjong Soul) writes the dora first, RiichiEnv and Tenhou after the kita.
+    expect(kanThenKita(true)).toEqual(["draw", "kakan", "draw", "dora", "kita", "draw", "discard"]);
+    expect(kanThenKita(false)).toEqual([
+      "draw",
+      "kakan",
+      "draw",
+      "kita",
+      "dora",
+      "draw",
+      "discard",
+    ]);
+  });
+
+  it("infers draw reasons with a 55-tile wall and the three-player noten payments", () => {
+    const endOf = (draws: number, ending: object) =>
+      lastEvent(parseMjai(sanma({}, ...sanmaTurns(draws), { type: "ryukyoku", ...ending })));
+    expect(endOf(55, { deltas: [2000, -1000, -1000] })).toStrictEqual<RyukyokuEvent>({
+      type: "ryukyoku",
+      reason: "exhaustive",
+      deltas: [2000, -1000, -1000, 0],
+      tenpai: [0],
+    });
+    expect(endOf(55, { deltas: [-1000, 2000, -1000, 0] })).toMatchObject({ tenpai: [1] });
+    expect(endOf(55, { deltas: [-4000, 6000, -2000] })).toMatchObject({ reason: "nagashiMangan" });
+    // An abortive draw on a discard: four players would be sanchahou, three cannot ron three times.
+    expect(endOf(4, { deltas: [0, 0, 0] })).toMatchObject({ reason: "unknown" });
+    expect(endOf(54, { deltas: [0, 0, 0] })).toMatchObject({ reason: "unknown" });
+  });
+
+  it("reads explicit draw reasons, and leaves four-player-only ones unknown", () => {
+    const reasonOf = (reason: string) =>
+      (
+        lastEvent(
+          parseMjai(sanma({}, ...sanmaTurns(4), { type: "ryukyoku", reason })),
+        ) as RyukyokuEvent
+      ).reason;
+    expect(reasonOf("exhaustive_draw")).toBe("exhaustive");
+    expect(reasonOf("suukansansen")).toBe("suukaikan");
+    expect(reasonOf("suucha_riichi")).toBe("unknown");
+    expect(reasonOf("sufuurenta")).toBe("unknown");
+    expect(reasonOf("sanchaho")).toBe("unknown");
+  });
+
+  it("reads Akagi-NG's empty arrays on an abortive draw as no payments", () => {
+    const empty = {
+      type: "ryukyoku",
+      scores: [],
+      deltas: [],
+      tenpais: [],
+      reason: "kyushu_kyuhai",
+    };
+    const expected: RyukyokuEvent = {
+      type: "ryukyoku",
+      reason: "kyuushuKyuuhai",
+      deltas: [0, 0, 0, 0],
+    };
+    const drawn = { type: "tsumo", actor: 0, pai: "E" };
+    expect(lastEvent(parseMjai(sanma({}, drawn, empty)))).toStrictEqual(expected);
+    expect(lastEvent(parseMjai(events(START_GAME, startKyoku(), drawn, empty)))).toStrictEqual(
+      expected,
+    );
+  });
+
+  it("reads per-seat fields set to null (Akagi-NG's reach_accepted) as absent", () => {
+    const riichi = (accepted: object, result: object) =>
+      sanma(
+        {},
+        { type: "tsumo", actor: 0, pai: "9s" },
+        { type: "reach", actor: 0 },
+        { type: "dahai", actor: 0, pai: "9s", tsumogiri: true },
+        { type: "reach_accepted", actor: 0, ...accepted },
+        { type: "tsumo", actor: 1, pai: "F" },
+        { type: "dahai", actor: 1, pai: "F", tsumogiri: true },
+        result,
+        { type: "end_kyoku" },
+        { type: "start_kyoku", ...SANMA_KYOKU, honba: 1, tehais: SANMA_TEHAIS },
+      );
+    const ron = { type: "hora", actor: 2, target: 1, pai: "F", deltas: [0, -2000, 2000] };
+    const withNulls = parseMjai(riichi({ scores: null, deltas: null }, ron));
+    expect(withNulls).toStrictEqual(parseMjai(riichi({}, ron)));
+    // Seat 0 paid its riichi deposit, which the ron left on the table.
+    expect(withNulls.rounds[1]?.scores).toEqual([34000, 33000, 37000, 0]);
+    // A null deltas next to the scores after the win: the deltas come from the scores.
+    const fromScores = parseMjai(
+      riichi(
+        { scores: null, deltas: null },
+        { ...ron, deltas: null, scores: [34000, 33000, 37000] },
+      ),
+    );
+    expect(fromScores).toStrictEqual(withNulls);
+    // Four players too: a start_kyoku without scores carries the running scores on.
+    const fourPlayer = events(
+      START_GAME,
+      startKyoku({ scores: null }),
+      { type: "tsumo", actor: 0, pai: "E" },
+      { type: "ryukyoku", reason: "kyushu_kyuhai", deltas: null, scores: null },
+    );
+    expect(parseMjai(fourPlayer).rounds[0]?.scores).toEqual([25000, 25000, 25000, 25000]);
+  });
+
+  it("splits a multi-ron's combined deltas that Akagi repeats on every hora", () => {
+    // Seat 0 deals in to seats 1 and 2 with one riichi deposit on the table, which goes to seat 1,
+    // first in turn order after seat 0.
+    const doubleRon = (first: number[], second: number[], extra: object = {}) =>
+      parseMjai(
+        sanma(
+          { kyotaku: 1 },
+          { type: "tsumo", actor: 0, pai: "1s" },
+          { type: "dahai", actor: 0, pai: "1s", tsumogiri: true },
+          { type: "hora", actor: 1, target: 0, deltas: first, ...extra },
+          { type: "hora", actor: 2, target: 0, deltas: second, ...extra },
+          { type: "end_kyoku" },
+          { type: "start_kyoku", ...SANMA_KYOKU, kyoku: 2, oya: 1, tehais: SANMA_TEHAIS },
+        ),
+      );
+    const winsOf = (game: GameLog) => game.rounds[0]?.events.filter((e) => e.type === "win");
+    const perWinner = doubleRon([-8000, 9000, 0], [-2000, 0, 2000]);
+    expect(winsOf(perWinner)?.map((win) => win.deltas)).toEqual([
+      [-8000, 9000, 0, 0],
+      [-2000, 0, 2000, 0],
+    ]);
+    const combined = doubleRon([-10000, 9000, 2000], [-10000, 9000, 2000]);
+    expect(combined).toStrictEqual(perWinner);
+    // Counted once in the running scores.
+    expect(combined.rounds[1]?.scores).toEqual([25000, 44000, 37000, 0]);
+    // With the scores after the win (Akagi-NG), these are used.
+    const withScores = doubleRon([-10000, 9000, 2000], [-10000, 9000, 2000], {
+      scores: [25000, 44000, 37000],
+    });
+    expect(withScores).toStrictEqual(perWinner);
+    // Deltas that do not split into a deposit and two payments are left as they are.
+    const odd = doubleRon([-10000, 9000, 1500], [-10000, 9000, 1500]);
+    expect(winsOf(odd)?.map((win) => win.deltas)).toEqual([
+      [-10000, 9000, 1500, 0],
+      [-10000, 9000, 1500, 0],
+    ]);
+    expect(odd.rounds[1]?.scores).toEqual([25000, 44000, 36500, 0]);
+  });
+
+  it("rejects three-player logs that are not consistent", () => {
+    const tsumo = (actor: number) => ({ type: "tsumo", actor, pai: "1s" });
+    // Seat 3 plays in a three-slot log.
+    expectError(sanma({}, tsumo(3)), "invalid");
+    expectError(
+      sanma({}, tsumo(0), { type: "pon", actor: 1, target: 3, pai: "E", consumed: ["E", "E"] }),
+      "invalid",
+    );
+    expectError(sanma({ oya: 3 }), "invalid");
+    expectError(sanma({ kyoku: 4, oya: 0 }), "invalid");
+    expectError(sanma({}, tsumo(0), { type: "hora", actor: 0, target: 0, pao: 3 }), "invalid");
+    // A fourth slot that is not an empty chair: points for it are invalid, while a name or a dealt
+    // hand for it contradicts the player count (as INIT dealing seat 3 a hand does in mjlog).
+    expectError(DIALECT_A2.replace("[35000,35000,35000,0]", "[35000,35000,35000,1000]"), "invalid");
+    expectError(DIALECT_A2.replace("-2000,-2000,0]", "-2000,-2000,500]"), "invalid");
+    expectError(DIALECT_A2.replace('"C",""]', '"C","D"]'), "unsupportedPlayers");
+    expectError(
+      events(
+        { type: "start_game", num_players: 3 },
+        startKyoku({ scores: [35000, 35000, 35000, 0] }),
+      ),
+      "unsupportedPlayers",
+    );
+    // Arrays of other lengths and starting hands of other sizes.
+    expectError(sanma({ scores: [35000, 35000] }), "invalid");
+    expectError(sanma({ tehais: [SANMA_TEHAIS[0], SANMA_TEHAIS[1], ["1m"]] }), "invalid");
+    expectError(sanma({}, tsumo(0), { type: "ryukyoku", deltas: [0, 0] }), "invalid");
+    // Only North is set aside.
+    expectError(sanma({}, tsumo(0), { type: "kita", actor: 0, pai: "E" }), "invalid");
+    expectError(sanma({}, tsumo(0), { type: "nukidora", actor: 0, pai: "?" }), "invalid");
+    // Player counts that disagree, an unsupported player count in every parser.
+    expectError(
+      events({ type: "start_game", num_players: 4 }, startKyoku(), tsumo(0), KITA),
+      "unsupportedPlayers",
+    );
+    expectError(
+      events(
+        { type: "start_game", names: ["A", "B", "C"], num_players: 4 },
+        startKyoku({ tehais: SANMA_TEHAIS }),
+      ),
+      "unsupportedPlayers",
+    );
+    expectError(
+      events({ type: "start_game", num_players: 3 }, { ...startKyoku(), num_players: 4 }),
+      "unsupportedPlayers",
+    );
+  });
+});
+
 /** A tenhou.net/6 fixture as the convlog-style mjai the test serializer writes for it. */
 function tenhouAsMjai(name: string): string {
   const path = new URL(`../tenhou-json/__fixtures__/convlog/${name}`, import.meta.url);
@@ -596,6 +1122,8 @@ describe("parseMjai on truncated and garbled logs", () => {
     ["ranked_game.json as mjai", () => tenhouAsMjai("ranked_game.json")],
     ["suukantsu_1.json as mjai", () => tenhouAsMjai("suukantsu_1.json")],
     ["gimite-flavor.jsonl", () => fixture("gimite-flavor.jsonl")],
+    ["the three-player A2 sample", () => DIALECT_A2],
+    ["the three-player E sample", () => DIALECT_E],
   ];
 
   it.each(SOURCES)("answers every truncation of %s with a game or a LogParseError", (_, load) => {

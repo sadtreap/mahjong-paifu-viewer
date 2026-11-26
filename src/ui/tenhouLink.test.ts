@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findTenhouLogId, tenhouLinkLogId, tenhouLogDataUrl } from "./tenhouLink";
+import { findTenhouLogId, tenhouLinkLogId, tenhouLinkStart, tenhouLogDataUrl } from "./tenhouLink";
 
 const ID = "2000010100gm-0089-0000-0123abcd";
 
@@ -37,5 +37,41 @@ describe("tenhouLinkLogId", () => {
 describe("tenhouLogDataUrl", () => {
   it("points at the mjlog XML without the viewer's other parameters", () => {
     expect(tenhouLogDataUrl(ID)).toBe(`https://tenhou.net/0/log/?${ID}`);
+  });
+});
+
+describe("tenhouLinkStart", () => {
+  it("reads the seat (tw) and the 0-based round (ts) of a replay link", () => {
+    expect(tenhouLinkStart(`https://tenhou.net/0/?log=${ID}&tw=2&ts=3`)).toEqual({
+      pov: 2,
+      round: 3,
+    });
+    expect(tenhouLinkStart(`tenhou.net/0/?log=${ID}&ts=0&tw=0`)).toEqual({ pov: 0, round: 0 });
+    expect(tenhouLinkStart(`https://tenhou.net/3/?log=${ID}&tw=1`)).toEqual({
+      pov: 1,
+      round: null,
+    });
+  });
+
+  it("gives null for missing, out-of-range or malformed values", () => {
+    expect(tenhouLinkStart(`https://tenhou.net/0/?log=${ID}`)).toEqual({ pov: null, round: null });
+    expect(tenhouLinkStart(`https://tenhou.net/0/?log=${ID}&tw=4&ts=1000`)).toEqual({
+      pov: null,
+      round: null,
+    });
+    expect(tenhouLinkStart(`https://tenhou.net/0/?log=${ID}&tw=-1&ts=1.5`)).toEqual({
+      pov: null,
+      round: null,
+    });
+    expect(tenhouLinkStart(`https://tenhou.net/0/?log=${ID}&xtw=2&tsx=3`)).toEqual({
+      pov: null,
+      round: null,
+    });
+  });
+
+  it("gives null for text that is not a Tenhou link", () => {
+    expect(tenhouLinkStart(ID)).toEqual({ pov: null, round: null });
+    expect(tenhouLinkStart(`{"ref":"${ID}","tw":2}`)).toEqual({ pov: null, round: null });
+    expect(tenhouLinkStart("https://example.com/?tw=2&ts=1")).toEqual({ pov: null, round: null });
   });
 });

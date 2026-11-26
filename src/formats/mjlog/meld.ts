@@ -9,6 +9,8 @@
 import { type KnownTile, tileFromKind } from "../../core/tile";
 
 const RED_FIVE_IDS: ReadonlySet<number> = new Set([16, 52, 88]);
+/** Tile kind of North (ids 120-123), the only tile a three-player kita sets aside. */
+const NORTH_KIND = 30;
 
 export function isTileId(id: number): boolean {
   return Number.isInteger(id) && id >= 0 && id <= 135;
@@ -48,8 +50,10 @@ export type DecodedMeld =
       tiles: number[];
     }
   | {
-      /** Three-player north extraction; never valid in a four-player game. */
+      /** Three-player kita: a North set aside as nukidora. Never valid in a four-player game. */
       type: "nukidora";
+      /** Id of the North tile set aside (120-123). */
+      tile: number;
     };
 
 /**
@@ -60,7 +64,8 @@ export type DecodedMeld =
  *   possible runs (7 per suit).
  * - bit 3 set: pon, bit 4 set: kakan. Bits 5-6 are the copy left out of the pon (for kakan, the
  *   added copy); bits 9-15 = kind * 3 + index of the called tile among the pon's three.
- * - bit 5 set: nukidora (three-player only).
+ * - low byte exactly 0x20 (bit 5 alone): nukidora (three-player kita); bits 8-15 are the id of the
+ *   North set aside (120-123). Checked after pon and kakan, whose bits 5-6 can have bit 5 set.
  * - otherwise a kan: bits 8-15 are a tile id (the called tile for daiminkan).
  * Returns null when the value is not a valid meld.
  */
@@ -107,14 +112,14 @@ export function decodeMeld(m: number): DecodedMeld | null {
     }
     return { type: "pon", from: relative as 1 | 2 | 3, called, consumed };
   }
-  if (m & 0x20) {
-    return { type: "nukidora" };
-  }
   const id = m >> 8;
   if (!isTileId(id)) {
     return null;
   }
   const kind = id >> 2;
+  if (m & 0x20) {
+    return (m & 0xff) === 0x20 && kind === NORTH_KIND ? { type: "nukidora", tile: id } : null;
+  }
   const ids = [0, 1, 2, 3].map((copy) => kind * 4 + copy);
   if (relative === 0) {
     return { type: "ankan", tiles: ids };

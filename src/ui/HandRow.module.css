@@ -2,6 +2,8 @@
   display: flex;
   align-items: flex-end;
   width: 100%;
+  /* Keeps the tiles' paint order (TileImage depth) inside the row, under a standing wall. */
+  isolation: isolate;
 }
 
 .concealed {
@@ -12,6 +14,17 @@
 /* Keep in sync with DRAWN_GAP and MELD_GAP in layout.ts. */
 .drawn {
   margin-left: calc(var(--tile-w) * 0.4);
+}
+
+/*
+ * Holds the place of a standing wall (L tiles long; see table/WallLayer), plus the felt its lean
+ * needs before the next lying tile (--gap tiles).
+ */
+.spacer {
+  flex: none;
+  width: calc(var(--L) * var(--tile-w));
+  height: calc(var(--tile-w) * 4 / 3);
+  margin-right: calc(var(--gap, 0) * var(--tile-w));
 }
 
 .melds {

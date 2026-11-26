@@ -1,0 +1,292 @@
+/*
+ * Band 2: the current round as swimlanes. Every mark sits at
+ * x = 18px + (100% - 22px) * t, t = step / (steps - 1); the invisible range input spans the same
+ * line (its 2 px thumb's centre runs from 18px to 100% - 4px).
+ */
+.band {
+  container: round-band / inline-size;
+  position: relative;
+  height: 46px;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.band:has(.range:focus-visible) {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.lanes {
+  position: absolute;
+  inset: 2px 0;
+  display: grid;
+  grid-auto-rows: 1fr;
+}
+
+.lane {
+  position: relative;
+  min-height: 0;
+}
+
+.lane + .lane {
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+}
+
+.pov {
+  background: color-mix(in srgb, var(--seat) 12%, transparent);
+}
+
+/* The seat initial in the 14 px gutter; 9 px with four lanes, so the labels never touch. */
+.laneLabel {
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  translate: 0 -50%;
+  color: var(--seat);
+  font:
+    700 10px / 1 system-ui,
+    sans-serif;
+}
+
+.band[data-lanes="4"] .laneLabel {
+  font-size: 9px;
+}
+
+/* Too narrow for the labels: the coloured lanes stay. */
+@container round-band (max-width: 479px) {
+  .laneLabel {
+    display: none;
+  }
+}
+
+.mark,
+.line,
+.riichiBar,
+.cursor,
+.pinLine,
+.pin {
+  position: absolute;
+  left: calc(18px + (100% - 22px) * var(--t, 0));
+}
+
+.mark {
+  top: 15%;
+  width: 3px;
+  height: 70%;
+  translate: -50% 0;
+  border-radius: 1px;
+  background: var(--seat);
+}
+
+.tsumogiri {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--seat);
+}
+
+.call,
+.kan {
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  translate: -50% -50%;
+  box-shadow: 0 0 0 1px var(--color-surface);
+}
+
+.call {
+  rotate: 45deg;
+}
+
+.riichi {
+  z-index: 1;
+  top: 50%;
+  width: 12px;
+  height: 4px;
+  translate: -50% -50%;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 0 0 1px #333;
+}
+
+.kita {
+  z-index: 1;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  translate: -50% -50%;
+  border-radius: 50%;
+  color: var(--color-bg);
+  font:
+    700 8px / 11px system-ui,
+    sans-serif;
+  text-align: center;
+}
+
+.riichiBar {
+  top: 30%;
+  right: 4px;
+  bottom: 30%;
+  background: color-mix(in srgb, var(--seat) 22%, transparent);
+}
+
+.line {
+  top: 0;
+  bottom: 0;
+}
+
+.dora {
+  width: 0;
+  translate: -1px 0;
+  border-left: 2px dashed #d9a400;
+}
+
+.end {
+  width: 3px;
+  translate: -50% 0;
+  background: var(--color-muted);
+}
+
+.cursor {
+  z-index: 1;
+  top: -1px;
+  bottom: -1px;
+  width: 3px;
+  translate: -50% 0;
+  border-radius: 2px;
+  background: var(--color-focus);
+  box-shadow: 0 0 0 2px var(--color-surface);
+  pointer-events: none;
+}
+
+.pinLine {
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  translate: -50% 0;
+  background: var(--color-fg);
+  pointer-events: none;
+}
+
+.pin {
+  all: unset;
+  position: absolute;
+  left: calc(18px + (100% - 22px) * var(--t, 0));
+  top: calc(2px + (100% - 4px) * (var(--lane) + 0.5) / var(--lanes));
+  z-index: 3;
+  width: 14px;
+  height: 14px;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: var(--color-surface);
+  box-shadow:
+    0 0 0 2px var(--seat),
+    0 1px 3px rgb(0 0 0 / 0.4);
+  cursor: pointer;
+}
+
+.pin:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.range {
+  position: absolute;
+  left: 17px;
+  right: 3px;
+  top: 0;
+  z-index: 2;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  opacity: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.range::-webkit-slider-thumb {
+  width: 2px;
+  height: 40px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.range::-moz-range-thumb {
+  width: 2px;
+  height: 40px;
+  border: 0;
+}
+
+@media (orientation: portrait) and (max-width: 599px) {
+  .band {
+    height: 36px;
+  }
+
+  .laneLabel {
+    display: none;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .band {
+    height: 30px;
+  }
+
+  .laneLabel {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .mark,
+  .line,
+  .riichiBar,
+  .cursor,
+  .pinLine {
+    forced-color-adjust: none;
+  }
+
+  .mark {
+    background: CanvasText;
+  }
+
+  .tsumogiri {
+    background: Canvas;
+    box-shadow: inset 0 0 0 1px CanvasText;
+  }
+
+  .riichi,
+  .kita {
+    background: Canvas;
+    color: CanvasText;
+    outline: 1px solid CanvasText;
+  }
+
+  .riichiBar {
+    background: none;
+    border-block: 1px dashed CanvasText;
+  }
+
+  .dora {
+    border-left-color: CanvasText;
+  }
+
+  .end,
+  .pinLine {
+    background: CanvasText;
+  }
+
+  .cursor {
+    background: Highlight;
+    outline: 1px solid Highlight;
+  }
+
+  .pin {
+    outline: 2px solid ButtonText;
+  }
+}

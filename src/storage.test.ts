@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readStorage, storageKey, writeStorage } from "./storage";
+import { readStorage, removeStorage, storageKey, writeStorage } from "./storage";
 
 function fakeStorage(): Storage {
   const data = new Map<string, string>();
@@ -51,5 +51,22 @@ describe("storage", () => {
 
     expect(readStorage("locale")).toBeNull();
     expect(() => writeStorage("locale", "ko")).not.toThrow();
+  });
+
+  it("removes a namespaced key and ignores unavailable storage", () => {
+    const storage = fakeStorage();
+    vi.stubGlobal("localStorage", storage);
+    storage.setItem("showAllHands", "kept");
+    writeStorage("showAllHands", "false");
+
+    removeStorage("showAllHands");
+
+    expect(readStorage("showAllHands")).toBeNull();
+    expect(storage.getItem("showAllHands")).toBe("kept");
+
+    storage.removeItem = () => {
+      throw new Error("SecurityError");
+    };
+    expect(() => removeStorage("showAllHands")).not.toThrow();
   });
 });

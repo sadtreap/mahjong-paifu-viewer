@@ -1,0 +1,211 @@
+.matrix {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0 2px;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.matrix th {
+  padding: 2px 4px;
+  color: var(--color-muted);
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.roundHead {
+  width: 40px;
+}
+
+.matrix th:first-child,
+.matrix td:first-child {
+  text-align: left;
+}
+
+.matrix td {
+  padding: 0;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 3px;
+  border-radius: 50%;
+  background: var(--seat);
+}
+
+.matrix .roundCell {
+  padding: 0;
+}
+
+.round {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  width: 100%;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--color-fg);
+  cursor: pointer;
+}
+
+.round b {
+  font-weight: 700;
+}
+
+.round small {
+  color: var(--color-muted);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+/*
+ * A seat cell: a 12 px column for the riichi stick and the role glyph, then the value, right
+ * aligned and clipped, so the glyph never overlaps the number and nothing leaves the cell.
+ */
+.cell {
+  all: unset;
+  container-type: inline-size;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 1px;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 3px 0 2px;
+  overflow: hidden;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.marks {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 3px;
+  min-height: 100%;
+}
+
+.stick {
+  display: block;
+  width: 9px;
+  height: 4px;
+  border-radius: 9px;
+  background:
+    #f4f1ea radial-gradient(circle, #d22 0 22%, transparent 26%) center / 25% 100% no-repeat;
+  box-shadow: 0 0 0 1px #8a857a;
+}
+
+.glyph {
+  font-size: 10px;
+  line-height: 1;
+}
+
+/*
+ * Never clipped: in a narrow column the font shrinks so that six characters ("+12000") fit
+ * beside the glyph column (a tabular digit is about 0.6em wide).
+ */
+.value {
+  font-size: min(1em, calc((100cqi - 16px) / 3.7));
+  letter-spacing: -0.01em;
+  text-align: right;
+}
+
+.cell:hover,
+.round:hover {
+  background: var(--color-surface-alt);
+}
+
+.cell:focus-visible,
+.round:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.gain {
+  color: var(--color-gain);
+}
+
+.loss {
+  color: var(--color-loss);
+}
+
+.zero {
+  color: var(--color-muted);
+}
+
+.win .cell {
+  background: color-mix(in srgb, var(--seat) 7%, var(--color-surface));
+  box-shadow: inset 0 0 0 1.5px var(--seat);
+  font-weight: 700;
+}
+
+.win .glyph::before {
+  content: "★";
+  color: var(--seat);
+}
+
+.dealin .cell {
+  background: color-mix(in srgb, var(--color-loss) 9%, var(--color-surface));
+  box-shadow: inset 0 0 0 1.5px var(--color-loss);
+  font-weight: 700;
+}
+
+.dealin .glyph::before {
+  content: "▼";
+  color: var(--color-loss);
+}
+
+.tenpai .glyph::before {
+  content: "○";
+  color: var(--color-muted);
+}
+
+.current .round {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+.current th:first-child {
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+.matrix tfoot th,
+.matrix tfoot td {
+  padding: 4px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-fg);
+  font-weight: 700;
+  text-align: right;
+}
+
+.matrix tfoot th {
+  text-align: left;
+}
+
+@media (forced-colors: active) {
+  .win .cell,
+  .dealin .cell {
+    border: 2px solid CanvasText;
+  }
+
+  .dealin .cell {
+    border-style: dashed;
+  }
+
+  .stick {
+    forced-color-adjust: none;
+    background: Canvas;
+    box-shadow: none;
+    outline: 1px solid CanvasText;
+  }
+
+  .current th:first-child {
+    outline: 2px solid Highlight;
+  }
+}

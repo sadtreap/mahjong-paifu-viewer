@@ -1,7 +1,7 @@
 /**
  * Fallback lookup for yaku names written in romaji or English, as found in tenhou.net/6 logs
  * exported in English or converted from other clients (e.g. "Riichi(1飜)", "Ura Dora(0飜)"; tensoul
- * writes Mahjong Soul's English names such as "Four Little Winds" when set to English).
+ * writes Mahjong Soul's English names such as "Four Little Winds" or "Kita" when set to English).
  * Names are compared lowercased with everything but letters and digits removed.
  */
 
@@ -66,6 +66,8 @@ const NAMES: ReadonlyArray<[YakuKey, readonly string[]]> = [
   ["seatWind", ["seatwind", "jikaze"]],
   ["roundWind", ["roundwind", "prevalentwind", "bakaze"]],
   ["yakuhai", ["yakuhai", "dragon"]],
+  // Three-player North tiles set aside; tensoul writes Mahjong Soul's English name "Kita".
+  ["nukidora", ["nukidora", "kita"]],
 ];
 
 const NAME_TO_KEY = new Map<string, YakuKey>(

@@ -29,7 +29,7 @@ Biome enforces formatting and lint rules (`biome.json`); run `pnpm lint:fix` to 
 - 2-space indentation, double quotes, semicolons, trailing commas, 100-column lines, LF line endings.
 - Prefer named exports. Default exports are only for files a tool requires them in (e.g. `vite.config.ts`).
 - Component styles live next to the component as `Component.module.css`.
-- Persist browser state only through `src/storage.ts`, which namespaces localStorage keys (all project sites on `sadtreap.github.io` share one origin).
+- Persist browser state only through `src/storage.ts`, which namespaces localStorage keys (all project sites on `sadtreap.github.io` share one origin). User preferences go in the one versioned settings blob of `src/ui/settings/settings.ts`.
 - Code comments, docs and commit messages are written in English.
 
 ## Internationalization
@@ -49,9 +49,11 @@ Text the parsers take from a log (player names, unknown yaku, rule text they can
 - Text needs a contrast of 4.5:1 in both themes; `src/ui/theme.test.ts` checks the color tokens in `src/index.css`.
 - Anything drawn only with backgrounds (sticks, highlights) needs a `@media (forced-colors: active)` rule, or it disappears in Windows High Contrast mode.
 - A button that can reach its limit when pressed (Last step) uses `aria-disabled`, not `disabled`, so it keeps the focus.
-- When a view or message replaces the control that had the focus, move the focus on purpose (see `Viewer.tsx`, `App.tsx` and `ErrorMessage.tsx`).
-- Announce each change once: the step status line is the only live region of the viewer.
-- Check layout changes in a browser at 320 px and at desktop width; the tests run in happy-dom, which does not lay out CSS.
+- When a view or message replaces the control that had the focus, move the focus on purpose (see `src/ui/shell/Shell.tsx`, `src/ui/Viewer.tsx` and `src/ui/ErrorMessage.tsx`).
+- Announce each change once: the dock's status line (`src/ui/controls/StatusLine.tsx`) is the only live region of the viewer, and it stays quiet during autoplay, holds, wheel bursts and scrubs.
+- Keep clicks on the table for stepping: nothing on the felt is a button (the plates are display only), and hover aids never take the pointer. Anything clickable over the stage (cards, menus, sheets) carries `data-gesture="ignore"`.
+- Every mouse or touch action needs a keyboard or button equivalent. The keyboard map lives in one table, `src/ui/viewer/shortcuts.ts`, which both the key handler and the help dialog read.
+- Check layout changes in a browser at 320 px, a phone in landscape and desktop width; the tests run in happy-dom, which does not lay out CSS. The page layouts are the breakpoints of `src/ui/breakpoints.ts`, repeated verbatim in `src/ui/Viewer.module.css` (`theme.test.ts` checks it).
 
 ## Tests
 
@@ -62,8 +64,14 @@ Tests are colocated with the code as `*.test.ts(x)` and run with `pnpm test`. Pa
 - Fixtures live in a `__fixtures__` folder next to the code that uses them; shared test helpers live in `src/test`.
 - Anonymize real logs before committing them: replace the player names with "A", "B", "C" and "D" and remove the log id. Third-party data keeps its license text and a README naming the source and the changes next to it.
 - Tenhou's mjlog game records carry no license and are never committed. The mjlog parser is tested on XML written by `src/test/mjlog-serialize.ts`, a test-only encoder that turns hand-built games and the tenhou.net/6 fixtures into Tenhou-style mjlog; `parseMjlog(toMjlogXml(game))` must give back `stripMjlogUnsupported(game)`, which lists what mjlog cannot carry.
-- To check the mjlog parser and that encoder against real games, point `MJLOG_CORPUS_DIR` at a folder of mjlog XML files, e.g. `MJLOG_CORPUS_DIR=~/tenhou-logs pnpm test src/formats`. Each game is then compared with Tenhou's own scores and hands, replayed with `checkGame`, and must come back unchanged from `toMjlogXml`. Such a corpus is never committed.
-- The sample logs offered on the start page live in `public/samples` (listed in `src/ui/samples.ts`) and follow the same rules.
+- The other formats have test-only writers too: `src/test/tenhou-json-serialize.ts` (tenhou.net/6 as Tenhou exports it) and `src/test/mjai-serialize.ts` (convlog's mjai, and two three-player shapes). Each has a `strip…Unsupported` function listing what its format cannot carry. `src/formats/cross-format.test.ts` sends the same games through all three formats, including the synthetic three-player game in `src/test/sanma-game.ts`, whose scoring is real.
+- To check the parsers and writers against real games, point these variables at folders of real logs (several folders are separated by `:`, or `;` on Windows). Such corpora are never committed, and the tests that read them are skipped when the variables are unset (`src/test/corpus.ts`):
+  - `MJLOG_CORPUS_DIR`: mjlog XML files of any games.
+  - `SANMA_MJLOG_CORPUS_DIR`: mjlog XML files of three-player games.
+  - `TENHOU_JSON_SANMA_CORPUS_DIR`: Tenhou's own tenhou.net/6 exports of three-player games.
+
+  For example, `MJLOG_CORPUS_DIR=~/tenhou-logs pnpm test src/formats`. Each mjlog game is compared with Tenhou's own scores and hands, replayed with `checkGame`, and must come back unchanged from `toMjlogXml`, tag for tag. It must also give the same game written as tenhou.net/6 JSON and as mjai. The tenhou.net/6 exports must come back entry for entry from `toTenhouJson`.
+- The sample logs offered on the welcome card and in the Open dialog live in `public/samples` (listed in `src/ui/samples.ts`) and follow the same rules.
 
 ## Commit messages
 

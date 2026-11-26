@@ -18,6 +18,12 @@
  *
  * Checked against convlog itself when it was written: for convlog's own test games (the tenhou.net/6
  * fixtures) and for the hand-made game in roundtrip.test.ts, it wrote what convlog writes.
+ *
+ * Three-player games are written in one of two shapes (MjaiWriteOptions.sanma), so that tests can
+ * feed parseMjai both from one GameLog. Both follow the four-player order above, with one change:
+ * a kan dora still pending at a kita is written before the replacement draw, where Tenhou reveals
+ * it (mjai-reviewer3p's convlog would hold it until the next discard). Neither was checked against
+ * the producer itself; they follow the producers' source.
  */
 import type {
   CallEvent,
@@ -29,6 +35,7 @@ import type {
   Seat,
   WinEvent,
 } from "../core/model";
+import { activeSeats } from "../core/players";
 import { tenpaiFromDeltas } from "../core/tenpai";
 import { type KnownTile, type Tile, tileKind } from "../core/tile";
 import { tileToMjai } from "../formats/mjai/tiles";
@@ -37,25 +44,66 @@ export type MjaiJsonEvent = { type: string } & Record<string, unknown>;
 
 const BAKAZE = ["E", "S", "W", "N"] as const;
 
-export function toMjaiEvents(game: GameLog): MjaiJsonEvent[] {
-  const events: MjaiJsonEvent[] = [
-    {
-      type: "start_game",
-      names: game.players.map((player) => player.name),
-      // convlog: 0 for a hanchan, 4 for an east-only game.
-      kyoku_first: game.rules.length === "east" ? 4 : 0,
-      aka_flag: game.rules.redFives,
-    },
-  ];
+/**
+ * How a three-player game is written; four-player games are always written as convlog writes them.
+ * - "convlog3p" (the default): mjai-reviewer3p's convlog (`--mjai-out`). Four seat slots whose
+ *   fourth is an empty chair (name "", 0 points, a hand of 13 "?", 0 deltas), and the North set
+ *   aside as `{"type":"nukidora","actor":0,"pai":"N"}`.
+ * - "akagi": Akagi v3's history files. Three seat slots, `num_players: 3` on start_game and
+ *   start_kyoku, `{"type":"kita","actor":0,"pai":"N"}`, ura_markers only on a hora whose win has
+ *   ura indicators, and every hora of a multi-ron carrying the combined deltas of all its wins.
+ */
+export type MjaiSanmaShape = "convlog3p" | "akagi";
+
+export interface MjaiWriteOptions {
+  sanma?: MjaiSanmaShape;
+}
+
+/** How one game is written: the shape, and how per-seat arrays are cut to it. */
+interface Writer {
+  shape: "convlog" | MjaiSanmaShape;
+  /** A per-seat array as the shape writes it, with `empty` in the empty chair's slot. */
+  seats<T>(values: readonly T[], empty: T): T[];
+}
+
+function writerFor(game: GameLog, options: MjaiWriteOptions): Writer {
+  if (game.playerCount === 4) {
+    return { shape: "convlog", seats: (values) => [...values] };
+  }
+  const shape = options.sanma ?? "convlog3p";
+  const playing = activeSeats(game.playerCount).length;
+  return {
+    shape,
+    seats: (values, empty) =>
+      shape === "akagi" ? values.slice(0, playing) : [...values.slice(0, playing), empty],
+  };
+}
+
+export function toMjaiEvents(game: GameLog, options: MjaiWriteOptions = {}): MjaiJsonEvent[] {
+  const writer = writerFor(game, options);
+  const startGame: MjaiJsonEvent = {
+    type: "start_game",
+    names: writer.seats(
+      game.players.map((player) => player.name),
+      "",
+    ),
+    // convlog: 0 for a hanchan, 4 for an east-only game.
+    kyoku_first: game.rules.length === "east" ? 4 : 0,
+    aka_flag: game.rules.redFives,
+  };
+  if (writer.shape === "akagi") {
+    startGame.num_players = game.playerCount;
+  }
+  const events: MjaiJsonEvent[] = [startGame];
   for (const round of game.rounds) {
-    events.push(...roundToMjai(round));
+    events.push(...roundToMjai(round, writer));
   }
   events.push({ type: "end_game" });
   return events;
 }
 
-export function toMjaiJsonl(game: GameLog): string {
-  return `${toMjaiEvents(game)
+export function toMjaiJsonl(game: GameLog, options: MjaiWriteOptions = {}): string {
+  return `${toMjaiEvents(game, options)
     .map((event) => JSON.stringify(event))
     .join("\n")}\n`;
 }
@@ -77,10 +125,15 @@ export function toMjaiJsonl(game: GameLog): string {
  * abortive draw and infers ryukyoku reasons and winning tiles from the events. Every parser already
  * emits kan dora where convlog does and ura indicators only for riichi winners, so parsed games
  * round-trip exactly (src/formats/cross-format.test.ts checks this on every real fixture).
+ *
+ * Both three-player shapes carry the same as convlog. The combined deltas of an "akagi" multi-ron
+ * come back as each win's own when the riichi deposits went to the winner first in turn order after
+ * the dealer-in, as Tenhou gives them.
  */
 export function stripMjaiUnsupported(game: GameLog): GameLog {
   const stripped: GameLog = {
     format: "mjai",
+    playerCount: game.playerCount,
     players: game.players.map((player) => ({ name: player.name })) as Quad<{ name: string }>,
     rules: { redFives: game.rules.redFives, length: game.rules.length ?? "south" },
     rounds: game.rounds.map((round) => ({
@@ -88,13 +141,13 @@ export function stripMjaiUnsupported(game: GameLog): GameLog {
       scores: [...round.scores],
       doraIndicators: [...round.doraIndicators],
       hands: round.hands.map((hand) => [...hand]) as Quad<Tile[]>,
-      events: round.events.map(stripEvent),
+      events: round.events.map((event) => stripEvent(event, game)),
     })),
   };
   return stripped;
 }
 
-function stripEvent(event: RoundEvent): RoundEvent {
+function stripEvent(event: RoundEvent, game: GameLog): RoundEvent {
   if (event.type === "win") {
     const win: WinEvent = {
       type: "win",
@@ -116,7 +169,11 @@ function stripEvent(event: RoundEvent): RoundEvent {
       reason: event.reason,
       deltas: [...event.deltas],
     };
-    if (event.tenpai && event.reason === "exhaustive" && tenpaiFromDeltas(event.deltas)) {
+    if (
+      event.tenpai &&
+      event.reason === "exhaustive" &&
+      tenpaiFromDeltas(event.deltas, game.playerCount)
+    ) {
       ryukyoku.tenpai = [...event.tenpai];
     }
     return ryukyoku;
@@ -137,24 +194,29 @@ function tiles(list: readonly Tile[]): string[] {
   return list.map(tileToMjai);
 }
 
-function roundToMjai(round: Round): MjaiJsonEvent[] {
+/** convlog3p writes the empty chair's starting hand as 13 unknown tiles. */
+const HIDDEN_HAND: readonly string[] = Array.from({ length: 13 }, () => "?");
+
+function roundToMjai(round: Round, writer: Writer): MjaiJsonEvent[] {
   const [startIndicator, ...extraIndicators] = round.doraIndicators;
   if (startIndicator === undefined) {
     throw new Error("convlog needs a dora indicator at the start of every round");
   }
-  const out: MjaiJsonEvent[] = [
-    {
-      type: "start_kyoku",
-      bakaze: BAKAZE[round.wind],
-      dora_marker: tileToMjai(startIndicator),
-      kyoku: round.number,
-      honba: round.honba,
-      kyotaku: round.riichiSticks,
-      oya: round.dealer,
-      scores: [...round.scores],
-      tehais: round.hands.map(tiles),
-    },
-  ];
+  const startKyoku: MjaiJsonEvent = {
+    type: "start_kyoku",
+    bakaze: BAKAZE[round.wind],
+    dora_marker: tileToMjai(startIndicator),
+    kyoku: round.number,
+    honba: round.honba,
+    kyotaku: round.riichiSticks,
+    oya: round.dealer,
+    scores: writer.seats(round.scores, 0),
+    tehais: writer.seats(round.hands.map(tiles), [...HIDDEN_HAND]),
+  };
+  if (writer.shape === "akagi") {
+    startKyoku.num_players = 3;
+  }
+  const out: MjaiJsonEvent[] = [startKyoku];
 
   // convlog only knows the round's indicator list and decides itself when each one is revealed.
   const doraQueue: KnownTile[] = [...extraIndicators];
@@ -174,6 +236,12 @@ function roundToMjai(round: Round): MjaiJsonEvent[] {
     (event): event is WinEvent => event.type === "win" && (event.uraIndicators?.length ?? 0) > 0,
   );
   const uraMarkers = tiles(firstUra?.uraIndicators ?? []);
+  // Akagi writes a multi-ron's combined deltas on each of its horas.
+  const wins = round.events.filter((event): event is WinEvent => event.type === "win");
+  const combinedDeltas = wins.reduce<number[]>(
+    (sum, win) => sum.map((delta, seat) => delta + win.deltas[seat as Seat]),
+    [0, 0, 0, 0],
+  );
 
   const lastTake = round.events.findLastIndex(isTake);
   const pons = new Map<string, CallEvent>();
@@ -257,6 +325,18 @@ function roundToMjai(round: Round): MjaiJsonEvent[] {
         doraAtDiscard = true;
         break;
       }
+      case "kita":
+        out.push({
+          type: writer.shape === "akagi" ? "kita" : "nukidora",
+          actor: event.seat,
+          pai: tileToMjai(event.tile),
+        });
+        // A kan dora still pending is revealed before the replacement draw, as Tenhou does.
+        if (doraAtDiscard) {
+          doraAtDraw = true;
+          doraAtDiscard = false;
+        }
+        break;
       case "riichiAccepted":
         pendingAccepts.push(event.seat);
         break;
@@ -264,16 +344,29 @@ function roundToMjai(round: Round): MjaiJsonEvent[] {
         // Re-timed through doraQueue.
         break;
       case "win":
-        out.push({
-          type: "hora",
-          actor: event.seat,
-          target: event.from,
-          deltas: [...event.deltas],
-          ura_markers: uraMarkers,
-        });
+        if (writer.shape === "akagi") {
+          const hora: MjaiJsonEvent = {
+            type: "hora",
+            actor: event.seat,
+            target: event.from,
+            deltas: writer.seats(wins.length > 1 ? combinedDeltas : event.deltas, 0),
+          };
+          if (event.uraIndicators && event.uraIndicators.length > 0) {
+            hora.ura_markers = tiles(event.uraIndicators);
+          }
+          out.push(hora);
+        } else {
+          out.push({
+            type: "hora",
+            actor: event.seat,
+            target: event.from,
+            deltas: writer.seats(event.deltas, 0),
+            ura_markers: uraMarkers,
+          });
+        }
         break;
       case "ryukyoku":
-        out.push({ type: "ryukyoku", deltas: [...event.deltas] });
+        out.push({ type: "ryukyoku", deltas: writer.seats(event.deltas, 0) });
         break;
     }
   }

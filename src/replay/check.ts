@@ -1,23 +1,45 @@
-import type { GameLog, Quad, Round, RoundEvent, Seat } from "../core/model";
+import type { GameLog, PlayerCount, Quad, Round, RoundEvent, Seat } from "../core/model";
+import { activeSeats, SANMA_UNUSED_KINDS } from "../core/players";
 import { isKnownTile, isRedFive, isTile, normalizeTile, type Tile, tileKind } from "../core/tile";
 import { asSeat, type IssueSink, isWin, quad, RIICHI_DEPOSIT, RoundReplay } from "./engine";
 import type { ReplayIssue } from "./types";
 
-/** Replays a round strictly and reports every inconsistency (empty array = consistent). */
-export function checkRound(round: Round): ReplayIssue[] {
+/**
+ * Replays a round strictly and reports every inconsistency (empty array = consistent).
+ * `playerCount` is the game's (GameLog.playerCount); with 3, seat 3 must be the empty chair.
+ */
+export function checkRound(round: Round, playerCount: PlayerCount = 4): ReplayIssue[] {
   const issues: ReplayIssue[] = [];
-  inspectRound(round, (eventIndex, message) => issues.push({ eventIndex, message }));
+  inspectRound(
+    round,
+    (eventIndex, message) => issues.push({ eventIndex, message }),
+    playerCount === 3 ? 3 : 4,
+  );
   return byEvent(issues);
 }
 
-/** Checks every round plus score continuity between rounds and against final scores. */
+/**
+ * Checks the player count, every round plus score continuity between rounds and against final
+ * scores. A three-player game must keep the empty chair's placeholders (see model.ts): player slot
+ * 3 is exactly `{ name: "" }`, and seat 3 has no tiles, events, points or deltas.
+ */
 export function checkGame(game: GameLog): ReplayIssue[] {
   if (typeof game !== "object" || game === null) {
     return [{ eventIndex: -1, message: "The game is not an object" }];
   }
   const issues: ReplayIssue[] = [];
+  const declared: unknown = game.playerCount;
+  if (declared !== 3 && declared !== 4) {
+    issues.push({ eventIndex: -1, message: `Invalid player count ${String(declared)}` });
+  }
+  const playerCount: PlayerCount = declared === 3 ? 3 : 4;
   if (!Array.isArray(game.players) || game.players.length !== 4) {
-    issues.push({ eventIndex: -1, message: "A game needs exactly four players" });
+    issues.push({ eventIndex: -1, message: "A game needs exactly four player slots" });
+  } else if (playerCount === 3 && !isEmptyChair(game.players[3])) {
+    issues.push({
+      eventIndex: -1,
+      message: `Player slot 3 of a three-player game is ${JSON.stringify(game.players[3]) ?? "undefined"} instead of {"name":""}`,
+    });
   }
   const rounds: readonly Round[] = Array.isArray(game.rounds) ? game.rounds : [];
   if (rounds.length === 0) {
@@ -29,7 +51,7 @@ export function checkGame(game: GameLog): ReplayIssue[] {
     const roundIssues: ReplayIssue[] = [];
     const report: IssueSink = (eventIndex, message) =>
       roundIssues.push({ roundIndex, eventIndex, message });
-    const replay = inspectRound(round, report);
+    const replay = inspectRound(round, report, playerCount);
     if (previous !== null) {
       checkContinuity(previous.round, previous.replay, round, report);
     }
@@ -37,7 +59,7 @@ export function checkGame(game: GameLog): ReplayIssue[] {
       checkRedFives(round, redFives, report);
     }
     if (roundIndex === rounds.length - 1 && game.finalScores !== undefined) {
-      checkFinalScores(replay, game.finalScores, lastEventIndex(round), report);
+      checkFinalScores(replay, game.finalScores, lastEventIndex(round), report, playerCount);
     }
     issues.push(...byEvent(roundIssues));
     previous = { round, replay };
@@ -45,15 +67,25 @@ export function checkGame(game: GameLog): ReplayIssue[] {
   return issues;
 }
 
-function inspectRound(round: Round, report: IssueSink): RoundReplay {
-  checkStart(round, report);
-  const replay = new RoundReplay(round, report);
+/** The placeholder of the empty chair: exactly `{ name: "" }`. */
+function isEmptyChair(player: unknown): boolean {
+  return (
+    typeof player === "object" &&
+    player !== null &&
+    Object.keys(player).length === 1 &&
+    (player as { name?: unknown }).name === ""
+  );
+}
+
+function inspectRound(round: Round, report: IssueSink, playerCount: PlayerCount): RoundReplay {
+  checkStart(round, report, playerCount);
+  const replay = new RoundReplay(round, report, playerCount);
   const events = eventsOf(round);
   for (const [index, event] of events.entries()) {
     replay.apply(event, index);
   }
   replay.finish(events.length - 1);
-  checkTileCounts(round, report);
+  checkTileCounts(round, report, playerCount);
   return replay;
 }
 
@@ -84,21 +116,28 @@ function isScoreList(value: unknown): value is Quad<number> {
   );
 }
 
-function checkStart(round: Round, report: IssueSink): void {
+function checkStart(round: Round, report: IssueSink, playerCount: PlayerCount): void {
   if (typeof round !== "object" || round === null) {
     report(-1, "The round is not an object");
     return;
   }
+  const sanma = playerCount === 3;
   if (!(isNonNegativeInteger(round.wind) && round.wind <= 3)) {
     report(-1, `Invalid prevailing wind ${String(round.wind)}`);
   }
-  const numberValid = Number.isInteger(round.number) && round.number >= 1 && round.number <= 4;
+  const numberValid =
+    Number.isInteger(round.number) && round.number >= 1 && round.number <= playerCount;
   if (!numberValid) {
-    report(-1, `Invalid round number ${String(round.number)}`);
+    report(
+      -1,
+      `Invalid round number ${String(round.number)}${sanma ? " in a three-player game" : ""}`,
+    );
   }
   const dealer = asSeat(round.dealer);
   if (dealer === null) {
     report(-1, `Invalid dealer ${String(round.dealer)}`);
+  } else if (sanma && dealer === 3) {
+    report(-1, "Dealer seat 3 is the empty chair of a three-player game");
   } else if (numberValid && dealer !== round.number - 1) {
     report(-1, `Dealer seat ${dealer} does not match round number ${round.number}`);
   }
@@ -110,6 +149,11 @@ function checkStart(round: Round, report: IssueSink): void {
   }
   if (!isScoreList(round.scores)) {
     report(-1, "Start scores are not four numbers");
+  } else if (sanma && round.scores[3] !== 0) {
+    report(
+      -1,
+      `The empty seat 3 of a three-player game starts with ${round.scores[3]} points instead of 0`,
+    );
   }
   const hands: unknown = round.hands;
   if (!Array.isArray(hands) || hands.length !== 4) {
@@ -120,7 +164,14 @@ function checkStart(round: Round, report: IssueSink): void {
         report(-1, `The starting hand of seat ${seat} is not a list of tiles`);
         continue;
       }
-      if (hand.length !== 13) {
+      if (sanma && seat === 3) {
+        if (hand.length !== 0) {
+          report(
+            -1,
+            `The empty seat 3 of a three-player game is dealt ${hand.length} tiles instead of none`,
+          );
+        }
+      } else if (hand.length !== 13) {
         report(-1, `The starting hand of seat ${seat} has ${hand.length} tiles instead of 13`);
       }
       const invalid = hand.filter((tile: unknown) => typeof tile !== "string" || !isTile(tile));
@@ -190,13 +241,18 @@ function visibleTiles(round: Round): Array<{ tile: Tile; eventIndex: number }> {
   return seen;
 }
 
-function checkTileCounts(round: Round, report: IssueSink): void {
+/** At most four tiles of a kind; with three players, no 2m-8m (and so no red 5m) at all. */
+function checkTileCounts(round: Round, report: IssueSink, playerCount: PlayerCount): void {
   const counts = new Map<number, number>();
   for (const { tile, eventIndex } of visibleTiles(round)) {
     const kind = tileKind(tile);
     const count = (counts.get(kind) ?? 0) + 1;
     counts.set(kind, count);
-    if (count === 5) {
+    if (playerCount === 3 && SANMA_UNUSED_KINDS.has(kind)) {
+      if (count === 1) {
+        report(eventIndex, `${tile} appears in a three-player game, which has no 2m-8m`);
+      }
+    } else if (count === 5) {
       report(eventIndex, `More than four ${normalizeTile(tile)} tiles appear in the round`);
     }
   }
@@ -271,6 +327,7 @@ function checkFinalScores(
   finalScores: unknown,
   eventIndex: number,
   report: IssueSink,
+  playerCount: PlayerCount,
 ): void {
   if (!isScoreList(finalScores)) {
     report(eventIndex, "Final scores are not four numbers");
@@ -285,7 +342,7 @@ function checkFinalScores(
   const leftover = last.riichiSticks;
   if (leftover > 0) {
     let top: Seat = 0;
-    for (const seat of [1, 2, 3] as const) {
+    for (const seat of activeSeats(playerCount)) {
       if (endScores[seat] > endScores[top]) {
         top = seat;
       }

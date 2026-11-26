@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { focusIsLost, isTextEntry, nextTabbable, usesArrowKeys } from "./dom";
+import { focusIsLost, isActivatable, isTextEntry, nextTabbable, usesArrowKeys } from "./dom";
 import { dragHasLog, sourceFromDataTransfer } from "./logSource";
 
 function element(html: string): Element {
@@ -29,6 +29,42 @@ describe("isTextEntry", () => {
     expect(usesArrowKeys(element('<input type="range">'))).toBe(true);
     expect(usesArrowKeys(element('<input type="checkbox">'))).toBe(false);
     expect(usesArrowKeys(element("<button></button>"))).toBe(false);
+  });
+});
+
+describe("usesArrowKeys", () => {
+  it("covers custom sliders and tabs, and radio buttons", () => {
+    expect(usesArrowKeys(element('<div role="slider" tabindex="0"></div>'))).toBe(true);
+    expect(usesArrowKeys(element('<button role="tab"></button>'))).toBe(true);
+    expect(usesArrowKeys(element('<input type="radio">'))).toBe(true);
+    expect(usesArrowKeys(element('<div role="button"></div>'))).toBe(false);
+  });
+});
+
+describe("isActivatable", () => {
+  it("is true for controls that Space presses", () => {
+    for (const html of [
+      "<button></button>",
+      '<a href="#x">x</a>',
+      '<input type="checkbox">',
+      '<input type="radio">',
+      '<input type="submit">',
+      "<select></select>",
+      "<summary>x</summary>",
+      '<div role="button"></div>',
+      '<div role="menuitemcheckbox"></div>',
+      '<span role="switch"></span>',
+    ]) {
+      expect(isActivatable(element(html))).toBe(true);
+    }
+  });
+
+  it("is false for the page, plain elements, links without href and text fields", () => {
+    for (const html of ["<div></div>", "<a>x</a>", '<input type="text">', '<input type="range">']) {
+      expect(isActivatable(element(html))).toBe(false);
+    }
+    expect(isActivatable(null)).toBe(false);
+    expect(isActivatable(window)).toBe(false);
   });
 });
 

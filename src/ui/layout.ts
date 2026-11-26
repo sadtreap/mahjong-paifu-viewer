@@ -115,12 +115,24 @@ const SIDEWAYS_WIDTH = 4 / 3;
 export const DRAWN_GAP = 0.4;
 export const MELD_GAP = 0.25;
 
-/** Width of a seat's hand row (concealed tiles, drawn tile and melds), in tile widths. */
+/**
+ * Width of the kita group (one North tile with its margins, 0.4 before and 0.45 after), in tile
+ * widths. Kita sits after the concealed and drawn tiles and before the melds.
+ */
+export const KITA_WIDTH = 1.85;
+
+/**
+ * Width of a seat's hand row (concealed tiles, drawn tile, kita and melds), in tile widths. `kita`
+ * is optional so callers that predate three-player games keep compiling.
+ */
 export function handRowWidth(
-  seat: Pick<SeatView, "hand" | "drawn" | "melds">,
+  seat: Pick<SeatView, "hand" | "drawn" | "melds"> & { kita?: readonly Tile[] },
   owner: Seat,
 ): number {
   let width = seat.hand.length + (seat.drawn === null ? 0 : 1 + DRAWN_GAP);
+  if ((seat.kita?.length ?? 0) > 0) {
+    width += KITA_WIDTH;
+  }
   for (const meld of seat.melds) {
     const slots = meldSlots(meld, owner);
     width += MELD_GAP;
@@ -129,6 +141,16 @@ export function handRowWidth(
     }
   }
   return width;
+}
+
+/**
+ * Width of the point of view's own hand in tile widths (the flat row under the table): the same
+ * parts as handRowWidth, with the drawn tile's slot always counted (the row keeps it empty between
+ * turns, so the centred row and its tile size change only on calls, never on a draw or a discard).
+ * The own hand's tile size is min(1.3 u, 0.96 S / ownRowUnits).
+ */
+export function ownRowUnits(view: SeatView, owner: Seat): number {
+  return handRowWidth(view, owner) + (view.drawn === null ? 1 + DRAWN_GAP : 0);
 }
 
 /** Scale that fits a hand row into the available width (never enlarges). */

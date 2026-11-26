@@ -88,6 +88,8 @@ export function describeStep(
       return m.event.kan(names[event.seat], m.calls.kakan, tile(event.tile));
     case "dora":
       return m.event.dora(tile(event.indicator));
+    case "kita":
+      return m.event.kita(names[event.seat]);
     case "riichiAccepted":
       return m.event.riichiAccepted(names[event.seat]);
     case "win":

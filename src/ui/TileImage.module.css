@@ -12,6 +12,12 @@
     0 0 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
     0 max(1px, calc(var(--w) * 0.04)) max(1px, calc(var(--w) * 0.06)) var(--tile-shadow);
   user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Face-down tile (the artwork is a complete tile, so it needs no body). */
+.back {
+  background: none;
 }
 
 .dimmed {
@@ -41,4 +47,96 @@
   left: 50%;
   translate: -50% -50%;
   rotate: 90deg;
+}
+
+/*
+ * 3D table (data-thick on the stage): lying tiles show their thickness toward the camera, as a
+ * face-coloured edge, a back-coloured edge and a soft drop shadow. Each seat layer sets the
+ * direction (--dx, --dy); the defaults are the bottom seat's.
+ */
+[data-thick] .tile {
+  --d: calc(var(--w) * 0.16);
+
+  box-shadow:
+    0 0 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
+    calc(var(--dx, 0) * var(--d) * 0.5) calc(var(--dy, 1) * var(--d) * 0.5) 0 var(--tile-edge-face),
+    calc(var(--dx, 0) * var(--d)) calc(var(--dy, 1) * var(--d)) 0 var(--tile-edge-back),
+    calc(var(--dx, 0) * var(--d) * 1.4) calc(var(--dy, 1) * var(--d) * 1.4) calc(var(--d) * 0.8)
+    var(--tile-drop);
+}
+
+/* A face-down tile lies on its face: the back-coloured edge is on top. */
+[data-thick] .back {
+  box-shadow:
+    0 0 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
+    calc(var(--dx, 0) * var(--d) * 0.5) calc(var(--dy, 1) * var(--d) * 0.5) 0 var(--tile-edge-back),
+    calc(var(--dx, 0) * var(--d)) calc(var(--dy, 1) * var(--d)) 0 var(--tile-edge-face),
+    calc(var(--dx, 0) * var(--d) * 1.4) calc(var(--dy, 1) * var(--d) * 1.4) calc(var(--d) * 0.8)
+    var(--tile-drop);
+}
+
+/* A sideways tile draws its thickness on the unrotated wrapper, so it falls toward the camera. */
+[data-thick] .sideways {
+  --w: var(--tile-w, 2rem);
+  --d: calc(var(--w) * 0.16);
+
+  border-radius: 10% / 13.3%;
+  box-shadow:
+    0 0 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
+    calc(var(--dx, 0) * var(--d) * 0.5) calc(var(--dy, 1) * var(--d) * 0.5) 0 var(--tile-edge-face),
+    calc(var(--dx, 0) * var(--d)) calc(var(--dy, 1) * var(--d)) 0 var(--tile-edge-back),
+    calc(var(--dx, 0) * var(--d) * 1.4) calc(var(--dy, 1) * var(--d) * 1.4) calc(var(--d) * 0.8)
+    var(--tile-drop);
+}
+
+[data-thick] .sideways > .tile {
+  box-shadow: none;
+}
+
+/*
+ * Paint order of lying tiles that touch (TileImage depth). The thickness above falls outside the
+ * tile box, toward the camera, so a nearer tile has to be painted over a farther one; in plain
+ * document order the right seat (along its rows) and the far seat (across its pond rows) painted
+ * each farther tile's thickness over its nearer neighbour's face. The seat layer's camera direction
+ * (--dx, --dy) turns the tile's [column, row] into that order. The groups holding these tiles
+ * isolate (Pond, HandRow), so the order stays among their own tiles.
+ */
+[data-thick] .depth {
+  position: relative;
+  z-index: calc(100 + var(--dx, 0) * var(--zx, 0) + var(--dy, 1) * var(--zy, 0));
+}
+
+[data-thick] .dimmed {
+  filter: brightness(0.82) saturate(0.8);
+}
+
+/*
+ * A called discard fades with a filter, not with opacity: a see-through tile showed its farther
+ * neighbour's drawn thickness through its face (a red band). So the base rule's opacity is reset
+ * here, and the filter (fitted to it) gives the look of 38% opacity over the felt: a low-contrast,
+ * felt-tinted tile.
+ */
+[data-thick] .called {
+  opacity: 1;
+  filter: contrast(0.52) sepia(1) hue-rotate(101deg) saturate(0.81) brightness(0.62);
+}
+
+[data-thick] .highlighted {
+  outline: max(2px, calc(var(--w) * 0.09)) solid var(--highlight);
+  outline-offset: max(1px, calc(var(--w) * 0.04));
+}
+
+@media (forced-colors: active) {
+  [data-thick] .tile,
+  [data-thick] .sideways {
+    outline: 1px solid CanvasText;
+  }
+
+  [data-thick] .sideways > .tile {
+    outline: none;
+  }
+
+  [data-thick] .highlighted {
+    outline: 3px solid Highlight;
+  }
 }

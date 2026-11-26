@@ -52,6 +52,7 @@ export const round: Round = {
 
 export const game: GameLog = {
   format: "tenhou-json",
+  playerCount: 4,
   players: [
     { name: "A", rank: "四段", danIndex: 13, rating: 1913.4 },
     { name: "B" },
@@ -70,7 +71,16 @@ export const game: GameLog = {
 };
 
 function seat(view: Partial<SeatView> = {}): SeatView {
-  return { hand: [], drawn: null, melds: [], discards: [], score: 25000, riichi: false, ...view };
+  return {
+    hand: [],
+    drawn: null,
+    melds: [],
+    kita: [],
+    discards: [],
+    score: 25000,
+    riichi: false,
+    ...view,
+  };
 }
 
 /** A table state with hand-picked contents, independent of the replay engine. */

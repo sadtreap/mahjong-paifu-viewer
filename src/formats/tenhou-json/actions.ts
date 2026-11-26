@@ -1,14 +1,22 @@
 /**
  * Decoding of the per-seat action lists of a tenhou.net/6 round: the "取" (takes) list of draws
- * and calls, and the "出" (discards) list of discards, riichi declarations and closed/added kans.
+ * and calls, and the "出" (discards) list of discards, riichi declarations, closed/added kans and
+ * (three-player) North tiles set aside as kita.
  */
 
-import type { Seat } from "../../core/model";
+import type { PlayerCount, Seat } from "../../core/model";
+import { isActiveSeat } from "../../core/players";
 import { type KnownTile, tileFromKind, tileKind } from "../../core/tile";
 import { LogParseError } from "../errors";
 
 /** Discard-list value meaning "the tile just drawn was discarded". */
 const TSUMOGIRI = 60;
+
+/**
+ * The discard-list entry of a kita. It is the only form: Tenhou (and tensoul) do not mark whether
+ * the North set aside was the tile just drawn.
+ */
+const KITA = "f44";
 
 /** An entry of the takes list. */
 export type Take =
@@ -26,6 +34,8 @@ export type Action =
   | { kind: "discard"; tile: KnownTile; tsumogiri: boolean; riichi: boolean }
   | { kind: "ankan"; tiles: KnownTile[] }
   | { kind: "kakan"; tile: KnownTile }
+  /** Three-player: a North tile set aside ("f44"); the same seat's next take is its replacement. */
+  | { kind: "kita"; tile: KnownTile }
   /** The placeholder (0) that stands in the discard list for the turn of an open kan. */
   | { kind: "kanSlot" };
 
@@ -90,7 +100,8 @@ function isSequence(tiles: readonly KnownTile[]): boolean {
  * Decodes a call in the takes list. The position of the letter tells who discarded the called
  * tile (it marks the called tile): first = kamicha, second = toimen, last = shimocha.
  * "c275226" chi 7p with 0p 6p; "p252525" / "12p1212" / "3737p37" pon; "m39393939" /
- * "26m262626" / "131313m13" open kan.
+ * "26m262626" / "131313m13" open kan. Three-player logs use the same four-seat positions, with the
+ * empty seat 3 between seats 2 and 0, so seats 0 and 2 call each other at the toimen position.
  */
 function parseCall(text: string, seat: Seat): Take {
   const letter = /[cpm]/.exec(text)?.[0];
@@ -127,9 +138,15 @@ function parseCall(text: string, seat: Seat): Take {
 /**
  * Decodes an entry of the discards list: a tile id, 60 (tsumogiri), 0 (open kan placeholder),
  * "r35" / "r60" (riichi), "k16161616" (added kan: the tile after "k" is the added one, the rest is
- * the pon) or "424242a42" (closed kan).
+ * the pon), "424242a42" (closed kan) or, in three-player logs only, "f44" (kita).
  */
-function parseDiscard(item: unknown, seat: Seat, index: number, takes: readonly Take[]): Action {
+function parseDiscard(
+  item: unknown,
+  seat: Seat,
+  index: number,
+  takes: readonly Take[],
+  playerCount: PlayerCount,
+): Action {
   const drawn = (): KnownTile => {
     const take = takes[index];
     if (take?.kind !== "draw") {
@@ -156,6 +173,15 @@ function parseDiscard(item: unknown, seat: Seat, index: number, takes: readonly 
       ? { kind: "discard", tile: drawn(), tsumogiri: true, riichi: true }
       : { kind: "discard", tile: tileFromTenhou(id), tsumogiri: false, riichi: true };
   }
+  if (item.startsWith("f")) {
+    if (item !== KITA) {
+      return invalid(`Invalid kita "${item}"`);
+    }
+    if (playerCount !== 3) {
+      return invalid(`Seat ${seat} sets a North aside (kita) in a four-player game`);
+    }
+    return { kind: "kita", tile: tileFromTenhou(44) };
+  }
   const letter = /[ka]/.exec(item)?.[0];
   if (!letter || item.replace(letter, "").search(/\D/) >= 0) {
     return invalid(`Invalid call string "${item}" in the discards list`);
@@ -168,19 +194,31 @@ function parseDiscard(item: unknown, seat: Seat, index: number, takes: readonly 
   return letter === "a" ? { kind: "ankan", tiles } : { kind: "kakan", tile: added };
 }
 
-/** Decodes one seat's takes and discards; tsumogiri entries get the drawn tile filled in. */
-export function parseSeatActions(seat: Seat, takes: unknown, discards: unknown): SeatActions {
+/**
+ * Decodes one seat's takes and discards; tsumogiri entries get the drawn tile filled in. A call
+ * from the empty seat 3 of a three-player game and a kita in a four-player game are rejected.
+ */
+export function parseSeatActions(
+  seat: Seat,
+  takes: unknown,
+  discards: unknown,
+  playerCount: PlayerCount = 4,
+): SeatActions {
   if (!Array.isArray(takes) || !Array.isArray(discards)) {
     return invalid(`Seat ${seat} has no takes or discards list`);
   }
-  const parsedTakes = takes.map(
-    (item): Take =>
-      typeof item === "string"
-        ? parseCall(item, seat)
-        : { kind: "draw", tile: tileFromTenhou(item) },
-  );
+  const parsedTakes = takes.map((item): Take => {
+    if (typeof item !== "string") {
+      return { kind: "draw", tile: tileFromTenhou(item) };
+    }
+    const call = parseCall(item, seat);
+    if (call.kind !== "draw" && !isActiveSeat(call.from, playerCount)) {
+      return invalid(`Seat ${seat} calls "${item}" from the empty seat ${call.from}`);
+    }
+    return call;
+  });
   const parsedDiscards = discards.map((item, index) =>
-    parseDiscard(item, seat, index, parsedTakes),
+    parseDiscard(item, seat, index, parsedTakes, playerCount),
   );
   return { takes: parsedTakes, discards: parsedDiscards };
 }

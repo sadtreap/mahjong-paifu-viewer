@@ -1,15 +1,18 @@
-import type {
-  GameLog,
-  GameRules,
-  PlayerInfo,
-  Quad,
-  Round,
-  RoundEvent,
-  RyukyokuEvent,
-  Seat,
-  Wind,
-  WinEvent,
+import {
+  type GameLog,
+  type GameRules,
+  type PlayerCount,
+  type PlayerInfo,
+  type Quad,
+  type Round,
+  type RoundEvent,
+  type RyukyokuEvent,
+  SEATS,
+  type Seat,
+  type Wind,
+  type WinEvent,
 } from "../../core/model";
+import { isActiveSeat } from "../../core/players";
 import { isRedFive, type KnownTile, sortTiles, type Tile } from "../../core/tile";
 import { LogParseError } from "../errors";
 import { MAX_ROUND_EVENTS } from "../limits";
@@ -20,11 +23,15 @@ import { parseRoundResult, type RoundResult } from "./result";
 
 /**
  * A round is [[kyoku, honba, kyotaku], scores, dora, ura, then haipai / takes / discards for each
- * of the four seats, then the result].
+ * of the four seats, then the result]. Three-player rounds keep the four seats with empty lists for
+ * seat 3 (Tenhou, tensoul) or leave seat 3's lists out (tensoul-py: 14 entries, result at 13).
  */
 const ROUND_LENGTH = 17;
 const SEAT_FIELDS_START = 4;
 const RESULT_INDEX = 16;
+/** Index of seat 3's starting hand, where a round without seat 3's lists has its result. */
+const SEAT_3_START = SEAT_FIELDS_START + 3 * 3;
+const SHORT_ROUND_LENGTH = ROUND_LENGTH - 3;
 
 type JsonObject = Record<string, unknown>;
 
@@ -47,33 +54,131 @@ function parseTiles(value: unknown, what: string): KnownTile[] {
   return value.map(tileFromTenhou);
 }
 
-function isThreePlayer(data: JsonObject, disp: string | undefined): boolean {
-  if (disp !== undefined && /三|3-?player|sanma/i.test(disp)) {
-    return true;
+function isEmptyList(value: unknown): boolean {
+  return Array.isArray(value) && value.length === 0;
+}
+
+/**
+ * The number of players a round's layout shows: three when seat 3's lists are left out (13 or 14
+ * entries, without or with the result), or when seat 3 has no starting hand and no points (or no
+ * score at all). Undefined for a value that is not a round at all.
+ */
+function roundLayout(raw: unknown): PlayerCount | undefined {
+  if (!Array.isArray(raw)) {
+    return undefined;
   }
-  if (Array.isArray(data.name) && data.name.length === 3) {
-    return true;
+  if (raw.length === SHORT_ROUND_LENGTH || raw.length === SHORT_ROUND_LENGTH - 1) {
+    return 3;
   }
-  return (data.log as unknown[]).some(
-    (round) =>
-      Array.isArray(round) &&
-      (round.length === ROUND_LENGTH - 4 ||
-        round.length === ROUND_LENGTH - 3 ||
-        (Array.isArray(round[1]) && round[1].length === 3) ||
-        (Array.isArray(round[13]) && round[13].length === 0)),
-  );
+  const scores: unknown = raw[1];
+  const emptyChair =
+    isEmptyList(raw[SEAT_3_START]) &&
+    Array.isArray(scores) &&
+    (scores.length === 3 || scores[3] === 0);
+  return emptyChair ? 3 : 4;
+}
+
+/**
+ * What the log says about its players outside the rounds: Tenhou's rating class ("PF3" / "PF4"),
+ * the 三 or 四 that starts a rule text ("三鳳南喰赤"; four-player Tenhou text usually has neither)
+ * and tensoul-py's three names. An empty name for seat 3 says nothing, since a four-player log can
+ * have one too.
+ */
+function declaredPlayerCounts(data: JsonObject, disp: string | undefined): Set<PlayerCount> {
+  const declared = new Set<PlayerCount>();
+  if (
+    data.ratingc === "PF3" ||
+    (disp !== undefined && /^三|3-?player|sanma/i.test(disp)) ||
+    (Array.isArray(data.name) && data.name.length === 3)
+  ) {
+    declared.add(3);
+  }
+  if (data.ratingc === "PF4" || disp?.startsWith("四")) {
+    declared.add(4);
+  }
+  return declared;
+}
+
+/**
+ * Three or four players, from the layout of the rounds, which every round and everything the log
+ * declares about its players must agree with (otherwise the player count is unsupported, as in the
+ * other parsers). A North set aside ("f44") in a four-player round is rejected as invalid when the
+ * round is parsed, like any other action a four-player round cannot have.
+ */
+function detectPlayerCount(
+  data: JsonObject,
+  rounds: readonly unknown[],
+  disp: string | undefined,
+): PlayerCount {
+  const layouts = new Set(rounds.map(roundLayout));
+  layouts.delete(undefined);
+  if (layouts.size > 1) {
+    throw new LogParseError(
+      "unsupportedPlayers",
+      "Some rounds are laid out for three players and others for four",
+    );
+  }
+  const [playerCount] = layouts;
+  if (playerCount === undefined) {
+    // No round is even a list; parsing the first one reports it.
+    return 4;
+  }
+  for (const declared of declaredPlayerCounts(data, disp)) {
+    if (declared !== playerCount) {
+      throw new LogParseError(
+        "unsupportedPlayers",
+        `The log says ${declared} players, but its rounds are laid out for ${playerCount}`,
+      );
+    }
+  }
+  return playerCount;
+}
+
+/** A three-player round in the 17-entry layout: tensoul-py's short rounds get seat 3's lists. */
+function withSeat3Lists(raw: unknown): unknown {
+  if (
+    !Array.isArray(raw) ||
+    (raw.length !== SHORT_ROUND_LENGTH && raw.length !== SHORT_ROUND_LENGTH - 1)
+  ) {
+    return raw;
+  }
+  return [...raw.slice(0, SEAT_3_START), [], [], [], ...raw.slice(SEAT_3_START)];
+}
+
+/**
+ * The scores at the start of a round: four, or with three players 0 for the empty seat 3, which
+ * some converters leave out.
+ */
+function parseScores(value: unknown, playerCount: PlayerCount): Quad<number> | undefined {
+  if (
+    !Array.isArray(value) ||
+    !value.every((score) => typeof score === "number" && Number.isFinite(score))
+  ) {
+    return undefined;
+  }
+  const scores = value as number[];
+  if (playerCount === 3 && scores.length === 3) {
+    return [...scores, 0] as Quad<number>;
+  }
+  return scores.length === 4 && (playerCount === 4 || scores[3] === 0)
+    ? ([...scores] as Quad<number>)
+    : undefined;
 }
 
 /**
  * Whether the replay ends the way the result says: a tsumo on the winner's draw, a ron on a
- * discard, on an added kan (chankan) or on a closed kan (only kokushi musou may rob one).
+ * discard, on an added kan (chankan), on a closed kan (only kokushi musou may rob one) or on a
+ * North set aside as kita.
  */
 function endMatchesResult(result: RoundResult, last: RoundEvent | undefined): boolean {
   if (result.kind === "win") {
     return result.wins.every((win) =>
       win.seat === win.from
         ? last?.type === "draw" && last.seat === win.seat
-        : (last?.type === "discard" || last?.type === "kakan" || last?.type === "ankan") &&
+        : (last?.type === "discard" ||
+            last?.type === "kakan" ||
+            last?.type === "ankan" ||
+            last?.type === "kita") &&
           last.seat === win.from,
     );
   }
@@ -105,7 +210,10 @@ function resultEvents(
   }
   const last = replay.events.at(-1);
   const winningTile: Tile | undefined =
-    last?.type === "draw" || last?.type === "discard" || last?.type === "kakan"
+    last?.type === "draw" ||
+    last?.type === "discard" ||
+    last?.type === "kakan" ||
+    last?.type === "kita"
       ? last.tile
       : last?.type === "ankan"
         ? last.tiles[0]
@@ -131,12 +239,17 @@ function resultEvents(
   });
 }
 
-function parseRound(raw: unknown, index: number): Round {
+/**
+ * Parses one round. With three players, seat 3 is the empty chair: no tiles, 0 points, and the
+ * dealer (kyoku % 4, as Tenhou numbers three-player rounds 0-2, 4-6, 8-10) is never seat 3.
+ */
+function parseRound(input: unknown, index: number, playerCount: PlayerCount): Round {
   const where = `round ${index + 1}`;
+  const raw = playerCount === 3 ? withSeat3Lists(input) : input;
   if (!Array.isArray(raw) || raw.length < ROUND_LENGTH - 1) {
     return invalid(`${where} is malformed`);
   }
-  const [meta, scores, doraIds, uraIds] = raw as unknown[];
+  const [meta, rawScores, doraIds, uraIds] = raw as unknown[];
   if (!Array.isArray(meta) || !meta.slice(0, 3).every(isNonNegativeInteger) || meta.length < 3) {
     return invalid(`${where} has an invalid [kyoku, honba, kyotaku] entry`);
   }
@@ -144,28 +257,33 @@ function parseRound(raw: unknown, index: number): Round {
   if (kyoku > 15) {
     return invalid(`${where} has an invalid kyoku number ${kyoku}`);
   }
-  if (
-    !Array.isArray(scores) ||
-    scores.length !== 4 ||
-    !scores.every((score) => typeof score === "number" && Number.isFinite(score))
-  ) {
+  const dealer = (kyoku % 4) as Seat;
+  if (!isActiveSeat(dealer, playerCount)) {
+    return invalid(`${where} has kyoku number ${kyoku}, whose dealer would be the empty seat 3`);
+  }
+  const scores = parseScores(rawScores, playerCount);
+  if (!scores) {
     return invalid(`${where} has invalid scores`);
   }
   const doraIndicators = parseTiles(doraIds, `The dora list of ${where}`);
   const uraIndicators = parseTiles(uraIds, `The ura dora list of ${where}`);
 
-  const haipai = [0, 1, 2, 3].map((seat) => {
+  const haipai = SEATS.map((seat) => {
     const hand = parseTiles(raw[SEAT_FIELDS_START + seat * 3], `The starting hand of ${where}`);
-    if (hand.length !== 13) {
+    if (hand.length !== 13 && isActiveSeat(seat, playerCount)) {
       return invalid(`Seat ${seat} of ${where} does not start with 13 tiles`);
     }
     return hand;
   }) as Quad<KnownTile[]>;
-  const seats = ([0, 1, 2, 3] as const).map((seat) =>
+  if (playerCount === 3 && ![0, 1, 2].every((field) => isEmptyList(raw[SEAT_3_START + field]))) {
+    return invalid(`The empty seat 3 of ${where} has tiles`);
+  }
+  const seats = SEATS.map((seat) =>
     parseSeatActions(
       seat,
       raw[SEAT_FIELDS_START + seat * 3 + 1],
       raw[SEAT_FIELDS_START + seat * 3 + 2],
+      playerCount,
     ),
   ) as Quad<SeatActions>;
   // Every take and discard becomes at least one event. Checked before the replay, whose search over
@@ -175,9 +293,9 @@ function parseRound(raw: unknown, index: number): Round {
     return invalid(`${where} has ${actions} actions, more than any real game`);
   }
 
-  const result = parseRoundResult(raw[RESULT_INDEX]);
-  const dealer = (kyoku % 4) as Seat;
+  const result = parseRoundResult(raw[RESULT_INDEX], playerCount);
   const replay = interleaveRound({
+    playerCount,
     dealer,
     haipai,
     seats,
@@ -209,18 +327,25 @@ function parseRound(raw: unknown, index: number): Round {
     dealer,
     honba,
     riichiSticks,
-    scores: [...scores] as Quad<number>,
+    scores,
     doraIndicators: doraIndicators.slice(0, 1),
     hands: haipai,
     events,
   };
 }
 
-function parsePlayers(data: JsonObject): Quad<PlayerInfo> {
+/**
+ * Names, ranks and ratings. The empty seat 3 of a three-player game is `{ name: "" }`, whatever
+ * Tenhou writes for it (rank 新人 and rating 1500) or tensoul (rating 0).
+ */
+function parsePlayers(data: JsonObject, playerCount: PlayerCount): Quad<PlayerInfo> {
   const names = Array.isArray(data.name) ? data.name : [];
   const dans = Array.isArray(data.dan) ? data.dan : [];
   const rates = Array.isArray(data.rate) ? data.rate : [];
-  return ([0, 1, 2, 3] as const).map((seat) => {
+  return SEATS.map((seat) => {
+    if (!isActiveSeat(seat, playerCount)) {
+      return { name: "" };
+    }
     const name = names[seat];
     const player: PlayerInfo = { name: typeof name === "string" ? name : "" };
     const dan = dans[seat];
@@ -267,7 +392,8 @@ function parseRules(
       rules.length = "east";
     }
     // Tenhou's own rule text ("鳳南喰赤") says more; other text (e.g. Mahjong Soul room names
-    // written by tensoul) is only kept as the description.
+    // written by tensoul) is only kept as the description. The player count it gives is not a
+    // rule: GameLog.playerCount comes from the rounds.
     const tenhou = parseTenhouRuleText(disp);
     if (tenhou) {
       rules.room = tenhou.room;
@@ -279,12 +405,19 @@ function parseRules(
   return rules;
 }
 
-/** "sc" interleaves final points and final results: [points0, result0, points1, result1, ...]. */
-function parseFinalScores(sc: unknown): Quad<number> | undefined {
-  if (!Array.isArray(sc) || sc.length !== 8 || !sc.every((value) => typeof value === "number")) {
+/**
+ * "sc" interleaves final points and final results: [points0, result0, points1, result1, ...]. With
+ * three players the empty seat 3's pair is 0, 0, or left out (tensoul-py).
+ */
+function parseFinalScores(sc: unknown, playerCount: PlayerCount): Quad<number> | undefined {
+  if (!Array.isArray(sc) || !sc.every((value) => typeof value === "number")) {
     return undefined;
   }
-  const points = [sc[0], sc[2], sc[4], sc[6]] as Quad<number>;
+  const values: number[] = playerCount === 3 && sc.length === 6 ? [...sc, 0, 0] : sc;
+  if (values.length !== 8 || (playerCount === 3 && values[6] !== 0)) {
+    return undefined;
+  }
+  const points = [values[0], values[2], values[4], values[6]] as Quad<number>;
   const total = points.reduce((sum, value) => sum + value, 0);
   // Some exports give the points in hundreds, like mjlog's "owari".
   return Math.abs(total) < 10000
@@ -292,7 +425,10 @@ function parseFinalScores(sc: unknown): Quad<number> | undefined {
     : points;
 }
 
-/** Parses a tenhou.net/6 JSON log (the object with `log`, `name`, `rule`, ...). */
+/**
+ * Parses a tenhou.net/6 JSON log (the object with `log`, `name`, `rule`, ...), with four or three
+ * players.
+ */
 export function parseTenhouJson(text: string): GameLog {
   let data: unknown;
   try {
@@ -305,23 +441,22 @@ export function parseTenhouJson(text: string): GameLog {
   }
   const rule = isObject(data.rule) ? data.rule : {};
   const disp = typeof rule.disp === "string" ? rule.disp : undefined;
-  if (isThreePlayer(data, disp)) {
-    throw new LogParseError("unsupportedPlayers", "Three-player logs are not supported");
-  }
   if (data.log.length === 0) {
     return invalid("The log has no rounds");
   }
-  const rounds = data.log.map(parseRound);
+  const playerCount = detectPlayerCount(data, data.log, disp);
+  const rounds = data.log.map((round, index) => parseRound(round, index, playerCount));
   const game: GameLog = {
     format: "tenhou-json",
-    players: parsePlayers(data),
+    playerCount,
+    players: parsePlayers(data, playerCount),
     rules: parseRules(rule, disp, rounds),
     rounds,
   };
   if (typeof data.ref === "string" && data.ref !== "") {
     game.id = data.ref;
   }
-  const finalScores = parseFinalScores(data.sc);
+  const finalScores = parseFinalScores(data.sc, playerCount);
   if (finalScores) {
     game.finalScores = finalScores;
   }

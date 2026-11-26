@@ -1,6 +1,15 @@
 /** Parsing of the result entry of a tenhou.net/6 round ("和了" details, "流局" and abortive draws). */
 
-import type { LimitName, Quad, RyukyokuReason, Seat, WinEvent, YakuEntry } from "../../core/model";
+import type {
+  LimitName,
+  PlayerCount,
+  Quad,
+  RyukyokuReason,
+  Seat,
+  WinEvent,
+  YakuEntry,
+} from "../../core/model";
+import { activeSeats, isActiveSeat } from "../../core/players";
 import { tenpaiFromDeltas } from "../../core/tenpai";
 import { type YakuKey, yakuKeyFromTenhouName } from "../../core/yaku";
 import { LogParseError } from "../errors";
@@ -20,15 +29,42 @@ function invalid(detail: string): never {
   throw new LogParseError("invalid", detail);
 }
 
-function isSeat(value: unknown): value is Seat {
-  return value === 0 || value === 1 || value === 2 || value === 3;
+/** Whether the value is a seat that plays (seat 3 is the empty chair with three players). */
+function isSeat(value: unknown, playerCount: PlayerCount): value is Seat {
+  return (
+    (value === 0 || value === 1 || value === 2 || value === 3) && isActiveSeat(value, playerCount)
+  );
 }
 
-function isDeltas(value: unknown): value is Quad<number> {
+/**
+ * Reads a list of point changes. Four-player logs have four; three-player ones have four with 0
+ * for the empty seat 3 (Tenhou, tensoul) or only three (tensoul-py), which are padded with that 0.
+ * Undefined for anything else, including a three-player list that gives seat 3 points.
+ */
+function readDeltas(value: unknown, playerCount: PlayerCount): Quad<number> | undefined {
+  if (
+    !Array.isArray(value) ||
+    !value.every((item) => typeof item === "number" && Number.isFinite(item))
+  ) {
+    return undefined;
+  }
+  const deltas = value as number[];
+  if (deltas.length === 4 && (playerCount === 4 || deltas[3] === 0)) {
+    return deltas as Quad<number>;
+  }
+  if (deltas.length === 3 && playerCount === 3) {
+    return [...deltas, 0] as Quad<number>;
+  }
+  return undefined;
+}
+
+/** Four point changes whose fourth, for seat 3, is not 0. */
+function paysEmptySeat(value: unknown): boolean {
   return (
     Array.isArray(value) &&
     value.length === 4 &&
-    value.every((item) => typeof item === "number" && Number.isFinite(item))
+    value.every((item) => typeof item === "number" && Number.isFinite(item)) &&
+    value[3] !== 0
   );
 }
 
@@ -58,9 +94,11 @@ export interface ScoreText {
 /**
  * Parses the score text of a win: "30符1飜1000点" (ron), "満貫8000点", "30符2飜500-1000点"
  * (non-dealer tsumo: each non-dealer pays 500, the dealer 1000) or "30符4飜3900点∀" (dealer tsumo:
- * everyone pays 3900). Text longer than any real score gives nothing.
+ * everyone pays 3900). With three players there is one payer fewer (Tenhou's tsumo loss: the texts
+ * are the four-player ones), so "30符2飜1000点∀" is worth 2000, as mjlog records it. Text longer
+ * than any real score gives nothing.
  */
-export function parseScoreText(text: string): ScoreText {
+export function parseScoreText(text: string, playerCount: PlayerCount = 4): ScoreText {
   const result: ScoreText = {};
   if (text.length > MAX_TEXT_LENGTH) {
     return result;
@@ -84,9 +122,9 @@ export function parseScoreText(text: string): ScoreText {
   if (payment) {
     const first = Number(payment[1]);
     if (payment[2] !== undefined) {
-      result.points = first * 2 + Number(payment[2]);
+      result.points = first * (playerCount - 2) + Number(payment[2]);
     } else {
-      result.points = payment[3] ? first * 3 : first;
+      result.points = payment[3] ? first * (playerCount - 1) : first;
     }
   }
   return result;
@@ -125,20 +163,21 @@ export function parseYakuText(text: string): YakuEntry {
 }
 
 /** Parses one "和了" pair: the deltas and [who, from, paoWho, score text, ...yaku]. */
-function parseWin(deltas: unknown, info: unknown): WinDetail {
-  if (!isDeltas(deltas) || !Array.isArray(info)) {
+function parseWin(rawDeltas: unknown, info: unknown, playerCount: PlayerCount): WinDetail {
+  const deltas = readDeltas(rawDeltas, playerCount);
+  if (!deltas || !Array.isArray(info)) {
     return invalid("Invalid win entry");
   }
   const [seat, from, paoSeat, scoreText, ...yakuTexts] = info as unknown[];
-  if (!isSeat(seat) || !isSeat(from)) {
+  if (!isSeat(seat, playerCount) || !isSeat(from, playerCount)) {
     return invalid("Invalid winner or dealer-in seat");
   }
   const win: WinDetail = { seat, from, deltas };
-  if (isSeat(paoSeat) && paoSeat !== seat && paoSeat !== from) {
+  if (isSeat(paoSeat, playerCount) && paoSeat !== seat && paoSeat !== from) {
     win.pao = paoSeat;
   }
   if (typeof scoreText === "string") {
-    Object.assign(win, parseScoreText(scoreText));
+    Object.assign(win, parseScoreText(scoreText, playerCount));
     // Entries worth nothing (Tenhou sometimes lists "裏ドラ(0飜)") are dropped, as in every parser.
     const yaku = yakuTexts
       .filter((item): item is string => typeof item === "string")
@@ -171,18 +210,25 @@ const RYUKYOKU_REASONS = new Map<string, RyukyokuReason>([
 ]);
 
 /** Tenpai seats at an exhaustive draw: from the all-tenpai/all-noten names, else the payments. */
-function inferTenpai(status: string, deltas: Quad<number>): Seat[] | undefined {
+function inferTenpai(
+  status: string,
+  deltas: Quad<number>,
+  playerCount: PlayerCount,
+): Seat[] | undefined {
   if (status === "全員聴牌") {
-    return [0, 1, 2, 3];
+    return [...activeSeats(playerCount)];
   }
   if (status === "全員不聴") {
     return [];
   }
-  return tenpaiFromDeltas(deltas);
+  return tenpaiFromDeltas(deltas, playerCount);
 }
 
-/** Parses the last entry of a round, e.g. ["和了", deltas, info, ...] or ["流局", deltas]. */
-export function parseRoundResult(entry: unknown): RoundResult {
+/**
+ * Parses the last entry of a round, e.g. ["和了", deltas, info, ...] or ["流局", deltas]. Seats and
+ * deltas are read for `playerCount` players (see readDeltas).
+ */
+export function parseRoundResult(entry: unknown, playerCount: PlayerCount = 4): RoundResult {
   if (entry === undefined) {
     // An unfinished log: keep the round, with an unknown ending.
     return { kind: "ryukyoku", reason: "unknown", deltas: [0, 0, 0, 0] };
@@ -194,18 +240,24 @@ export function parseRoundResult(entry: unknown): RoundResult {
   if (status === "和了" || Array.isArray(rest[1])) {
     const wins: WinDetail[] = [];
     for (let index = 0; index < rest.length; index += 2) {
-      wins.push(parseWin(rest[index], rest[index + 1]));
+      wins.push(parseWin(rest[index], rest[index + 1], playerCount));
     }
     if (wins.length === 0) {
       return invalid("A win result without winners");
     }
     return { kind: "win", wins };
   }
-  const deltas: Quad<number> = isDeltas(rest[0]) ? rest[0] : [0, 0, 0, 0];
+  // A draw without (readable) payments, e.g. "全員聴牌" or "九種九牌", pays nothing. Payments that
+  // give the empty seat 3 of a three-player game points are rejected, as they are for a win: they
+  // are readable, so zeroing them would hide every payment of the draw.
+  const deltas = readDeltas(rest[0], playerCount) ?? [0, 0, 0, 0];
+  if (playerCount === 3 && paysEmptySeat(rest[0])) {
+    return invalid("A three-player draw gives the empty seat 3 points");
+  }
   const reason = RYUKYOKU_REASONS.get(status) ?? "unknown";
   const result: RoundResult = { kind: "ryukyoku", reason, deltas };
   if (reason === "exhaustive") {
-    const tenpai = inferTenpai(status, deltas);
+    const tenpai = inferTenpai(status, deltas, playerCount);
     if (tenpai) {
       result.tenpai = tenpai;
     }

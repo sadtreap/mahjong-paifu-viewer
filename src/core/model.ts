@@ -5,6 +5,13 @@
  * Seats are absolute indexes as listed in the log: seat 0 is the player who starts as East.
  * Points are plain points (25000), never hundreds.
  *
+ * Three-player (sanma) games keep four seat slots, as Tenhou's own formats do: seats 0-2 play and
+ * seat 3 is an empty chair. Seat geometry stays four-seat (the empty chair sits between seat 2 and
+ * seat 0, so seats 0 and 2 face each other), while turn order and seat winds cycle over the three
+ * playing seats (see src/core/players.ts). Every per-seat value of the empty chair is a fixed
+ * placeholder: `players[3]` is `{ name: "" }`, `scores[3]` and every `deltas[3]` are 0, `hands[3]`
+ * is `[]`, `tenpai` never contains 3 and a draw's `hands[3]` is null.
+ *
  * Where the formats record the same game differently, the contract below says which differences
  * are allowed (hand order, fu of limit hands, source metadata); src/formats/cross-format.test.ts
  * checks that the parsers agree on everything else.
@@ -16,7 +23,10 @@ import type { YakuKey } from "./yaku";
 export type Seat = 0 | 1 | 2 | 3;
 export const SEATS: readonly Seat[] = [0, 1, 2, 3];
 
-/** 0 East, 1 South, 2 West, 3 North. */
+/** Number of players: 3 for three-player mahjong (sanma), where seat 3 is an empty chair. */
+export type PlayerCount = 3 | 4;
+
+/** 0 East, 1 South, 2 West, 3 North. Three-player seat winds are East, South and West only. */
 export type Wind = 0 | 1 | 2 | 3;
 
 export type Quad<T> = [T, T, T, T];
@@ -27,6 +37,8 @@ export interface GameLog {
   format: LogFormat;
   /** Source identifier when the log carries one, e.g. a Tenhou log id. */
   id?: string;
+  /** 3 for a three-player game, whose seat 3 is the empty-chair placeholder described above. */
+  playerCount: PlayerCount;
   players: Quad<PlayerInfo>;
   rules: GameRules;
   rounds: Round[];
@@ -70,7 +82,7 @@ export interface GameRules {
 export interface Round {
   /** Prevailing wind. */
   wind: Wind;
-  /** 1-4: the round number within the wind ("East 3" has number 3). */
+  /** 1-4 (1-3 with three players): the round number within the wind ("East 3" has number 3). */
   number: number;
   dealer: Seat;
   honba: number;
@@ -97,6 +109,7 @@ export type RoundEvent =
   | KakanEvent
   | RiichiAcceptedEvent
   | DoraEvent
+  | KitaEvent
   | WinEvent
   | RyukyokuEvent;
 
@@ -155,6 +168,18 @@ export interface DoraEvent {
   indicator: KnownTile;
 }
 
+/**
+ * Three-player only: the seat sets a North tile aside as a bonus dora (kita, 抜きドラ; Tenhou's
+ * nukidora). The same seat then draws a replacement tile, unless another seat wins on the North
+ * (a ron on the set-aside tile, whose WinEvent has `from` = this seat and `tile` "4z").
+ */
+export interface KitaEvent {
+  type: "kita";
+  seat: Seat;
+  /** The North tile set aside: "4z" in a valid log. */
+  tile: Tile;
+}
+
 export type LimitName = "mangan" | "haneman" | "baiman" | "sanbaiman" | "yakuman";
 
 /**
@@ -174,7 +199,7 @@ export interface YakuEntry {
 export interface WinEvent {
   type: "win";
   seat: Seat;
-  /** Seat that dealt in; equal to `seat` for tsumo. */
+  /** Seat that dealt in (or whose kita North was won on); equal to `seat` for tsumo. */
   from: Seat;
   /** Point changes for this win, including honba and riichi deposits collected. */
   deltas: Quad<number>;
@@ -199,7 +224,10 @@ export interface WinEvent {
    */
   fu?: number;
   limit?: LimitName;
-  /** Value of the hand as the source states it (e.g. 12000), before honba and deposits. */
+  /**
+   * Value of the hand as the source states it (e.g. 12000), before honba and deposits. With three
+   * players a tsumo is worth what its two payers pay (Tenhou's tsumo loss), as mjlog records it.
+   */
   points?: number;
   /** Undefined when the source does not list yaku (e.g. mjai logs converted from Tenhou). */
   yaku?: YakuEntry[];
@@ -207,6 +235,7 @@ export interface WinEvent {
   pao?: Seat;
 }
 
+/** suufonRenda, suuchaRiichi and sanchaHou need four players and never occur with three. */
 export type RyukyokuReason =
   | "exhaustive"
   | "nagashiMangan"

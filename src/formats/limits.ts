@@ -1,8 +1,8 @@
 /**
  * Size limits that keep huge or crafted input from freezing or crashing the tab. Real logs stay
- * far below them: in 75 real logs (399 rounds of Tenhou houou and ranked games, convlog's test
- * games and the samples) the largest file is 21 KB, the longest round has 156 events and no round
- * has more than 70 draws.
+ * far below them: in 75 real four-player logs (399 rounds of Tenhou houou and ranked games,
+ * convlog's test games and the samples) the largest file is 21 KB, the longest round has 156 events
+ * and no round has more than 70 draws. Three-player rounds are smaller: at most 55 draws.
  */
 import type { GameLog } from "../core/model";
 import { LogParseError } from "./errors";
@@ -16,13 +16,15 @@ export const MAX_LOG_SIZE = 16 * 1024 * 1024;
 
 /**
  * Most events in one round. A four-player round has at most 70 draws and 70 discards, plus calls
- * (each followed by a discard), kans, riichi acceptances, dora and up to three wins: about 200.
+ * (each followed by a discard), kans, riichi acceptances, dora and up to three wins: about 200. A
+ * three-player round has at most 55 draws, kita included (each kita is followed by a draw).
  */
 export const MAX_ROUND_EVENTS = 400;
 
 /**
- * Most draws in one round. The wall leaves 70 tiles to draw, rinshan draws included (each kan
- * moves one tile from the live wall to the dead wall); 4 more allow for rules that do not.
+ * Most draws in one round. The wall leaves 70 tiles to draw (55 with three players), rinshan draws
+ * included (each kan or kita moves one tile from the live wall to the dead wall); 4 more allow for
+ * rules that do not.
  */
 export const MAX_ROUND_DRAWS = 74;
 

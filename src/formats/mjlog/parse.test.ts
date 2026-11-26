@@ -2,22 +2,39 @@
  * mjlog parser tests. Tenhou's game records carry no license, so none is committed: whole games
  * come from the test-only encoder (src/test/mjlog-serialize.ts), which writes the tenhou.net/6
  * fixtures and hand-built games as mjlog, and real games are read only from a local
- * MJLOG_CORPUS_DIR (see the end of this file).
+ * MJLOG_CORPUS_DIR or SANMA_MJLOG_CORPUS_DIR (see the end of this file).
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { GameLog, Round, RoundEvent, Seat, WinEvent } from "../../core/model";
-import { isSameKind, sortTiles, type Tile } from "../../core/tile";
+import type {
+  CallEvent,
+  GameLog,
+  PlayerCount,
+  Round,
+  RoundEvent,
+  Seat,
+  WinEvent,
+} from "../../core/model";
+import { LIVE_WALL_SIZE } from "../../core/players";
+import {
+  doraFromIndicator,
+  isSameKind,
+  type KnownTile,
+  sortTiles,
+  type Tile,
+} from "../../core/tile";
 import { checkGame } from "../../replay/check";
+import { corpusFiles, MJLOG_CORPUS, SANMA_MJLOG_CORPUS } from "../../test/corpus";
 import { cutPoints, garbled, parseOutcome } from "../../test/fuzz";
 import { stripMjlogUnsupported, toMjlogXml } from "../../test/mjlog-serialize";
+import { makeSanmaGame, sampleSanmaRound, tiles } from "../../test/round-builder";
 import { LogParseError } from "../errors";
 import { parseLogText } from "../index";
 import { parseTenhouJson } from "../tenhou-json/parse";
 import { decodeMeld, tileFromId } from "./meld";
 import { parseMjlog } from "./parse";
-import { readTags } from "./tags";
+import { type MjlogTag, readTags } from "./tags";
 
 const TENHOU_DIR = join(import.meta.dirname, "..", "tenhou-json", "__fixtures__", "convlog");
 
@@ -64,6 +81,31 @@ function mjlog(...tags: string[]): string {
 /** Events of the only round of a synthetic log. */
 function eventsOf(...tags: string[]): RoundEvent[] {
   const game = parseMjlog(mjlog(GO, UN, '<TAIKYOKU oya="0"/>', init(), ...tags));
+  return game.rounds[0]?.events ?? [];
+}
+
+/*
+ * Three-player logs as Tenhou writes them: no 2m-8m (ids 4-31), seat 3 empty. Seat 0 holds the red
+ * 0p (52), three 9m (32-34) and a North (120); seat 1 a North (121) and two 5z (124, 125).
+ */
+const SANMA_HANDS = [
+  "0,32,33,34,36,40,44,52,60,64,68,108,120",
+  "1,69,72,76,80,88,96,100,104,121,124,125,128",
+  "2,41,45,48,53,56,77,81,84,89,92,109,132",
+];
+/** 0xB9: phoenix room, south, three players (0x10), human players. */
+const SANMA_GO = '<GO type="185" lobby="0"/>';
+const SANMA_UN =
+  '<UN n0="%41" n1="%42" n2="%43" n3="" dan="16,13,0,0" rate="2000.50,1800.00,1500.00,1500.00" sx="M,F,M,C"/>';
+
+function sanmaInit(seed = "0,0,0,1,2,112", ten = "350,350,350,0", oya = 0): string {
+  const hands = SANMA_HANDS.map((hand, seat) => `hai${seat}="${hand}"`).join(" ");
+  return `<INIT seed="${seed}" ten="${ten}" oya="${oya}" ${hands} hai3=""/>`;
+}
+
+/** Events of the only round of a synthetic three-player log. */
+function sanmaEventsOf(...tags: string[]): RoundEvent[] {
+  const game = parseMjlog(mjlog(SANMA_GO, SANMA_UN, '<TAIKYOKU oya="0"/>', sanmaInit(), ...tags));
   return game.rounds[0]?.events ?? [];
 }
 
@@ -203,8 +245,24 @@ describe("decodeMeld", () => {
     expect(decodeMeld(13312 | (3 << 8))).toEqual({ type: "ankan", tiles: [52, 53, 54, 55] });
   });
 
-  it("recognizes nukidora and rejects malformed values", () => {
-    expect(decodeMeld(0x20)).toEqual({ type: "nukidora" });
+  it("decodes a three-player kita with the id of its North", () => {
+    // (id << 8) | 0x20 for the four Norths, ids 120-123.
+    expect([30752, 31008, 31264, 31520].map(decodeMeld)).toEqual([
+      { type: "nukidora", tile: 120 },
+      { type: "nukidora", tile: 121 },
+      { type: "nukidora", tile: 122 },
+      { type: "nukidora", tile: 123 },
+    ]);
+    // Pon and kakan are tested first: their bits 5-6 (the copy left out) can have bit 5 set.
+    expect(decodeMeld(49769)).toEqual({ type: "pon", from: 1, called: 129, consumed: [128, 130] });
+    expect(decodeMeld(0x20)).toBeNull(); // no tile: id 0 is a 1m
+    expect(decodeMeld((108 << 8) | 0x20)).toBeNull(); // an East
+    expect(decodeMeld(30752 | 1)).toBeNull(); // with a discarder
+    // Every real kita has a low byte of exactly 0x20, so bits 6 and 7 must be clear too.
+    expect([0x7860, 0x78a0, 0x78e0].map(decodeMeld)).toEqual([null, null, null]);
+  });
+
+  it("rejects malformed values", () => {
     expect(decodeMeld(6159 - 3)).toBeNull(); // chi without a discarder
     expect(decodeMeld(20074 - 2)).toBeNull(); // pon without a discarder
     expect(decodeMeld((63 << 10) | 0x4 | 3)).toBeNull(); // chi run index out of range
@@ -289,13 +347,16 @@ describe("parseMjlog: game info", () => {
     expect(hand('<GO type="171"/>')).toEqual(["5m", "5p", "5s", "5m"]);
   });
 
-  it("rejects three-player games", () => {
-    expect(errorCode(() => parseMjlog(mjlog('<GO type="185"/>', init())))).toBe(
+  it("rejects a seat without a starting hand and a GO and INIT that disagree on the players", () => {
+    // A four-player GO with an empty seat 3, and the three-player bit with four hands.
+    expect(errorCode(() => parseMjlog(mjlog(GO, sanmaInit())))).toBe("unsupportedPlayers");
+    expect(errorCode(() => parseMjlog(mjlog(SANMA_GO, init())))).toBe("unsupportedPlayers");
+    const noHand = init().replace(/hai2="[^"]*"/, 'hai2=""');
+    expect(errorCode(() => parseMjlog(mjlog(GO, noHand)))).toBe("unsupportedPlayers");
+    // Without GO, a seat 3 with no hand but points is not a three-player round either.
+    expect(errorCode(() => parseMjlog(mjlog(sanmaInit("0,0,0,1,2,112", "350,350,350,10"))))).toBe(
       "unsupportedPlayers",
     );
-    const sanmaInit =
-      '<INIT seed="0,0,0,1,2,124" ten="350,350,350,0" oya="0" hai0="0,4,8,12,16,20,24,28,32,36,40,44,48" hai1="1,5,9,13,17,21,25,29,33,37,41,45,49" hai2="2,6,10,14,18,22,26,30,34,38,42,46,50" hai3=""/>';
-    expect(errorCode(() => parseMjlog(mjlog(sanmaInit)))).toBe("unsupportedPlayers");
   });
 
   it("reads the round header", () => {
@@ -461,6 +522,302 @@ describe("parseMjlog: events", () => {
 
   it("rejects nukidora in a four-player game", () => {
     expect(errorCode(() => eventsOf('<N who="0" m="32"/>'))).toBe("invalid");
+    expect(errorCode(() => eventsOf("<T120/>", '<N who="0" m="30752" />'))).toBe("invalid");
+  });
+});
+
+describe("parseMjlog: three-player games", () => {
+  it("reads GO bit 0x10, UN and INIT with seat 3 as the empty chair", () => {
+    const game = parseMjlog(mjlog(SANMA_GO, SANMA_UN, '<TAIKYOKU oya="0"/>', sanmaInit()));
+    expect(game.playerCount).toBe(3);
+    // UN's fourth dan 0 and rate 1500.00 belong to nobody.
+    expect(game.players).toStrictEqual([
+      { name: "A", rank: "七段", danIndex: 16, rating: 2000.5 },
+      { name: "B", rank: "四段", danIndex: 13, rating: 1800 },
+      { name: "C", rank: "新人", danIndex: 0, rating: 1500 },
+      { name: "" },
+    ]);
+    // The player count is not a rule: only the description shows it.
+    expect(game.rules).toStrictEqual({
+      redFives: true,
+      length: "south",
+      room: "phoenix",
+      openTanyao: true,
+      fast: false,
+      description: "三鳳南喰赤",
+    });
+    const { events, hands, ...round } = game.rounds[0] as Round;
+    expect(round).toEqual({
+      wind: 0,
+      number: 1,
+      dealer: 0,
+      honba: 0,
+      riichiSticks: 0,
+      scores: [35000, 35000, 35000, 0],
+      doraIndicators: ["2z"],
+    });
+    expect(hands).toEqual([
+      tiles("1m999m1230p789p1z4z"),
+      tiles("1m9p1230s789s4z556z"),
+      tiles("1m23456p23456s1z7z"),
+      [],
+    ]);
+    expect(events).toEqual([]);
+  });
+
+  it("reads the other GO bits of a three-player game", () => {
+    // 0x53: general room, east, no red fives (0x02), three players (0x10), fast (0x40).
+    expect(parseMjlog(mjlog('<GO type="83"/>', sanmaInit())).rules).toStrictEqual({
+      redFives: false,
+      length: "east",
+      room: "general",
+      openTanyao: true,
+      fast: true,
+      description: "三般東喰速",
+    });
+  });
+
+  it("reads a three-player round without GO from the empty seat 3 of INIT", () => {
+    const game = parseMjlog(mjlog(sanmaInit()));
+    expect(game.playerCount).toBe(3);
+    expect(game.rules).toStrictEqual({ redFives: true });
+    expect(game.players).toStrictEqual([{ name: "" }, { name: "" }, { name: "" }, { name: "" }]);
+  });
+
+  it("numbers rounds wind * 4 + dealer, without a fourth dealer", () => {
+    const header = (seed: string, oya: number) => {
+      const round = parseMjlog(mjlog(SANMA_GO, sanmaInit(seed, undefined, oya))).rounds[0];
+      return [round?.wind, round?.number, round?.dealer];
+    };
+    expect(header("2,0,0,1,2,112", 2)).toEqual([0, 3, 2]); // East 3
+    expect(header("4,0,0,1,2,112", 0)).toEqual([1, 1, 0]); // South 1
+    expect(header("6,0,0,1,2,112", 2)).toEqual([1, 3, 2]); // South 3
+    expect(header("8,0,0,1,2,112", 0)).toEqual([2, 1, 0]); // West 1
+    for (const seed of ["3,0,0,1,2,112", "7,0,0,1,2,112"]) {
+      expect(errorCode(() => parseMjlog(mjlog(SANMA_GO, sanmaInit(seed))))).toBe("invalid");
+    }
+  });
+
+  it("reads a kita of the drawn North or one from the hand, each before a replacement draw", () => {
+    const events = sanmaEventsOf(
+      "<T122/>",
+      '<N who="0" m="31264" />',
+      "<T73/>",
+      '<N who="0" m="30752" />',
+      "<T74/>",
+      "<D74/>",
+      "<U123/>",
+      '<N who="1" m="31520" />',
+      "<U75/>",
+      "<E1/>",
+    );
+    expect(events).toEqual([
+      { type: "draw", seat: 0, tile: "4z" },
+      { type: "kita", seat: 0, tile: "4z" },
+      { type: "draw", seat: 0, tile: "1s" },
+      { type: "kita", seat: 0, tile: "4z" },
+      { type: "draw", seat: 0, tile: "1s" },
+      { type: "discard", seat: 0, tile: "1s", tsumogiri: true, riichi: false },
+      { type: "draw", seat: 1, tile: "4z" },
+      { type: "kita", seat: 1, tile: "4z" },
+      { type: "draw", seat: 1, tile: "1s" },
+      { type: "discard", seat: 1, tile: "1m", tsumogiri: false, riichi: false },
+    ]);
+  });
+
+  it("rejects a kita code of another tile", () => {
+    // (110 << 8) | 0x20: an East.
+    expect(errorCode(() => sanmaEventsOf("<T110/>", '<N who="0" m="28192" />'))).toBe("invalid");
+  });
+
+  it("reads the discarder of a call relative to the caller mod 4, never the empty seat 3", () => {
+    // Pon of 6z (ids 128-130, copy 3 left out, called index 1): (32*3+1)<<9 | 3<<5 | 0x8 = 49768,
+    // plus the relative seat. The empty seat 3 sits between seat 2 and seat 0.
+    const call = (who: Seat, relative: number) =>
+      sanmaEventsOf(`<N who="${who}" m="${49768 + relative}" />`)[0];
+    const from = (who: Seat, relative: number) => (call(who, relative) as CallEvent).from;
+    expect([from(0, 1), from(0, 2), from(1, 1), from(1, 3), from(2, 2), from(2, 3)]).toEqual([
+      1, 2, 2, 0, 0, 1,
+    ]);
+    for (const [who, relative] of [
+      [0, 3],
+      [1, 2],
+      [2, 1],
+    ] as const) {
+      expect(errorCode(() => call(who, relative))).toBe("invalid");
+    }
+  });
+
+  it("keeps kan dora where Tenhou writes them: ankan, DORA, draw and kakan, draw, DORA", () => {
+    // Seat 1 pons seat 2's 5z (126): (31*3+2)<<9 | 3<<5 | 0x8 | 1 = 48745; the kakan of 127 is
+    // the same with 0x10 instead of 0x8.
+    const events = sanmaEventsOf(
+      "<T35/>",
+      '<N who="0" m="8192" />',
+      '<DORA hai="113" />',
+      "<T73/>",
+      "<D73/>",
+      "<U129/>",
+      "<E129/>",
+      "<V126/>",
+      "<F126/>",
+      '<N who="1" m="48745" />',
+      "<E1/>",
+      "<V130/>",
+      "<F130/>",
+      "<T131/>",
+      "<D131/>",
+      "<U127/>",
+      '<N who="1" m="48753" />',
+      "<U74/>",
+      '<DORA hai="114" />',
+      "<E74/>",
+    );
+    expect(events.map((event) => event.type)).toEqual([
+      "draw",
+      "ankan",
+      "dora",
+      "draw",
+      "discard",
+      "draw",
+      "discard",
+      "draw",
+      "discard",
+      "pon",
+      "discard",
+      "draw",
+      "discard",
+      "draw",
+      "discard",
+      "draw",
+      "kakan",
+      "draw",
+      "dora",
+      "discard",
+    ]);
+    expect(events[1]).toEqual({ type: "ankan", seat: 0, tiles: ["9m", "9m", "9m", "9m"] });
+    expect(events[9]).toEqual({
+      type: "pon",
+      seat: 1,
+      from: 2,
+      tile: "5z",
+      consumed: ["5z", "5z"],
+    });
+    expect(events[16]).toEqual({ type: "kakan", seat: 1, tile: "5z" });
+  });
+
+  it("reads a ron on a kita North", () => {
+    const events = sanmaEventsOf(
+      "<T122/>",
+      '<N who="0" m="31264" />',
+      '<AGARI ba="0,0" hai="1,69,72,76,80,88,96,100,104,121,122,124,125,128" machi="122" ten="40,2600,0" yaku="52,1" doraHai="112" who="1" fromWho="0" sc="350,-26,350,26,350,0,0,0" />',
+    );
+    expect(events.slice(1)).toEqual([
+      { type: "kita", seat: 0, tile: "4z" },
+      expect.objectContaining({
+        type: "win",
+        seat: 1,
+        from: 0,
+        tile: "4z",
+        deltas: [-2600, 2600, 0, 0],
+      }),
+    ]);
+  });
+
+  it("reads a win after a kita: AGARI m lists the kita, hai leaves it out, ドラ counts it", () => {
+    // Dealer tsumo on the replacement draw: tsumo, rinshan, dora 1 (the kita; the indicator 2z
+    // points to 3z) and the red 0p. Tsumo loss: each of the two others pays 3900.
+    const events = sanmaEventsOf(
+      "<T122/>",
+      '<N who="0" m="31264" />',
+      "<T61/>",
+      '<AGARI ba="0,0" hai="0,32,33,34,36,40,44,52,60,61,64,68,108,120" m="31264" machi="61" ten="30,7800,0" yaku="0,1,4,1,52,1,54,1" doraHai="112" who="0" fromWho="0" sc="350,78,350,-39,350,-39,0,0" />',
+    );
+    expect(events.at(-1)).toEqual({
+      type: "win",
+      seat: 0,
+      from: 0,
+      deltas: [7800, -3900, -3900, 0],
+      tile: "7p",
+      hand: tiles("1m999m1230p7789p1z4z"),
+      han: 4,
+      fu: 30,
+      points: 7800,
+      yaku: [
+        { key: "menzenTsumo", han: 1 },
+        { key: "rinshanKaihou", han: 1 },
+        { key: "dora", han: 1 },
+        { key: "akaDora", han: 1 },
+      ],
+    });
+  });
+
+  it("reads sc and owari with the empty seat 3 and an exhaustive draw's tenpai hands", () => {
+    const game = parseMjlog(
+      mjlog(
+        SANMA_GO,
+        sanmaInit(),
+        `<RYUUKYOKU ba="0,0" sc="350,20,350,-10,350,-10,0,0" hai0="${SANMA_HANDS[0]}" owari="370,32.0,340,-6.0,340,-26.0,0,0.0" />`,
+      ),
+    );
+    expect(game.rounds[0]?.events).toEqual([
+      {
+        type: "ryukyoku",
+        reason: "exhaustive",
+        deltas: [2000, -1000, -1000, 0],
+        tenpai: [0],
+        hands: [tiles("1m999m1230p789p1z4z"), null, null, null],
+      },
+    ]);
+    expect(game.finalScores).toEqual([37000, 34000, 34000, 0]);
+  });
+
+  it("reads kyuushu kyuuhai with the declarer's hand", () => {
+    const events = sanmaEventsOf(
+      "<T110/>",
+      `<RYUUKYOKU type="yao9" ba="0,0" sc="350,0,350,0,350,0,0,0" hai0="${SANMA_HANDS[0]},110" />`,
+    );
+    expect(events.at(-1)).toEqual({
+      type: "ryukyoku",
+      reason: "kyuushuKyuuhai",
+      deltas: [0, 0, 0, 0],
+      hands: [tiles("1m999m1230p789p1z4z1z"), null, null, null],
+    });
+  });
+
+  it("rejects anything the empty seat 3 has, does or scores", () => {
+    const agari = (attributes: string) =>
+      `<AGARI ba="0,0" hai="${SANMA_HANDS[1]},129" machi="129" ten="30,1000,0" yaku="52,1" doraHai="112" ${attributes} sc="350,-10,350,10,350,0,0,0" />`;
+    const cases = [
+      mjlog(SANMA_GO, sanmaInit(undefined, "350,350,350,10")),
+      mjlog(SANMA_GO, sanmaInit(undefined, undefined, 3)),
+      mjlog(SANMA_GO, sanmaInit(), "<W40/>"),
+      mjlog(SANMA_GO, sanmaInit(), "<G40/>"),
+      mjlog(SANMA_GO, sanmaInit(), '<N who="3" m="49769" />'),
+      mjlog(SANMA_GO, sanmaInit(), '<REACH who="3" step="1"/>'),
+      mjlog(SANMA_GO, sanmaInit(), "<T129/>", "<D129/>", agari('who="3" fromWho="0"')),
+      mjlog(SANMA_GO, sanmaInit(), "<T129/>", "<D129/>", agari('who="1" fromWho="3"')),
+      mjlog(SANMA_GO, sanmaInit(), "<T129/>", "<D129/>", agari('who="1" fromWho="0" paoWho="3"')),
+      mjlog(SANMA_GO, sanmaInit(), '<RYUUKYOKU ba="0,0" sc="350,0,350,0,350,0,0,10" />'),
+      mjlog(
+        SANMA_GO,
+        sanmaInit(),
+        `<RYUUKYOKU ba="0,0" sc="350,0,350,0,350,0,0,0" hai3="${SANMA_HANDS[2]}" />`,
+      ),
+      mjlog(
+        SANMA_GO,
+        sanmaInit(),
+        '<RYUUKYOKU ba="0,0" sc="350,0,350,0,350,0,0,0" owari="350,15.0,350,5.0,349,-20.1,1,0.1" />',
+      ),
+    ];
+    for (const text of cases) {
+      expect(
+        errorCode(() => parseMjlog(text)),
+        text,
+      ).toBe("invalid");
+    }
+    const dealtSeat3 = sanmaInit().replace('hai3=""', `hai3="${SANMA_HANDS[2]}"`);
+    expect(errorCode(() => parseMjlog(mjlog(SANMA_GO, dealtSeat3)))).toBe("unsupportedPlayers");
   });
 });
 
@@ -656,12 +1013,19 @@ describe("parseMjlog: special cases of whole games", () => {
 
 describe("parseMjlog on truncated and garbled logs", () => {
   // parseOutcome fails the test on anything thrown that is not a LogParseError.
-  const SOURCES = ["ranked_game", "double_ron", "four_reach", "suukantsu_1"];
+  const SOURCES: Record<string, () => string> = {
+    ranked_game: () => encodedFixture("ranked_game"),
+    double_ron: () => encodedFixture("double_ron"),
+    four_reach: () => encodedFixture("four_reach"),
+    suukantsu_1: () => encodedFixture("suukantsu_1"),
+    // Three players: kita, a pon across the empty chair, ankan, a ron on a kita.
+    sanma: () => toMjlogXml(makeSanmaGame([sampleSanmaRound()])),
+  };
 
-  it.each(SOURCES)(
+  it.each(Object.keys(SOURCES))(
     "answers every truncation of %s as mjlog with a game or a LogParseError",
     (name) => {
-      const text = encodedFixture(name);
+      const text = (SOURCES[name] as () => string)();
       const outcomes = new Set<string>();
       for (const at of cutPoints(text.length, 200)) {
         const cut = text.slice(0, at);
@@ -674,14 +1038,18 @@ describe("parseMjlog on truncated and garbled logs", () => {
     },
   );
 
-  it.each(SOURCES)("answers every garbled %s as mjlog with a game or a LogParseError", (name) => {
-    const outcomes = new Set<string>();
-    for (const input of garbled(encodedFixture(name), '0123456789-,."<>/= TUDENxyz', 300)) {
-      outcomes.add(parseOutcome(parseMjlog, input));
-    }
-    expect(outcomes).toContain("game");
-    expect(outcomes).toContain("invalid");
-  });
+  it.each(Object.keys(SOURCES))(
+    "answers every garbled %s as mjlog with a game or a LogParseError",
+    (name) => {
+      const outcomes = new Set<string>();
+      const text = (SOURCES[name] as () => string)();
+      for (const input of garbled(text, '0123456789-,."<>/= TUDENxyz', 300)) {
+        outcomes.add(parseOutcome(parseMjlog, input));
+      }
+      expect(outcomes).toContain("game");
+      expect(outcomes).toContain("invalid");
+    },
+  );
 });
 
 /** Attributes of every tag with the given name, read with a plain regex independent of readTags. */
@@ -699,9 +1067,22 @@ function numbers(value: string | undefined): number[] {
   return value ? value.split(",").map(Number) : [];
 }
 
+/** How many tiles of a list are dora, counting a tile once per indicator that points to it. */
+function doraCount(
+  tiles: readonly Tile[],
+  indicators: readonly KnownTile[],
+  game: GameLog,
+): number {
+  return indicators.reduce((sum, indicator) => {
+    const dora = doraFromIndicator(indicator, game.playerCount);
+    return sum + tiles.filter((tile) => isSameKind(tile, dora)).length;
+  }, 0);
+}
+
 /**
  * Replays the parsed game with a minimal hand tracker and compares it with Tenhou's own data in
- * the raw XML: score snapshots in sc, revealed hands, dora counts and the next round's scores.
+ * the raw XML: score snapshots in sc, revealed hands, dora indicators and ドラ han (which includes
+ * three-player kita), the length of exhausted walls and the next round's scores.
  * Returns a list of problems (empty when everything matches).
  */
 function verifyAgainstSource(text: string, game: GameLog): string[] {
@@ -719,7 +1100,11 @@ function verifyAgainstSource(text: string, game: GameLog): string[] {
     const counts: Array<[string, number, number]> = [
       ["draws", count(["draw"]), (chunk.match(/<[TUVW]\d+\/>/g) ?? []).length],
       ["discards", count(["discard"]), (chunk.match(/<[DEFG]\d+\/>/g) ?? []).length],
-      ["melds", count(["chi", "pon", "daiminkan", "ankan", "kakan"]), rawTags(chunk, "N").length],
+      [
+        "melds and kita",
+        count(["chi", "pon", "daiminkan", "ankan", "kakan", "kita"]),
+        rawTags(chunk, "N").length,
+      ],
       ["dora", count(["dora"]), rawTags(chunk, "DORA").length],
       [
         "riichi declarations",
@@ -739,14 +1124,24 @@ function verifyAgainstSource(text: string, game: GameLog): string[] {
         report(-1, `${parsed} ${label} parsed, ${raw} in the source`);
       }
     }
+    // Replacement draws after kans and kita come out of the live wall too.
+    const end = round.events.at(-1);
+    const exhausted =
+      end?.type === "ryukyoku" && (end.reason === "exhaustive" || end.reason === "nagashiMangan");
+    if (exhausted && count(["draw"]) !== LIVE_WALL_SIZE[game.playerCount]) {
+      report(-1, `the wall ran out after ${count(["draw"])} draws`);
+    }
 
     const results = [...rawTags(chunk, "AGARI"), ...rawTags(chunk, "RYUUKYOKU")];
     const hands = round.hands.map((hand) => [...hand]);
     const pons: Tile[][] = [[], [], [], []];
     const meldCount = [0, 0, 0, 0];
+    /** Tiles of each seat's melds, and the North tiles each seat set aside. */
+    const meldTiles: Tile[][] = [[], [], [], []];
+    const kita: Tile[][] = [[], [], [], []];
+    const indicators = [...round.doraIndicators];
     const scores = [...round.scores];
     let sticks = round.riichiSticks;
-    let doraCount = round.doraIndicators.length;
     let resultIndex = 0;
     let won = false;
     const take = (seat: Seat, tile: Tile, index: number) => {
@@ -803,6 +1198,7 @@ function verifyAgainstSource(text: string, game: GameLog): string[] {
           if (event.type === "pon") {
             pons[event.seat]?.push(event.tile);
           }
+          meldTiles[event.seat]?.push(event.tile, ...event.consumed);
           meldCount[event.seat] = (meldCount[event.seat] ?? 0) + 1;
           break;
         }
@@ -810,6 +1206,7 @@ function verifyAgainstSource(text: string, game: GameLog): string[] {
           for (const tile of event.tiles) {
             take(event.seat, tile, index);
           }
+          meldTiles[event.seat]?.push(...event.tiles);
           meldCount[event.seat] = (meldCount[event.seat] ?? 0) + 1;
           break;
         case "kakan":
@@ -817,7 +1214,24 @@ function verifyAgainstSource(text: string, game: GameLog): string[] {
           if (!pons[event.seat]?.some((tile) => isSameKind(tile, event.tile))) {
             report(index, `kakan of ${event.tile} without a pon`);
           }
+          meldTiles[event.seat]?.push(event.tile);
           break;
+        case "kita": {
+          // Set aside right after the seat's own draw; the seat then draws again (or is ronned).
+          // The dora of a kakan just before can be revealed in between.
+          const previous = round.events[index - 1];
+          if (previous?.type !== "draw" || previous.seat !== event.seat) {
+            report(index, "kita does not follow the seat's draw");
+          }
+          const next = round.events.slice(index + 1).find((e) => e.type !== "dora");
+          const replaced = next?.type === "draw" && next.seat === event.seat;
+          if (!replaced && next?.type !== "win") {
+            report(index, "kita is followed by neither a replacement draw nor a ron");
+          }
+          take(event.seat, event.tile, index);
+          kita[event.seat]?.push(event.tile);
+          break;
+        }
         case "riichiAccepted": {
           const previous = round.events[index - 1];
           if (previous?.type !== "discard" || !previous.riichi || previous.seat !== event.seat) {
@@ -828,7 +1242,7 @@ function verifyAgainstSource(text: string, game: GameLog): string[] {
           break;
         }
         case "dora":
-          doraCount += 1;
+          indicators.push(event.indicator);
           break;
         case "win": {
           const raw = results[resultIndex++];
@@ -841,21 +1255,39 @@ function verifyAgainstSource(text: string, game: GameLog): string[] {
             expected.push(event.tile);
             const previous = round.events.slice(0, index).findLast((e) => e.type !== "win");
             const dealtIn =
-              (previous?.type === "discard" || previous?.type === "kakan") &&
+              (previous?.type === "discard" ||
+                previous?.type === "kakan" ||
+                previous?.type === "kita") &&
               previous.seat === event.from &&
               isSameKind(previous.tile, event.tile);
             if (!dealtIn) {
-              report(index, `ron on ${event.tile} does not follow a discard or kakan of it`);
+              report(index, `ron on ${event.tile} does not follow a discard, kakan or kita of it`);
             }
           }
           if (sortTiles(expected).join() !== sortTiles(event.hand ?? []).join()) {
             report(index, `AGARI hai ${event.hand} but replay has ${expected}`);
           }
-          if (numbers(raw.get("doraHai")).length !== doraCount) {
+          if (numbers(raw.get("doraHai")).length !== indicators.length) {
             report(
               index,
-              `AGARI doraHai ${raw.get("doraHai")} but ${doraCount} indicators revealed`,
+              `AGARI doraHai ${raw.get("doraHai")} but ${indicators.length} indicators revealed`,
             );
+          }
+          // Tenhou counts each kita North as one dora, plus once per indicator pointing to North.
+          if (event.limit !== "yakuman") {
+            const seatKita = kita[event.seat] ?? [];
+            const dora =
+              doraCount(
+                [...(event.hand ?? []), ...(meldTiles[event.seat] ?? [])],
+                indicators,
+                game,
+              ) +
+              seatKita.length +
+              doraCount(seatKita, indicators, game);
+            const listed = event.yaku?.find((entry) => entry.key === "dora")?.han ?? 0;
+            if (listed !== dora) {
+              report(index, `ドラ ${listed} but the hand and kita have ${dora} dora`);
+            }
           }
           event.deltas.forEach((delta, seat) => {
             scores[seat] = (scores[seat] as number) + delta;
@@ -908,13 +1340,118 @@ function verifyAgainstSource(text: string, game: GameLog): string[] {
   return problems;
 }
 
-const CORPUS_DIR = process.env.MJLOG_CORPUS_DIR;
-const corpusFiles =
-  CORPUS_DIR && existsSync(CORPUS_DIR)
-    ? readdirSync(CORPUS_DIR)
-        .filter((name) => name.endsWith(".xml"))
-        .sort()
-    : [];
+/** Tags of an mjlog the model keeps something of: no closing tags, SHUFFLE, BYE or reconnect UN. */
+function comparableTags(text: string): MjlogTag[] {
+  let listed = false;
+  return (readTags(text) ?? []).filter((tag) => {
+    if (tag.closing || tag.name === "SHUFFLE" || tag.name === "BYE") {
+      return false;
+    }
+    if (tag.name === "UN") {
+      if (listed) {
+        return false;
+      }
+      listed = true;
+    }
+    return true;
+  });
+}
+
+/**
+ * An attribute as far as the model determines it, or null when the model keeps nothing of it.
+ * Tile ids become tiles, as the model does not know which copy a tile is (toMjlogXml hands out
+ * the lowest free copy); melds are decoded to tiles; the hands of AGARI and RYUUKYOKU are sorted;
+ * UN sx (Tenhou's player sex) and the dice in INIT seed are dropped; owari keeps the points, not
+ * the uma toMjlogXml derives from them (Tenhou rounded older games' uma differently).
+ */
+function modelValue(tagName: string, key: string, value: string, redFives: boolean): string | null {
+  const tile = (id: string) => tileFromId(Number(id), redFives);
+  const tileList = (list: string) => (list === "" ? [] : list.split(",").map(tile));
+  const meld = (m: string) => {
+    const decoded = decodeMeld(Number(m));
+    if (!decoded) {
+      return `invalid ${m}`;
+    }
+    if (decoded.type === "nukidora") {
+      return `kita ${tile(String(decoded.tile))}`;
+    }
+    if (decoded.type === "ankan") {
+      return `ankan ${decoded.tiles.map((id) => tile(String(id)))}`;
+    }
+    const called = tile(String(decoded.called));
+    const consumed = decoded.consumed.map((id) => tile(String(id)));
+    const added = decoded.type === "kakan" ? ` added ${tile(String(decoded.added))}` : "";
+    return `${decoded.type} from ${decoded.from} ${called} with ${consumed}${added}`;
+  };
+  if (tagName === "UN" && key === "sx") {
+    return null;
+  }
+  if (tagName === "INIT" && key === "seed") {
+    const seed = value.split(",");
+    return `${seed.slice(0, 3)} dora ${tile(seed[5] ?? "")}`;
+  }
+  if (tagName === "INIT" && /^hai\d$/.test(key)) {
+    return tileList(value).join();
+  }
+  if ((tagName === "AGARI" || tagName === "RYUUKYOKU") && (key === "hai" || /^hai\d$/.test(key))) {
+    return sortTiles(tileList(value)).join();
+  }
+  if (["machi", "doraHai", "doraHaiUra"].includes(key) || (tagName === "DORA" && key === "hai")) {
+    return tileList(value).join();
+  }
+  if (key === "m" && (tagName === "N" || tagName === "AGARI")) {
+    return value.split(",").map(meld).join(" | ");
+  }
+  if (key === "owari") {
+    return value
+      .split(",")
+      .filter((_, i) => i % 2 === 0)
+      .join();
+  }
+  return value;
+}
+
+/**
+ * Compares toMjlogXml's output tag by tag with the source it parsed, as far as the model determines
+ * the source (see modelValue); attributes must come in the same order. Returns the differences.
+ */
+function compareWithSource(source: string, encoded: string, redFives: boolean): string[] {
+  const differences: string[] = [];
+  const name = (tag: MjlogTag) => {
+    const tileTag = /^([TUVWDEFG])(\d+)$/.exec(tag.name);
+    return tileTag ? `${tileTag[1]}${tileFromId(Number(tileTag[2]), redFives)}` : tag.name;
+  };
+  const expected = comparableTags(source);
+  const actual = comparableTags(encoded);
+  if (expected.length !== actual.length) {
+    differences.push(`${expected.length} tags in the source, ${actual.length} written`);
+  }
+  expected.forEach((tag, index) => {
+    const written = actual[index];
+    if (!written || name(written) !== name(tag)) {
+      differences.push(`tag ${index}: <${name(tag)}> in the source, <${written && name(written)}>`);
+      return;
+    }
+    const keys = (attrs: Map<string, string>) =>
+      [...attrs].filter(([key, value]) => modelValue(tag.name, key, value, redFives) !== null);
+    const sourceKeys = keys(tag.attrs).map(([key]) => key);
+    const writtenKeys = keys(written.attrs).map(([key]) => key);
+    if (sourceKeys.join() !== writtenKeys.join()) {
+      differences.push(
+        `tag ${index} <${tag.name}>: attributes ${sourceKeys}, written ${writtenKeys}`,
+      );
+      return;
+    }
+    for (const key of sourceKeys) {
+      const want = modelValue(tag.name, key, tag.attrs.get(key) as string, redFives);
+      const got = modelValue(tag.name, key, written.attrs.get(key) as string, redFives);
+      if (want !== got) {
+        differences.push(`tag ${index} <${tag.name}> ${key}: ${want} in the source, ${got}`);
+      }
+    }
+  });
+  return differences;
+}
 
 // The encoder derives sc, AGARI and RYUUKYOKU hands and doraHai from its own tile tracking; the
 // parsed events must replay to the same values.
@@ -925,23 +1462,43 @@ describe("parseMjlog: encoded games agree with their own sc, hands and dora", ()
   });
 });
 
-// Real games kept outside the repository: set MJLOG_CORPUS_DIR to a folder of mjlog XML files.
-describe.skipIf(corpusFiles.length === 0)("parseMjlog: corpus in MJLOG_CORPUS_DIR", () => {
-  const read = (name: string) => readFileSync(join(CORPUS_DIR as string, name), "utf-8");
+/**
+ * Real games kept outside the repository: set MJLOG_CORPUS_DIR (any games) or
+ * SANMA_MJLOG_CORPUS_DIR (three-player games) to one or more folders of mjlog XML files.
+ */
+function describeCorpus(variable: string, playerCount?: PlayerCount): void {
+  const files = corpusFiles(variable, ".xml");
+  describe.skipIf(files.length === 0)(`parseMjlog: corpus in ${variable}`, () => {
+    if (playerCount !== undefined) {
+      it.each(files)(`%s is a ${playerCount}-player game`, (_, path) => {
+        expect(parseMjlog(readFileSync(path, "utf-8")).playerCount).toBe(playerCount);
+      });
+    }
 
-  it.each(corpusFiles)("%s matches Tenhou's own data", (name) => {
-    const text = read(name);
-    expect(verifyAgainstSource(text, parseMjlog(text))).toEqual([]);
-  });
+    it.each(files)("%s matches Tenhou's own data", (_, path) => {
+      const text = readFileSync(path, "utf-8");
+      expect(verifyAgainstSource(text, parseMjlog(text))).toEqual([]);
+    });
 
-  it.each(corpusFiles)("%s passes checkGame", (name) => {
-    expect(checkGame(parseMjlog(read(name)))).toEqual([]);
-  });
+    it.each(files)("%s passes checkGame", (_, path) => {
+      expect(checkGame(parseMjlog(readFileSync(path, "utf-8")))).toEqual([]);
+    });
 
-  // Everything a parsed mjlog holds is something the encoder writes back unchanged.
-  it.each(corpusFiles)("%s comes back unchanged from toMjlogXml", (name) => {
-    const game = parseMjlog(read(name));
-    expect(stripMjlogUnsupported(game)).toStrictEqual(game);
-    expect(parseMjlog(toMjlogXml(game))).toStrictEqual(game);
+    // Everything a parsed mjlog holds is something the encoder writes back unchanged.
+    it.each(files)("%s comes back unchanged from toMjlogXml", (_, path) => {
+      const game = parseMjlog(readFileSync(path, "utf-8"));
+      expect(stripMjlogUnsupported(game)).toStrictEqual(game);
+      expect(parseMjlog(toMjlogXml(game))).toStrictEqual(game);
+    });
+
+    // And the encoder writes Tenhou's own tags for it.
+    it.each(files)("%s is written back tag for tag by toMjlogXml", (_, path) => {
+      const text = readFileSync(path, "utf-8");
+      const game = parseMjlog(text);
+      expect(compareWithSource(text, toMjlogXml(game), game.rules.redFives)).toEqual([]);
+    });
   });
-});
+}
+
+describeCorpus(MJLOG_CORPUS);
+describeCorpus(SANMA_MJLOG_CORPUS, 3);

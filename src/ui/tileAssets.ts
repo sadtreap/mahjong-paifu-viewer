@@ -28,3 +28,34 @@ export function tileImageUrl(name: string): string {
 
 export const TILE_FRONT_URL = tileImageUrl("Front");
 export const TILE_BACK_URL = tileImageUrl("Back");
+
+/** Every face (34 kinds plus the three red fives), the blank front and the back. */
+export function allTileImageUrls(): string[] {
+  const faces: string[] = [];
+  for (const file of Object.values(SUIT_FILES)) {
+    for (let value = 1; value <= 9; value++) {
+      faces.push(`${file}${value}`);
+    }
+    faces.push(`${file}5-Dora`);
+  }
+  faces.push(...HONOR_FILES);
+  return [...faces.map(tileImageUrl), TILE_FRONT_URL, TILE_BACK_URL];
+}
+
+let preloaded = false;
+
+/**
+ * Starts loading every tile image once (decoded off the main thread), so the first steps of a
+ * game draw without waiting for images. Does nothing outside a browser or on a second call.
+ */
+export function preloadTileImages(): void {
+  if (preloaded || typeof Image === "undefined") {
+    return;
+  }
+  preloaded = true;
+  for (const url of allTileImageUrls()) {
+    const image = new Image();
+    image.decoding = "async";
+    image.src = url;
+  }
+}

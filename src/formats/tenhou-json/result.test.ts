@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { YakuKey } from "../../core/yaku";
+import { LogParseError } from "../errors";
 import { parseRoundResult, parseScoreText, parseYakuText } from "./result";
 
 /**
@@ -263,5 +264,129 @@ describe("parseRoundResult", () => {
     expect(() => parseRoundResult(["和了"])).toThrow();
     expect(() => parseRoundResult(["和了", [0, 0, 0], [0, 1, 0, "満貫8000点"]])).toThrow();
     expect(() => parseRoundResult(["和了", [0, 0, 0, 0], [7, 1, 0, "満貫8000点"]])).toThrow();
+  });
+});
+
+describe("three-player results", () => {
+  it("adds up tsumo payments with one payer fewer (Tenhou's tsumo loss)", () => {
+    // Each of the two others pays what they would with four players.
+    expect(parseScoreText("30符2飜1000点∀", 3)).toEqual({ fu: 30, han: 2, points: 2000 });
+    expect(parseScoreText("20符3飜700-1300点", 3)).toEqual({ fu: 20, han: 3, points: 2000 });
+    expect(parseScoreText("満貫2000-4000点", 3)).toEqual({ limit: "mangan", points: 6000 });
+    expect(parseScoreText("倍満8000点∀", 3)).toEqual({ limit: "baiman", points: 16000 });
+    // A ron is paid by one player either way.
+    expect(parseScoreText("満貫8000点", 3)).toEqual({ limit: "mangan", points: 8000 });
+  });
+
+  it("pads three deltas with 0 for the empty seat 3", () => {
+    const result = parseRoundResult(
+      ["和了", [-1000, 2000, -1000], [1, 1, 1, "30符2飜1000点∀", "役牌 白(1飜)", "ドラ(1飜)"]],
+      3,
+    );
+    expect(result).toEqual({
+      kind: "win",
+      wins: [
+        {
+          seat: 1,
+          from: 1,
+          deltas: [-1000, 2000, -1000, 0],
+          fu: 30,
+          han: 2,
+          points: 2000,
+          yaku: [
+            { key: "haku", han: 1 },
+            { key: "dora", han: 1 },
+          ],
+        },
+      ],
+    });
+    // Four-player results need four deltas.
+    expect(() =>
+      parseRoundResult(["和了", [-1000, 2000, -1000], [1, 1, 1, "30符2飜1000点∀"]]),
+    ).toThrow(LogParseError);
+  });
+
+  it("reads a double ron", () => {
+    const result = parseRoundResult(
+      [
+        "和了",
+        [8000, -8000, 0, 0],
+        [0, 1, 0, "満貫8000点", "立直(1飜)", "ドラ(4飜)"],
+        [0, -2000, 2000, 0],
+        [2, 1, 2, "30符2飜2000点", "役牌 中(1飜)", "ドラ(1飜)"],
+      ],
+      3,
+    );
+    expect(result.kind === "win" && result.wins.map(({ seat, from }) => [seat, from])).toEqual([
+      [0, 1],
+      [2, 1],
+    ]);
+  });
+
+  it("keeps the empty seat 3 out of wins", () => {
+    const win = (deltas: number[], info: unknown[]) => () =>
+      parseRoundResult(["和了", deltas, info], 3);
+    expect(win([0, 0, 0, 0], [3, 3, 3, "満貫6000点∀"])).toThrow(LogParseError);
+    expect(win([0, 0, 0, 0], [0, 3, 0, "満貫8000点"])).toThrow(LogParseError);
+    expect(win([8000, 0, 0, -8000], [0, 2, 0, "満貫8000点"])).toThrow(LogParseError);
+    // A liable seat that does not play is no pao, like any other value that is not a seat.
+    const pao = parseRoundResult(
+      ["和了", [32000, -16000, -16000, 0], [0, 0, 3, "役満16000点∀", "大三元(役満)"]],
+      3,
+    );
+    expect(pao.kind === "win" && pao.wins[0]?.pao).toBeUndefined();
+    const real = parseRoundResult(
+      ["和了", [32000, 0, -32000, 0], [0, 0, 2, "役満16000点∀", "大三元(役満)"]],
+      3,
+    );
+    expect(real.kind === "win" && real.wins[0]).toMatchObject({ pao: 2, points: 32000 });
+  });
+
+  it("reads draws with four, three or no deltas, all tenpai and all noten", () => {
+    expect(parseRoundResult(["流局", [2000, -1000, -1000, 0]], 3)).toEqual({
+      kind: "ryukyoku",
+      reason: "exhaustive",
+      deltas: [2000, -1000, -1000, 0],
+      tenpai: [0],
+    });
+    expect(parseRoundResult(["流局", [1000, -2000, 1000]], 3)).toEqual({
+      kind: "ryukyoku",
+      reason: "exhaustive",
+      deltas: [1000, -2000, 1000, 0],
+      tenpai: [0, 2],
+    });
+    expect(parseRoundResult(["流局"], 3)).toEqual({
+      kind: "ryukyoku",
+      reason: "exhaustive",
+      deltas: [0, 0, 0, 0],
+    });
+    expect(parseRoundResult(["全員聴牌"], 3)).toMatchObject({ tenpai: [0, 1, 2] });
+    expect(parseRoundResult(["全員不聴"], 3)).toMatchObject({ tenpai: [] });
+    expect(parseRoundResult(["九種九牌"], 3)).toEqual({
+      kind: "ryukyoku",
+      reason: "kyuushuKyuuhai",
+      deltas: [0, 0, 0, 0],
+    });
+  });
+
+  it("rejects a draw that gives the empty seat 3 points, like a win", () => {
+    const draw = (deltas: number[]) => () => parseRoundResult(["流局", deltas], 3);
+    expect(draw([1000, 1000, -3000, 1000])).toThrow(LogParseError);
+    expect(draw([1000, 1000, -3000, 1000])).toThrow(/draw gives the empty seat 3 points/);
+    expect(draw([0, 0, 0, -1000])).toThrow(LogParseError);
+    expect(() => parseRoundResult(["流局", [2000, -1000, -1000, 0]], 3)).not.toThrow();
+    // Four players: the same list is four real payments.
+    expect(parseRoundResult(["流局", [1000, 1000, -3000, 1000]], 4)).toEqual({
+      kind: "ryukyoku",
+      reason: "exhaustive",
+      deltas: [1000, 1000, -3000, 1000],
+      tenpai: [0, 1, 3],
+    });
+  });
+
+  it("reads Mahjong Soul's nukidora and keeps Tenhou's North tiles inside ドラ", () => {
+    expect(parseYakuText("抜きドラ(2飜)")).toEqual({ key: "nukidora", han: 2 });
+    expect(parseYakuText("Kita(1飜)")).toEqual({ key: "nukidora", han: 1 });
+    expect(parseYakuText("ドラ(4飜)")).toEqual({ key: "dora", han: 4 });
   });
 });

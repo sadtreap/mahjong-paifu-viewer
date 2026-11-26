@@ -1,0 +1,212 @@
+/*
+ * Standing walls (W3: 2D affine sprites, no 3D transform). The variables come from the seat layer
+ * (layers.module.css): --px/--py where the run starts, --wt/--ht/--th tile width, height and
+ * thickness, --ex/--ey the eye's foot, --t the lid scale, --L the run length in tiles.
+ *
+ * No matrix here may mirror (a mirrored sprite composited its whole seat layer, measured).
+ */
+
+/*
+ * The faces. Each keeps its base on the felt and shears its top edge by
+ * D = (t - 1) (xc - ex, py - ey); widths stay w. The container ignores the pointer (its untransformed
+ * box covered meld tiles); the faces take hits.
+ */
+.sprites {
+  position: absolute;
+  left: var(--px);
+  top: calc(var(--py) - var(--ht));
+  height: var(--ht);
+  display: flex;
+  align-items: flex-end;
+  pointer-events: none;
+}
+
+.face {
+  display: block;
+  flex: none;
+  width: var(--wt);
+  height: var(--ht);
+  border-radius: 9% / 7%;
+  background: linear-gradient(to bottom, rgb(255 255 255 / 0.1), rgb(0 0 0 / 0.12));
+  filter: brightness(0.84) saturate(0.92);
+  transform-origin: 50% 100%;
+  transform: matrix(
+    -1,
+    0,
+    calc((var(--t) - 1) * (var(--xc) - var(--exu)) / var(--htu) * -1),
+    calc((var(--t) - 1) * (var(--pyu) - var(--eyu)) / var(--htu) * -1),
+    0,
+    0
+  );
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.sprites .drawn,
+.lid .drawn {
+  display: block;
+  flex: none;
+  margin-left: calc(var(--wt) * 0.4);
+}
+
+/* The lids: the top faces at height ht are the footprint scaled by t about the eye's foot. */
+.lid {
+  position: absolute;
+  left: var(--px);
+  top: var(--py);
+  height: var(--th);
+  display: flex;
+  pointer-events: none;
+  transform-origin: calc(var(--ex) - var(--px)) calc(var(--ey) - var(--py));
+  scale: var(--t);
+}
+
+.lid > span,
+.lid .drawn > span {
+  display: block;
+  flex: none;
+  width: var(--wt);
+  height: 100%;
+  border-radius: 12% / 18%;
+  background: linear-gradient(
+    to bottom,
+    var(--tile-back-face) 0 36%,
+    #d8cfb8 36% 44%,
+    var(--tile-lid) 44%
+  );
+  box-shadow:
+    inset calc(var(--wt) * -0.04) 0 0 rgb(0 0 0 / 0.28),
+    inset calc(var(--wt) * 0.03) 0 0 rgb(255 255 255 / 0.35);
+}
+
+/* End cap of a side wall's near tile (an affine approximation of its decal). */
+.cap {
+  --cxu: var(--pxu);
+  --cyu: calc(var(--pyu) + var(--thu) / 2);
+  --dxu: calc((var(--t) - 1) * (var(--cxu) - var(--exu)));
+  --dyu: calc((var(--t) - 1) * (var(--cyu) - var(--eyu)));
+
+  position: absolute;
+  left: calc(var(--cxu) * var(--u));
+  top: var(--py);
+  width: var(--th);
+  height: var(--ht);
+  pointer-events: none;
+  transform-origin: 0 0;
+  transform: translate(calc(var(--dxu) * var(--u)), calc(var(--dyu) * var(--u)))
+    matrix(0, 1, calc(var(--dxu) / var(--htu) * -1), calc(var(--dyu) / var(--htu) * -1), 0, 0);
+  border-radius: 10% / 6%;
+  background: linear-gradient(to right, var(--tile-back-dark) 0 36%, #b9b09a 36% 44%, #d9d1bd 44%);
+}
+
+.left.cap {
+  --cxu: calc(var(--pxu) + var(--L) * var(--wu));
+}
+
+/* Soft contact shadow on the felt, on the wall's inner side. */
+.shadow {
+  position: absolute;
+  left: var(--px);
+  top: calc(var(--py) - var(--u) * 0.45);
+  width: calc(var(--L) * var(--wt));
+  height: calc(var(--u) * 0.5);
+  border-radius: 40%;
+  background: linear-gradient(to top, rgb(0 0 0 / 0.38), transparent);
+  pointer-events: none;
+}
+
+/* The far wall runs right to left in plane coordinates, its faces lean toward the viewer. */
+.top.sprites,
+.top.lid {
+  flex-direction: row-reverse;
+}
+
+.top.sprites .drawn,
+.top.lid .drawn {
+  margin: 0 calc(var(--wt) * 0.4) 0 0;
+}
+
+.top .face {
+  transform: matrix(
+    1,
+    0,
+    calc((var(--t) - 1) * (var(--xc) - var(--exu)) / var(--htu) * -1),
+    calc((var(--t) - 1) * (var(--pyu) - var(--eyu)) / var(--htu) * -1),
+    0,
+    0
+  );
+}
+
+.top.lid {
+  top: calc(var(--py) - var(--th));
+  transform-origin: calc(var(--ex) - var(--px)) calc(var(--ey) - var(--py) + var(--th));
+}
+
+.top.lid > span,
+.top.lid .drawn > span {
+  background: linear-gradient(
+    to top,
+    var(--tile-back-face) 0 36%,
+    #d8cfb8 36% 44%,
+    var(--tile-lid) 44%
+  );
+}
+
+.top.shadow {
+  top: var(--py);
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0.38), transparent);
+}
+
+/*
+ * The round-end reveal: the wall fades out (a cross-fade with the face-up hand, which fades in with
+ * a short slide) and unmounts after 260 ms.
+ */
+.leaving {
+  pointer-events: none;
+  animation: wall-leave 220ms linear both;
+}
+
+.leaving .face {
+  pointer-events: none;
+  animation: face-leave 240ms cubic-bezier(0.5, 0, 0.9, 0.6) both;
+}
+
+@keyframes wall-leave {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes face-leave {
+  to {
+    opacity: 0;
+    translate: 0 calc(var(--u) * 0.25);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leaving,
+  .leaving .face {
+    animation: none;
+    visibility: hidden;
+  }
+}
+
+@media (forced-colors: active) {
+  .face {
+    outline: 1px solid CanvasText;
+  }
+
+  .lid > span,
+  .lid .drawn > span,
+  .cap {
+    forced-color-adjust: none;
+    background: Canvas;
+    outline: 1px solid CanvasText;
+  }
+
+  .shadow {
+    display: none;
+  }
+}

@@ -1,0 +1,73 @@
+/* The console: 7..13 on both axes of the plane, a raised slab with an inset screen. */
+.console {
+  position: absolute;
+  left: calc(var(--u) * 7);
+  top: calc(var(--u) * 7);
+  width: calc(var(--u) * 6);
+  height: calc(var(--u) * 6);
+  display: grid;
+  place-content: center;
+  border-radius: calc(var(--u) * 0.55);
+  background: linear-gradient(160deg, #1b3329, var(--console-bg) 45%);
+  color: var(--console-fg);
+  text-align: center;
+  box-shadow:
+    inset 0 0 0 calc(var(--u) * 0.06) var(--console-line),
+    inset 0 calc(var(--u) * 0.08) 0 rgb(255 255 255 / 0.06),
+    0 calc(var(--u) * 0.3) 0 #07120d,
+    0 calc(var(--u) * 0.34) 0 #040a07,
+    0 calc(var(--u) * 0.5) calc(var(--u) * 0.5) rgb(0 0 0 / 0.45);
+}
+
+.screen {
+  display: grid;
+  place-items: center;
+  gap: calc(var(--u) * 0.08);
+  padding: calc(var(--u) * 0.2) calc(var(--u) * 0.35);
+  border-radius: calc(var(--u) * 0.3);
+  background: var(--console-screen);
+  box-shadow:
+    inset 0 0 0 calc(var(--u) * 0.04) var(--console-glow),
+    inset 0 0 calc(var(--u) * 0.4) rgb(80 200 150 / 0.1);
+}
+
+/* all: unset beats the global button rules, so the focus ring is drawn here. */
+.round {
+  all: unset;
+  padding: calc(var(--u) * 0.08) calc(var(--u) * 0.2);
+  border-radius: calc(var(--u) * 0.2);
+  font-weight: 700;
+  font-size: calc(var(--u) * 0.74);
+  line-height: 1;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Doubled class: beats the global button:hover background. */
+.round.round:hover {
+  background: rgb(255 255 255 / 0.08);
+}
+
+.round:focus-visible {
+  outline: calc(var(--u) * 0.12) solid var(--turn);
+  outline-offset: calc(var(--u) * 0.06);
+}
+
+.left {
+  font-size: calc(var(--u) * 0.46);
+  line-height: 1.2;
+  color: var(--console-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (forced-colors: active) {
+  .console {
+    border: 1px solid CanvasText;
+  }
+
+  .round:focus-visible {
+    outline-color: Highlight;
+  }
+}

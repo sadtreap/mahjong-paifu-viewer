@@ -25,3 +25,12 @@ export function writeStorage(name: string, value: string): void {
     // Ignore: persistence is optional.
   }
 }
+
+/** Best effort: deletes a key (e.g. one a newer format replaced); unavailable storage is ignored. */
+export function removeStorage(name: string): void {
+  try {
+    localStorage.removeItem(storageKey(name));
+  } catch {
+    // Ignore: there is nothing to delete.
+  }
+}

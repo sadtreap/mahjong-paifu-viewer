@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Quad, WinEvent } from "../core/model";
+import type { Quad, RyukyokuEvent, WinEvent } from "../core/model";
 import { I18nProvider } from "../i18n/I18nProvider";
 import type { MeldView } from "../replay/types";
-import { ResultPanel } from "./ResultPanel";
+import { DeltaTable } from "./DeltaTable";
+import { FinalStandings } from "./FinalStandings";
+import { DrawResult, WinResult } from "./ResultPanel";
 
 const names: Quad<string> = ["A", "B", "C", "D"];
 
@@ -26,9 +28,12 @@ function win(overrides: Partial<WinEvent>): WinEvent {
 }
 
 function renderResult(event: WinEvent | WinEvent[], melds: Quad<MeldView[]> = [[], [], [], []]) {
+  const wins = Array.isArray(event) ? event : [event];
   return render(
     <I18nProvider>
-      <ResultPanel results={Array.isArray(event) ? event : [event]} names={names} melds={melds} />
+      {wins.map((item) => (
+        <WinResult key={item.seat} win={item} names={names} melds={melds[item.seat]} />
+      ))}
     </I18nProvider>,
   );
 }
@@ -43,7 +48,7 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe("ResultPanel", () => {
+describe("WinResult", () => {
   it("names the limit instead of showing fu, as tenhou.net/6 JSON has none for limit hands", () => {
     renderResult(win({ fu: 40, limit: "mangan" }));
     expect(screen.getByText("5 han · Mangan · 12,000 points")).toBeTruthy();
@@ -85,5 +90,56 @@ describe("ResultPanel", () => {
     const [first, second] = screen.getAllByRole("group", { name: "Winning hand" });
     expect(within(first as HTMLElement).getByRole("group", { name: /^Pon/ })).toBeTruthy();
     expect(within(second as HTMLElement).queryByRole("group", { name: /^Pon/ })).toBeNull();
+  });
+});
+
+describe("three-player results", () => {
+  const sanmaNames: Quad<string> = ["A", "B", "C", ""];
+
+  it("lists only the playing seats in a draw and its deltas", () => {
+    const draw: RyukyokuEvent = {
+      type: "ryukyoku",
+      reason: "exhaustive",
+      deltas: [1000, -2000, 1000, 0],
+      tenpai: [0, 2],
+    };
+    render(
+      <I18nProvider>
+        <DrawResult draw={draw} names={sanmaNames} playerCount={3} />
+      </I18nProvider>,
+    );
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(1 + 3);
+  });
+
+  it("ranks only the playing seats", () => {
+    render(
+      <I18nProvider>
+        <FinalStandings scores={[-1000, 60000, 46000, 0]} names={sanmaNames} playerCount={3} />
+      </I18nProvider>,
+    );
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "1stB60,000",
+      "2ndC46,000",
+      "3rdA-1,000",
+    ]);
+  });
+});
+
+describe("DeltaTable", () => {
+  it("adds before → after scores when given", () => {
+    render(
+      <I18nProvider>
+        <DeltaTable
+          deltas={[-3900, 3900, 0, 0]}
+          names={names}
+          before={[25000, 24000, 25000, 26000]}
+        />
+      </I18nProvider>,
+    );
+    const rows = within(screen.getByRole("table")).getAllByRole("row");
+    expect(rows[1]?.textContent).toBe("A25,000 → 21,100-3,900");
+    expect(rows[2]?.textContent).toBe("B24,000 → 27,900+3,900");
+    expect(within(screen.getByRole("table")).getAllByRole("columnheader")).toHaveLength(3);
   });
 });

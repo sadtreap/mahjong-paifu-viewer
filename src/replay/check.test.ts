@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { GameLog, Quad, Round, RoundEvent, WinEvent } from "../core/model";
+import type {
+  GameLog,
+  Quad,
+  Round,
+  RoundEvent,
+  RyukyokuReason,
+  Seat,
+  WinEvent,
+} from "../core/model";
 import type { Tile } from "../core/tile";
 import {
   ankan,
@@ -9,12 +17,17 @@ import {
   dora,
   draw,
   kakan,
+  kita,
   makeGame,
   makeRound,
+  makeSanmaGame,
+  makeSanmaRound,
   pon,
   riichiAccepted,
   ryukyoku,
   sampleRound,
+  sampleSanmaGame,
+  sampleSanmaRound,
   tiles,
   tsumogiri,
   wallDraw,
@@ -614,9 +627,520 @@ describe("checkGame", () => {
   it("reports games without players or rounds", () => {
     const empty = checkGame(makeGame([], { players: [] as unknown as GameLog["players"] }));
     expect(empty.map((found: ReplayIssue) => found.message)).toEqual([
-      "A game needs exactly four players",
+      "A game needs exactly four player slots",
       "The game has no rounds",
     ]);
     expect(checkGame(null as unknown as GameLog)).toHaveLength(1);
+  });
+});
+
+const sanmaUnknownHands = (): Round["hands"] => [
+  tiles("?????????????"),
+  tiles("?????????????"),
+  tiles("?????????????"),
+  [],
+];
+
+/** A three-player East 1 where every hand is hidden. */
+const sanmaRound = (events: RoundEvent[], overrides: Partial<Round> = {}): Round =>
+  makeSanmaRound({ hands: sanmaUnknownHands(), events, ...overrides });
+
+/** Each seat draws a hidden tile and discards it, in turn order from seat 0. */
+function passTurns(count: number): RoundEvent[] {
+  return Array.from({ length: count }, (_, n) => {
+    const seat = (n % 3) as Seat;
+    return [draw(seat, "?"), tsumogiri(seat, "1z")];
+  }).flat();
+}
+
+describe("checkRound with three players", () => {
+  it("accepts consistent three-player rounds", () => {
+    expect(checkRound(sampleSanmaRound(), 3)).toEqual([]);
+    const exhaustive = wallRound({ playerCount: 3, draws: 55, results: [ryukyoku("exhaustive")] });
+    expect(checkRound(exhaustive, 3)).toEqual([]);
+    // Tsumo-son: the non-dealer's 1000-2000 tsumo is paid by two seats only.
+    const tsumo = win(1, 1, [-2000, 3000, -1000, 0], { tile: wallDraw(1, undefined, 3) });
+    const tsumoRound = wallRound({
+      playerCount: 3,
+      draws: 2,
+      keepLastDraw: true,
+      results: [tsumo],
+    });
+    expect(checkRound(tsumoRound, 3)).toEqual([]);
+    expect(checkRound(sanmaRound([draw(0, "?"), ryukyoku("kyuushuKyuuhai")]), 3)).toEqual([]);
+  });
+
+  it("finds the three-player sample inconsistent when it is replayed as four-player", () => {
+    const issues = checkRound(sampleSanmaRound());
+    expect(issues).toContainEqual(issue(-1, /^The starting hand of seat 3 has 0 tiles/));
+    expect(issues).toContainEqual(issue(1, /^Seat 0 declares kita in a four-player game$/));
+    expect(issues).toContainEqual(issue(17, /^Seat 0 draws out of turn \(seat 3 should draw/));
+    expect(checkRound(sampleSanmaRound(), 4)).toEqual(issues);
+  });
+
+  it("sets aside the drawn North, a chained North and a North from the hand", () => {
+    const round = makeSanmaRound({
+      hands: [tiles("111234567899p4z"), tiles("1112345678999s"), tiles("1199m112233556z"), []],
+      events: [
+        draw(0, "4z"),
+        kita(0),
+        draw(0, "4z"),
+        kita(0),
+        draw(0, "7z"),
+        kita(0),
+        draw(0, "2z"),
+        tsumogiri(0, "2z"),
+        ryukyoku("unknown"),
+      ],
+    });
+    expect(checkRound(round, 3)).toEqual([]);
+  });
+
+  it("reports a kita without a North and a kita of another tile", () => {
+    const noNorth = makeSanmaRound({ events: [draw(0, "5z"), kita(0), ryukyoku("unknown")] });
+    expect(checkRound(noNorth, 3)).toEqual([issue(1, /^Seat 0 has no 4z for its kita$/)]);
+    const otherTile = makeSanmaRound({
+      events: [
+        draw(0, "5z"),
+        kita(0, "5z"),
+        draw(0, "7z"),
+        tsumogiri(0, "7z"),
+        ryukyoku("unknown"),
+      ],
+    });
+    expect(checkRound(otherTile, 3)).toEqual([
+      issue(1, /^Seat 0 sets aside 5z as kita, which is not a North \(4z\)$/),
+    ]);
+  });
+
+  it("reports a kita in a four-player game", () => {
+    const round = makeRound({
+      hands: unknownHands(),
+      events: [draw(0, "4z"), kita(0), draw(0, "?"), tsumogiri(0, "1z"), ryukyoku("unknown")],
+    });
+    expect(checkRound(round)).toEqual([issue(1, /^Seat 0 declares kita in a four-player game$/)]);
+  });
+
+  it("gives the replacement draw to the seat that set the North aside", () => {
+    const otherSeat = sanmaRound([draw(0, "4z"), kita(0), draw(1, "?"), tsumogiri(1, "1z")]);
+    expect(checkRound(otherSeat, 3)).toContainEqual(
+      issue(2, /^Seat 1 draws out of turn \(seat 0 should draw next\)$/),
+    );
+    const beforeDrawing = sanmaRound([kita(0), draw(0, "?"), tsumogiri(0, "1z")]);
+    expect(checkRound(beforeDrawing, 3)).toEqual([
+      issue(0, /^Seat 0 declares kita out of turn \(seat 0 should draw next\)$/),
+      issue(0, /^Seat 0 holds 13 tiles before kita, expected 14/),
+      issue(2, /^The round ends without a win or draw result$/),
+    ]);
+  });
+
+  it("allows a kita in riichi", () => {
+    const round = sanmaRound([
+      draw(0, "?"),
+      discard(0, "1z", { riichi: true }),
+      riichiAccepted(0),
+      ...passTurns(3).slice(2),
+      draw(0, "4z"),
+      kita(0),
+      draw(0, "?"),
+      tsumogiri(0, "5z"),
+      ryukyoku("unknown"),
+    ]);
+    expect(checkRound(round, 3)).toEqual([]);
+    const fromWall = wallRound({
+      playerCount: 3,
+      seed: 33,
+      draws: 55,
+      riichiAt: [4],
+      kita: true,
+      results: [ryukyoku("exhaustive")],
+    });
+    const riichi = fromWall.events.findIndex((event) => event.type === "riichiAccepted");
+    expect(fromWall.events.slice(riichi)).toContainEqual(kita(1));
+    expect(checkRound(fromWall, 3)).toEqual([]);
+  });
+
+  it("reports a kita in riichi that sets aside a North from the locked hand", () => {
+    // Seat 1 declares riichi with a North in the hand; later it draws 5p and sets that North aside,
+    // which would put the 5p into the locked hand.
+    const riichiRound = (kitaTurn: RoundEvent[]) =>
+      makeSanmaRound({
+        hands: [tiles("1112345678999p"), tiles("1112345678s4z4z7z"), tiles("1199m112233556z"), []],
+        events: [
+          draw(0, "2z"),
+          tsumogiri(0, "2z"),
+          draw(1, "9s"),
+          discard(1, "7z", { riichi: true }),
+          riichiAccepted(1),
+          draw(2, "3z"),
+          tsumogiri(2, "3z"),
+          draw(0, "3p"),
+          tsumogiri(0, "3p"),
+          ...kitaTurn,
+          draw(2, "5z"),
+          tsumogiri(2, "5z"),
+          win(0, 2, [3000, 0, -2000, 0]),
+        ],
+      });
+    const drawnNorth = riichiRound([draw(1, "4z"), kita(1), draw(1, "6p"), tsumogiri(1, "6p")]);
+    expect(checkRound(drawnNorth, 3)).toEqual([]);
+    const handNorth = riichiRound([draw(1, "5p"), kita(1), draw(1, "6p"), tsumogiri(1, "6p")]);
+    expect(checkRound(handNorth, 3)).toEqual([
+      issue(10, /^Seat 1 is in riichi but sets aside 4z from the hand$/),
+    ]);
+    // The same as a discard is reported the same way.
+    const handDiscard = riichiRound([draw(1, "5p"), discard(1, "4z")]);
+    expect(checkRound(handDiscard, 3)).toEqual([
+      issue(10, /^Seat 1 is in riichi but discards 4z from the hand$/),
+    ]);
+    // Before riichi a North from the hand is fine.
+    const beforeRiichi = makeSanmaRound({
+      hands: [tiles("1112345678999p"), tiles("1112345678s4z4z7z"), tiles("1199m112233556z"), []],
+      events: [
+        draw(0, "2z"),
+        tsumogiri(0, "2z"),
+        draw(1, "5p"),
+        kita(1),
+        draw(1, "6p"),
+        tsumogiri(1, "6p"),
+        ryukyoku("unknown"),
+      ],
+    });
+    expect(checkRound(beforeRiichi, 3)).toEqual([]);
+  });
+
+  it("reports a kita right after a pon, before the seat draws", () => {
+    const afterPon = (turn: RoundEvent[]) =>
+      makeSanmaRound({
+        hands: [tiles("1112345678999p"), tiles("1112345678s4z66z"), tiles("1199m112233557z"), []],
+        events: [
+          draw(0, "6z"),
+          tsumogiri(0, "6z"),
+          pon(1, 0, "6z", "66z"),
+          ...turn,
+          draw(2, "2z"),
+          tsumogiri(2, "2z"),
+          win(0, 2, [1000, 0, -1000, 0]),
+        ],
+      });
+    expect(checkRound(afterPon([discard(1, "4z")]), 3)).toEqual([]);
+    expect(checkRound(afterPon([kita(1), draw(1, "9s"), tsumogiri(1, "9s")]), 3)).toEqual([
+      issue(3, /^Seat 1 declares kita right after calling pon$/),
+    ]);
+    // After a daiminkan the seat draws its replacement tile first, so a kita may follow.
+    const afterKan = makeSanmaRound({
+      hands: [tiles("1112345678999p"), tiles("112345678s4z666z"), tiles("1199m112233557z"), []],
+      events: [
+        draw(0, "6z"),
+        tsumogiri(0, "6z"),
+        daiminkan(1, 0, "6z", "666z"),
+        draw(1, "4z"),
+        kita(1),
+        draw(1, "9s"),
+        tsumogiri(1, "9s"),
+        ryukyoku("unknown"),
+      ],
+    });
+    expect(checkRound(afterKan, 3)).toEqual([]);
+  });
+
+  it("reports a kita on an empty wall, which leaves no tile to replace it", () => {
+    // The 55th and last draw of this wall is a North.
+    const last = wallRound({ playerCount: 3, seed: 911, draws: 55, keepLastDraw: true });
+    const lastDraw = last.events.at(-1);
+    expect(lastDraw).toStrictEqual(draw(0, "4z"));
+    const kitaOnLast = {
+      ...last,
+      events: [...last.events, kita(0), ryukyoku("exhaustive", [0, 0, 0, 0], { tenpai: [] })],
+    };
+    expect(checkRound(kitaOnLast, 3)).toEqual([
+      issue(
+        last.events.length,
+        /^Seat 0 declares kita with no tile left in the wall to replace it$/,
+      ),
+    ]);
+  });
+
+  it("allows a ron on a set-aside North and a tsumo on the replacement draw", () => {
+    const ronOnKita = (...results: WinEvent[]) =>
+      checkRound(sanmaRound([draw(0, "4z"), kita(0), ...results]), 3);
+    expect(ronOnKita(win(1, 0, [-3900, 3900, 0, 0], { tile: "4z" }))).toEqual([]);
+    expect(ronOnKita(win(1, 0, [-3900, 3900, 0, 0]), win(2, 0, [-2000, 0, 2000, 0]))).toEqual([]);
+    expect(ronOnKita(win(1, 0, [-3900, 3900, 0, 0], { tile: "5z" }))).toEqual([
+      issue(2, /^The ron tile 5z differs from the kita tile 4z$/),
+    ]);
+    expect(ronOnKita(win(1, 2, [0, 3900, -3900, 0]))).toEqual([
+      issue(2, /^Seat 1 wins by ron from seat 2, but the last discard or kan was by seat 0$/),
+    ]);
+    expect(checkRound(sanmaRound([win(1, 0, [-3900, 3900, 0, 0])]), 3)).toEqual([
+      issue(0, /^Seat 1 wins by ron, but there is no discard, kan or kita to win on$/),
+    ]);
+    const ponOnKita = sanmaRound([draw(0, "4z"), kita(0), pon(1, 0, "4z", "44z")]);
+    expect(checkRound(ponOnKita, 3)).toContainEqual(
+      issue(2, /^Seat 1 calls pon on 4z, but there is no discard to call$/),
+    );
+    const rinshan = sanmaRound([
+      draw(0, "4z"),
+      kita(0),
+      draw(0, "?"),
+      win(0, 0, [12000, -6000, -6000, 0]),
+    ]);
+    expect(checkRound(rinshan, 3)).toEqual([]);
+  });
+
+  it("counts every draw, replacement draws included, against the 55-tile wall", () => {
+    const withKita = (draws: number) =>
+      wallRound({ playerCount: 3, seed: 33, draws, kita: true, results: [ryukyoku("exhaustive")] });
+    const full = withKita(55);
+    expect(full.events.filter((event) => event.type === "kita")).toHaveLength(4);
+    expect(full.events.filter((event) => event.type === "draw")).toHaveLength(55);
+    expect(checkRound(full, 3)).toEqual([]);
+    const short = withKita(54);
+    expect(checkRound(short, 3)).toEqual([
+      issue(short.events.length - 1, /^Exhaustive draw with 1 tiles left in the wall$/),
+    ]);
+    const long = wallRound({
+      playerCount: 3,
+      draws: 55,
+      results: [draw(1, "?"), tsumogiri(1, "1z"), ryukyoku("exhaustive")],
+    });
+    expect(checkRound(long, 3)).toEqual([issue(110, /^Seat 1 draws from an empty wall$/)]);
+  });
+
+  it("does not count a kita as a kan", () => {
+    const round = sanmaRound([
+      draw(0, "4z"),
+      kita(0),
+      dora("3p"),
+      draw(0, "?"),
+      ryukyoku("unknown"),
+    ]);
+    expect(checkRound(round, 3)).toEqual([
+      issue(2, /^Dora indicator 3p is revealed without a kan$/),
+    ]);
+  });
+
+  it("reports a chi and accepts a pon across the empty chair", () => {
+    const callOnDiscard = (events: RoundEvent[]) =>
+      checkRound(sanmaRound([...events, ryukyoku("unknown")]), 3);
+    expect(callOnDiscard([draw(0, "?"), tsumogiri(0, "3s"), chi(1, 0, "3s", "24s")])).toEqual([
+      issue(2, /^Seat 1 calls chi in a three-player game$/),
+    ]);
+    const fromSeatTwo = [...passTurns(3).slice(0, 5), tsumogiri(2, "3s"), pon(0, 2, "3s", "33s")];
+    expect(callOnDiscard([...fromSeatTwo, discard(0, "5z")])).toEqual([]);
+    const fromSeatZero = [draw(0, "?"), tsumogiri(0, "3s"), pon(2, 0, "3s", "33s")];
+    expect(callOnDiscard([...fromSeatZero, discard(2, "5z")])).toEqual([]);
+  });
+
+  it("passes the turn from seat 2 back to seat 0", () => {
+    expect(checkRound(sanmaRound([...passTurns(4), ryukyoku("unknown")]), 3)).toEqual([]);
+    const emptyChair = sanmaRound([...passTurns(3), draw(3, "?"), tsumogiri(3, "1z")]);
+    expect(checkRound(emptyChair, 3)).toEqual([
+      issue(6, /^Seat 3 is the empty chair of a three-player game$/),
+      issue(6, /^Seat 3 draws out of turn \(seat 0 should draw next\)$/),
+      issue(6, /^Seat 3 holds 0 tiles before drawing, expected 13/),
+      issue(7, /^Seat 3 is the empty chair of a three-player game$/),
+      issue(7, /^The round ends without a win or draw result$/),
+    ]);
+  });
+
+  it("checks the noten payments of 2000 points", () => {
+    const drawWith = (deltas: Quad<number>, tenpai: Seat[]) =>
+      checkRound(
+        wallRound({
+          playerCount: 3,
+          draws: 55,
+          results: [ryukyoku("exhaustive", deltas, { tenpai })],
+        }),
+        3,
+      );
+    expect(drawWith([2000, -1000, -1000, 0], [0])).toEqual([]);
+    expect(drawWith([-1000, -1000, 2000, 0], [2])).toEqual([]);
+    expect(drawWith([1000, 1000, -2000, 0], [0, 1])).toEqual([]);
+    expect(drawWith([-2000, 1000, 1000, 0], [1, 2])).toEqual([]);
+    expect(drawWith([0, 0, 0, 0], [0, 1, 2])).toEqual([]);
+    expect(drawWith([0, 0, 0, 0], [])).toEqual([]);
+    expect(drawWith([3000, -1500, -1500, 0], [0])).toEqual([
+      issue(
+        110,
+        /^Draw deltas 3000, -1500, -1500, 0 do not match the payments 2000, -1000, -1000, 0 for tenpai seats \[0\]$/,
+      ),
+    ]);
+    expect(drawWith([1500, 1500, -3000, 0], [0, 1])).toEqual([
+      issue(110, /do not match the payments 1000, 1000, -2000, 0/),
+    ]);
+    expect(drawWith([2000, -1000, -1000, 0], [0, 3])).toEqual([
+      issue(110, /^The draw lists the empty seat 3 of a three-player game as tenpai$/),
+    ]);
+  });
+
+  it("reports abortive draws that need four players", () => {
+    for (const reason of ["suufonRenda", "suuchaRiichi", "sanchaHou"] as const) {
+      const round = sanmaRound([draw(0, "?"), tsumogiri(0, "4z"), ryukyoku(reason)]);
+      expect(checkRound(round, 3)).toEqual([
+        issue(2, new RegExp(`^A ${reason} draw cannot happen in a three-player game$`)),
+      ]);
+    }
+    const allowed: RyukyokuReason[] = ["suukaikan", "unknown"];
+    for (const reason of allowed) {
+      const round = sanmaRound([draw(0, "?"), tsumogiri(0, "4z"), ryukyoku(reason)]);
+      expect(checkRound(round, 3)).toEqual([]);
+    }
+  });
+
+  it("reports anything the empty seat 3 is given at the start", () => {
+    const start = (overrides: Partial<Round>) =>
+      checkRound(makeSanmaRound({ events: [ryukyoku("unknown")], ...overrides }), 3);
+    expect(start({ scores: [35000, 35000, 35000, 1000] })).toEqual([
+      issue(-1, /^The empty seat 3 of a three-player game starts with 1000 points instead of 0$/),
+    ]);
+    const dealt = makeSanmaRound().hands;
+    dealt[3] = tiles("4z");
+    expect(start({ hands: dealt })).toEqual([
+      issue(-1, /^The empty seat 3 of a three-player game is dealt 1 tiles instead of none$/),
+    ]);
+    const short = makeSanmaRound().hands;
+    short[0] = tiles("111234567899p");
+    expect(start({ hands: short })).toEqual([
+      issue(-1, /^The starting hand of seat 0 has 12 tiles instead of 13$/),
+    ]);
+    expect(start({ number: 4, dealer: 3 })).toEqual([
+      issue(-1, /^Invalid round number 4 in a three-player game$/),
+      issue(-1, /^Dealer seat 3 is the empty chair of a three-player game$/),
+    ]);
+    expect(start({ number: 3, dealer: 2 })).toEqual([]);
+  });
+
+  it("reports results that give the empty seat 3 a share", () => {
+    const ron = (result: RoundEvent) =>
+      checkRound(sanmaRound([draw(0, "?"), tsumogiri(0, "7z"), result]), 3);
+    expect(ron(win(1, 0, [-3900, 3900, 0, 100]))).toEqual([
+      issue(2, /^The empty seat 3 of a three-player game has a delta of 100 instead of 0$/),
+      issue(2, /^Win deltas add up to 100, but 0 riichi deposits/),
+    ]);
+    expect(ron(win(3, 0, [-3900, 0, 0, 3900]))).toContainEqual(
+      issue(2, /^Seat 3 is the empty chair of a three-player game$/),
+    );
+    expect(ron(win(1, 3, [0, 3900, 0, -3900]))).toContainEqual(
+      issue(2, /^The from seat 3 is the empty chair of a three-player game$/),
+    );
+    expect(ron(win(1, 0, [-3900, 3900, 0, 0], { pao: 3 }))).toEqual([
+      issue(2, /^The pao seat 3 is the empty chair of a three-player game$/),
+    ]);
+    expect(ron(win(1, 0, [-3900, 3900, 0, 0], { pao: 2 }))).toEqual([]);
+    const hands: Quad<Tile[] | null> = [null, tiles("123p"), null, []];
+    expect(ron(ryukyoku("unknown", [0, 0, 0, 0], { hands }))).toEqual([
+      issue(2, /^The draw reveals a hand for the empty seat 3 of a three-player game$/),
+    ]);
+    expect(ron(ryukyoku("unknown", [0, 0, 0, 0], { hands: [null, null, null, null] }))).toEqual([]);
+    // Four-player games keep seat 3 and accept it anywhere.
+    const fourPlayer = makeRound({
+      hands: unknownHands(),
+      events: [draw(0, "?"), tsumogiri(0, "7z"), win(1, 0, [-3900, 3900, 0, 0], { pao: 3 })],
+    });
+    expect(checkRound(fourPlayer)).toEqual([]);
+  });
+
+  it("reports 2m-8m and red 5m tiles in a three-player game", () => {
+    const hands = makeSanmaRound().hands;
+    hands[2] = tiles("1299m112233556z");
+    const round = makeSanmaRound({
+      hands,
+      doraIndicators: ["8m"],
+      events: [
+        draw(0, "0m"),
+        tsumogiri(0, "0m"),
+        draw(1, "2m"),
+        tsumogiri(1, "2m"),
+        ryukyoku("unknown"),
+      ],
+    });
+    expect(checkRound(round, 3)).toEqual([
+      issue(-1, /^2m appears in a three-player game, which has no 2m-8m$/),
+      issue(-1, /^8m appears in a three-player game, which has no 2m-8m$/),
+      issue(0, /^0m appears in a three-player game, which has no 2m-8m$/),
+    ]);
+    // The same tiles are fine with four players.
+    expect(checkRound({ ...round, scores: [25000, 25000, 25000, 25000] })).toContainEqual(
+      issue(-1, /^The starting hand of seat 3 has 0 tiles instead of 13$/),
+    );
+    expect(checkRound({ ...round, scores: [25000, 25000, 25000, 25000] })).not.toContainEqual(
+      issue(-1, /2m appears/),
+    );
+  });
+});
+
+describe("checkGame with three players", () => {
+  const game = (extra: Partial<GameLog> = {}) => ({ ...sampleSanmaGame(), ...extra });
+
+  it("accepts a consistent game", () => {
+    expect(game().players[3]).toEqual({ name: "" });
+    const kitaByRound = game().rounds.map(
+      (round) => round.events.filter((event) => event.type === "kita").length,
+    );
+    expect(kitaByRound).toEqual([3, 4, 0]);
+    expect(checkGame(game())).toEqual([]);
+    expect(checkGame(game({ finalScores: undefined }))).toEqual([]);
+  });
+
+  it("replays with the game's player count", () => {
+    const fourPlayer = checkGame(
+      game({ playerCount: 4, players: makeGame([]).players, finalScores: undefined }),
+    );
+    expect(fourPlayer).toContainEqual({
+      roundIndex: 0,
+      eventIndex: 1,
+      message: "Seat 0 declares kita in a four-player game",
+    });
+  });
+
+  it("validates the player count", () => {
+    expect(checkGame(game({ playerCount: 5 as unknown as 3 }))[0]).toEqual({
+      eventIndex: -1,
+      message: "Invalid player count 5",
+    });
+    const missing: Partial<GameLog> = makeGame([sampleRound()]);
+    delete missing.playerCount;
+    expect(checkGame(missing as GameLog)).toEqual([
+      { eventIndex: -1, message: "Invalid player count undefined" },
+    ]);
+  });
+
+  it("requires the placeholder player slot 3", () => {
+    const withPlayer = (player: GameLog["players"][3]) => {
+      const players = game().players;
+      players[3] = player;
+      return checkGame(game({ players }));
+    };
+    expect(withPlayer({ name: "" })).toEqual([]);
+    expect(withPlayer({ name: "D" })).toEqual([
+      {
+        eventIndex: -1,
+        message: 'Player slot 3 of a three-player game is {"name":"D"} instead of {"name":""}',
+      },
+    ]);
+    expect(withPlayer({ name: "", rank: "新人", danIndex: 0, rating: 1500 })).toHaveLength(1);
+    // Four-player games name their fourth player.
+    expect(checkGame(makeGame([sampleRound()]))).toEqual([]);
+  });
+
+  it("gives deposits left at the end to the top of the three players", () => {
+    const endsInDraw = (finalScores: Quad<number>) =>
+      checkGame(makeSanmaGame(game().rounds.slice(0, 2), { finalScores }));
+    expect(endsInDraw([34000, 29800, 40200, 0])).toEqual([]);
+    expect(endsInDraw([34000, 29800, 41200, 0])).toEqual([]);
+    expect(endsInDraw([34000, 29800, 40200, 1000])).toEqual([
+      expect.objectContaining({ message: expect.stringMatching(/1 riichi deposits left/) }),
+    ]);
+  });
+
+  it("tags start issues of the empty seat with the round index", () => {
+    const broken = game();
+    (broken.rounds[1] as Round).scores = [35000, 28800, 41200, 100];
+    expect(checkGame(broken)).toContainEqual({
+      roundIndex: 1,
+      eventIndex: -1,
+      message: "The empty seat 3 of a three-player game starts with 100 points instead of 0",
+    });
   });
 });

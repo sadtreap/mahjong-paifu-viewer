@@ -1,0 +1,283 @@
+.nav {
+  grid-area: nav;
+  display: grid;
+  gap: 4px;
+  align-content: end;
+}
+
+.row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.nav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0 8px;
+  font-size: 14px;
+  touch-action: manipulation;
+}
+
+.nav .icon {
+  width: 36px;
+  padding: 0;
+}
+
+.glyph {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+.nav .round {
+  min-width: 98px;
+  justify-content: space-between;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.roundName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.caret {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.turn {
+  display: inline-grid;
+  place-items: center;
+  min-width: 64px;
+  height: 36px;
+  color: var(--color-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* White on the accent: 5.2:1. The hover rule outranks the scene's button hover. */
+.nav .play {
+  min-width: 104px;
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent, #fff);
+  font-weight: 600;
+}
+
+.nav .play:hover:not([aria-disabled="true"]) {
+  border-color: var(--color-accent-hover, var(--color-accent));
+  background: var(--color-accent-hover, var(--color-accent));
+}
+
+.playGlyph {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.nav .speed {
+  min-width: 44px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gap {
+  flex: none;
+  width: 8px;
+}
+
+/* Grid areas of the phone layouts (ignored where the rows are flex boxes). */
+.pr {
+  grid-area: pr;
+}
+.rl {
+  grid-area: rl;
+}
+.nr {
+  grid-area: nr;
+}
+.pt {
+  grid-area: pt;
+}
+.tl {
+  grid-area: tl;
+}
+.nt {
+  grid-area: nt;
+}
+.pk {
+  grid-area: pk;
+}
+.ps {
+  grid-area: ps;
+}
+.pl {
+  grid-area: pl;
+}
+.ns {
+  grid-area: ns;
+}
+.nk {
+  grid-area: nk;
+}
+.sp {
+  grid-area: sp;
+}
+
+/* Phone landscape: a 3-column block in the right rail. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .nav {
+    grid-template-columns: 40px minmax(0, 1fr) 40px;
+    grid-template-areas: "pr rl nr" "pt tl nt" "ps pl ns" "pk sp nk";
+    gap: 5px;
+    align-content: start;
+    padding: 6px 6px 0;
+    background: var(--dock-bg);
+  }
+
+  .row {
+    display: contents;
+  }
+
+  .gap {
+    display: none;
+  }
+
+  .nav button,
+  .turn {
+    width: auto;
+    min-width: 0;
+    height: 40px;
+  }
+
+  .nav .icon {
+    width: auto;
+  }
+
+  .nav .round {
+    min-width: 0;
+    padding: 0 6px;
+    font-size: 13px;
+  }
+
+  /* The rail is narrow on small phones: the round name keeps the room, the caret goes. */
+  .nav {
+    container-type: inline-size;
+  }
+
+  @container (max-width: 180px) {
+    .caret {
+      display: none;
+    }
+  }
+
+  .nav .play {
+    min-width: 0;
+  }
+
+  .playLabel {
+    display: none;
+  }
+
+  .nav .speed {
+    justify-self: center;
+    width: 56px;
+    min-width: 0;
+  }
+}
+
+/* Tablet portrait: one row of twelve controls. */
+@media (orientation: portrait) and (min-width: 600px) {
+  .nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .row {
+    display: contents;
+  }
+
+  .nav button {
+    height: 42px;
+  }
+
+  .nav .icon {
+    width: 42px;
+  }
+}
+
+/* Phone portrait: the buttons join the dock's 7-column grid (the turn label, key moments and
+   speed are not rendered; they live in the ⋯ menu and the status prefix). */
+@media (orientation: portrait) and (max-width: 599px) {
+  .nav,
+  .row {
+    display: contents;
+  }
+
+  .gap {
+    display: none;
+  }
+
+  .nav button {
+    width: auto;
+    min-width: 0;
+    height: 46px;
+    padding: 0;
+  }
+
+  .nav .icon {
+    width: auto;
+  }
+
+  .nav .round {
+    min-width: 0;
+    height: 40px;
+    padding: 0 8px;
+    font-size: 14px;
+  }
+
+  .nav .play {
+    min-width: 0;
+  }
+
+  .playLabel {
+    display: none;
+  }
+
+  .playGlyph {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+@media (orientation: portrait) and (max-width: 359px) {
+  .nav .round {
+    justify-content: center;
+    overflow: hidden;
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+
+  .caret {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .nav .play {
+    border: 2px solid ButtonText;
+  }
+
+  .nav .play[aria-pressed="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+  }
+}

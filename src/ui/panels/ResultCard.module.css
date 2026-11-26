@@ -1,0 +1,198 @@
+.card {
+  display: grid;
+  gap: 0.75rem;
+  cursor: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  animation: cardIn 150ms ease-out both;
+}
+
+/* Docked in the review rail: the page theme. Winning hands wrap to two rows of 24 px tiles. */
+.docked {
+  --result-tile-w: 24px;
+
+  padding: 12px;
+  border: 2px solid var(--color-accent);
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-fg);
+}
+
+/* Over the stage: a layer the size of the stage that takes no pointer input, and the card in it. */
+.layer {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: rgb(5 10 8 / 0.3);
+  pointer-events: none;
+}
+
+.overlay {
+  --result-tile-w: 28px;
+  --result-value: var(--card-value);
+  --color-fg: var(--card-fg);
+  --color-muted: var(--tip-muted);
+  --color-gain: var(--card-gain);
+  --color-loss: var(--card-loss);
+  --color-border: rgb(255 255 255 / 0.16);
+  --color-surface: transparent;
+
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  translate: -50% 0;
+  width: min(34rem, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  padding: 14px 16px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 14px;
+  background: var(--card-bg);
+  color: var(--card-fg);
+  box-shadow: 0 10px 40px rgb(0 0 0 / 0.5);
+  pointer-events: auto;
+}
+
+/* Two yaku columns when the card is wide enough (it is 34rem wide from 600 px viewports). */
+@media (min-width: 600px) {
+  .overlay {
+    --result-yaku-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Portrait: the card stays on the stage (it scrolls, its buttons stay in view), so the dock below keeps working. */
+@media (orientation: portrait) {
+  .overlay {
+    top: 4px;
+    max-height: calc(100% - 8px);
+  }
+}
+
+.others {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Over a small stage the card scrolls: Hide and Next round stay in view at its bottom. */
+.overlay .actions {
+  position: sticky;
+  bottom: -14px;
+  margin: 0 -16px -14px;
+  padding: 8px 16px 14px;
+  border-radius: 0 0 14px 14px;
+  background: linear-gradient(var(--card-bg), var(--card-bg)), var(--room-1);
+}
+
+/*
+ * More below the fold (data-more, ResultCard useMoreBelow): the lines going under the button bar
+ * fade out and the bar casts a shadow up, so the yaku and point changes read as scrollable.
+ */
+.overlay[data-more] .actions {
+  box-shadow: 0 -10px 14px -8px rgb(0 0 0 / 0.7);
+}
+
+.overlay[data-more] .actions::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 28px;
+  background: linear-gradient(transparent, var(--card-bg));
+  pointer-events: none;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
+.overlay .button {
+  border-color: rgb(255 255 255 / 0.2);
+  background: var(--card-btn);
+  color: var(--card-fg);
+}
+
+.overlay .button:hover {
+  background: color-mix(in srgb, var(--card-btn) 80%, #fff);
+}
+
+.primary,
+.overlay .primary {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent, #fff);
+  font-weight: 600;
+}
+
+.overlay .primary {
+  border-color: var(--card-btn-primary);
+  background: var(--card-btn-primary);
+  color: #fff;
+}
+
+.primary:hover:not(:disabled),
+.overlay .primary:hover {
+  background: var(--color-accent-hover, var(--color-accent));
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* The docked card after Hide. */
+.collapsed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-accent);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+.summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .overlay,
+  .docked,
+  .collapsed {
+    border: 2px solid CanvasText;
+  }
+
+  .layer {
+    background: none;
+  }
+}

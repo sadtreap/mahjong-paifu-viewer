@@ -82,3 +82,52 @@ describe("parseSeatActions", () => {
     expect(() => parseSeatActions(0, null, [])).toThrow(LogParseError);
   });
 });
+
+describe("parseSeatActions in three-player logs", () => {
+  it("reads a kita and the draws after it", () => {
+    const { discards } = parseSeatActions(0, [44, 11, 42, 24], ["f44", 60, "f44", 46], 3);
+    expect(discards).toEqual([
+      { kind: "kita", tile: "4z" },
+      // 60 is the replacement draw.
+      { kind: "discard", tile: "1m", tsumogiri: true, riichi: false },
+      // A North from the hand: the take at its index is another tile.
+      { kind: "kita", tile: "4z" },
+      { kind: "discard", tile: "6z", tsumogiri: false, riichi: false },
+    ]);
+  });
+
+  it("rejects a kita in a four-player game and kita entries other than f44", () => {
+    expect(() => parseSeatActions(0, [44], ["f44"])).toThrow(LogParseError);
+    expect(() => parseSeatActions(0, [44], ["f44"], 4)).toThrow(LogParseError);
+    for (const item of ["f45", "f60", "f4", "f", "f4444", "r44f"]) {
+      expect(() => parseSeatActions(0, [44], [item], 3), item).toThrow(LogParseError);
+    }
+  });
+
+  it("reads call sources with four-seat positions around the empty seat 3", () => {
+    const from = (seat: 0 | 1 | 2, call: string) => {
+      const [take] = parseSeatActions(seat, [call], [], 3).takes;
+      return take?.kind === "draw" ? undefined : take?.from;
+    };
+    // Seats 0 and 2 call each other at the toimen position.
+    expect(from(0, "45p4545")).toBe(2);
+    expect(from(0, "39m393939")).toBe(2);
+    expect(from(2, "45p4545")).toBe(0);
+    expect(from(0, "4545p45")).toBe(1);
+    expect(from(1, "p454545")).toBe(0);
+    expect(from(1, "m39393939")).toBe(0);
+    expect(from(1, "4545p45")).toBe(2);
+    expect(from(2, "p454545")).toBe(1);
+    // Positions that point at the empty seat.
+    for (const [seat, call] of [
+      [0, "p454545"],
+      [1, "45p4545"],
+      [2, "4545p45"],
+      [2, "393939m39"],
+    ] as const) {
+      expect(() => parseSeatActions(seat, [call], [], 3), `${seat} ${call}`).toThrow(LogParseError);
+      // The same call is fine with four players.
+      expect(parseSeatActions(seat, [call], []).takes[0]).toMatchObject({ from: 3 });
+    }
+  });
+});

@@ -2,20 +2,24 @@
  * Rebuilds the chronological event stream of a tenhou.net/6 round from the per-seat lists.
  *
  * The format stores each seat's takes and discards separately, so the turn order has to be
- * replayed: after a discard the turn passes to the shimocha unless another seat's next take is a
- * call of that exact tile from that seat, kans give the same seat a replacement draw, and the
- * round ends when the lists run out. The only real ambiguity is a call whose tile the discarder
- * throws again later before the caller draws (or a pon and a chi waiting on the same tile): the
- * call may belong to either discard. Those choice points are explored depth first, with the
- * tracked hands (a discarded or called tile must be in the hand) and the round result pruning the
- * wrong branches. The approach follows convlog (Equim-chan/mjai-reviewer), reimplemented here.
+ * replayed: after a discard the turn passes to the next playing seat (seat 2 hands it to seat 0
+ * with three players) unless another seat's next take is a call of that exact tile from that seat,
+ * kans and kita give the same seat a replacement draw, and the round ends when the lists run out.
+ * The only real ambiguity is a call whose tile the discarder throws again later before the caller
+ * draws (or a pon and a chi waiting on the same tile): the call may belong to either discard. Those
+ * choice points are explored depth first, with the tracked hands (a discarded or called tile must
+ * be in the hand) and the round result pruning the wrong branches. A kita adds no choice point.
+ * The approach follows convlog (Equim-chan/mjai-reviewer), reimplemented here.
  */
 
-import type { Quad, RoundEvent, Seat } from "../../core/model";
+import type { PlayerCount, Quad, RoundEvent, Seat } from "../../core/model";
+import { activeSeats, nextSeat } from "../../core/players";
 import type { KnownTile } from "../../core/tile";
 import type { SeatActions } from "./actions";
 
 export interface InterleaveInput {
+  /** With three players, seat 3 has no tiles and the turn passes from seat 2 to seat 0. */
+  playerCount: PlayerCount;
   dealer: Seat;
   haipai: Quad<KnownTile[]>;
   seats: Quad<SeatActions>;
@@ -44,14 +48,8 @@ interface SimulationOptions {
 /** Upper bound on replays per round, so a malformed log cannot make the search explode. */
 const MAX_ATTEMPTS = 5000;
 
-/** Choice meaning "nobody calls now": the shimocha draws. */
+/** Choice meaning "nobody calls now": the next seat in turn order draws. */
 const PASS = -1;
-
-const SEATS: readonly Seat[] = [0, 1, 2, 3];
-
-function shimocha(seat: Seat): Seat {
-  return ((seat + 1) % 4) as Seat;
-}
 
 /**
  * Replays the round once. At every choice point with several options, `choices[n]` picks the
@@ -64,7 +62,8 @@ function simulate(
   choices: readonly number[],
   counts: number[],
 ): Interleaved | null {
-  const { seats, doraIndicators } = input;
+  const { seats, doraIndicators, playerCount } = input;
+  const players = activeSeats(playerCount);
   const hands = input.haipai.map((hand) => [...hand]) as Quad<KnownTile[]>;
   const takeIndex: Quad<number> = [0, 0, 0, 0];
   const discardIndex: Quad<number> = [0, 0, 0, 0];
@@ -98,7 +97,7 @@ function simulate(
   };
   const removeTiles = (seat: Seat, tiles: readonly KnownTile[]) =>
     tiles.every((tile) => removeTile(seat, tile));
-  const allTaken = () => SEATS.every((seat) => takeIndex[seat] === seats[seat].takes.length);
+  const allTaken = () => players.every((seat) => takeIndex[seat] === seats[seat].takes.length);
 
   for (;;) {
     const actions = seats[actor];
@@ -168,6 +167,10 @@ function simulate(
     if (doraAtDiscard) {
       if (action.kind === "kakan") {
         doraAtDraw = true;
+      } else if (action.kind === "kita") {
+        // Tenhou reveals the open kan's indicator after the kita, before its replacement draw.
+        doraAtDraw = true;
+        doraAtDiscard = false;
       } else {
         revealDora();
         doraAtDiscard = false;
@@ -194,6 +197,11 @@ function simulate(
         return null;
       }
       events.push({ type: "ankan", seat: actor, tiles: [...action.tiles] });
+    } else if (action.kind === "kita") {
+      if (!removeTile(actor, action.tile)) {
+        return null;
+      }
+      events.push({ type: "kita", seat: actor, tile: action.tile });
     } else {
       if (!removeTile(actor, action.tile)) {
         return null;
@@ -202,11 +210,15 @@ function simulate(
     }
 
     if (allTaken()) {
-      // Nothing more from anyone after this action: ron, chankan or a draw.
+      // Nothing more from anyone after this action: ron (also on a kita), chankan or a draw.
       break;
     }
     if (action.kind === "ankan") {
       revealDora();
+      continue;
+    }
+    if (action.kind === "kita") {
+      // The same seat's next take is the replacement draw; no turn passes.
       continue;
     }
     if (action.kind === "kakan") {
@@ -219,7 +231,7 @@ function simulate(
     const discarder = actor;
     const ponOrKan: Seat[] = [];
     const chi: Seat[] = [];
-    for (const seat of SEATS) {
+    for (const seat of players) {
       const next = seats[seat].takes[takeIndex[seat]];
       if (next && next.kind !== "draw" && next.from === discarder && next.tile === tile) {
         (next.kind === "chi" ? chi : ponOrKan).push(seat);
@@ -242,14 +254,14 @@ function simulate(
       pick = candidates[choice] ?? PASS;
     }
     if (pick === PASS) {
-      actor = shimocha(discarder);
+      actor = nextSeat(discarder, playerCount);
       mustDraw = candidates.length > 0;
     } else {
       actor = pick;
     }
   }
 
-  const finished = SEATS.every(
+  const finished = players.every(
     (seat) =>
       takeIndex[seat] === seats[seat].takes.length &&
       discardIndex[seat] === seats[seat].discards.length,

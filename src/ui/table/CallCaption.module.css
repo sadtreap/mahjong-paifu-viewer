@@ -1,0 +1,127 @@
+.captions {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+[data-overlay] .captions {
+  visibility: hidden;
+}
+
+/* Projected anchor (X, Y) in plane units, as in geometry.ts project(). */
+.caption {
+  --z: calc((20 - var(--Y)) / 20);
+  --s: calc(var(--k) / (var(--k) + var(--z) * var(--sin)));
+
+  position: absolute;
+  z-index: 3;
+  left: calc(50% + (var(--X) - 10) / 20 * var(--s) * var(--S));
+  bottom: calc(var(--S) * (var(--below) + var(--z) * var(--cos) * var(--s)));
+  translate: -50% 50%;
+  /*
+   * Between the console's side edges (7.95..12.05), whose scores run across its strips. "Riichi",
+   * the longest, is about 4.6 em wide with its padding: 2.8 units.
+   */
+  max-width: calc(var(--u) * 4 * var(--s));
+  overflow: hidden;
+  /*
+   * 1.1 em (0.66 u) deep: at the steepest tilt the upper strip is 1.43 units of felt foreshortened
+   * to 0.72 u on screen, so the band fits it with a margin (geometry.test.ts checks every preset).
+   */
+  padding: 0.06em 0.5em 0.04em;
+  font:
+    italic 900 clamp(12px, calc(var(--u) * 0.6), 40px) / 1 system-ui,
+    sans-serif;
+  color: #fff;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  -webkit-text-stroke: max(3px, 0.09em) #4a0f0a;
+  paint-order: stroke fill;
+  text-shadow:
+    0 0.06em 0 #4a0f0a,
+    0 0 0.5em rgb(0 0 0 / 0.55);
+  /* Opaque: whatever the band touches on the console never shows through the title. */
+  background: linear-gradient(
+    100deg,
+    transparent 0 6%,
+    var(--console-screen) 14% 86%,
+    transparent 94%
+  );
+  pointer-events: none;
+  animation: caption-pop 700ms ease-out both;
+}
+
+.win {
+  color: #ffd65a;
+  -webkit-text-stroke-color: #3a2400;
+  text-shadow:
+    0 0.06em 0 #3a2400,
+    0 0 0.6em rgb(255 190 40 / 0.55);
+}
+
+/* The caller's side, where the caption slides in from. */
+.caption[data-side="bottom"] {
+  --from: 0, 0.5em;
+}
+
+.caption[data-side="top"] {
+  --from: 0, -0.5em;
+}
+
+.caption[data-side="left"] {
+  --from: -0.8em, 0;
+}
+
+.caption[data-side="right"] {
+  --from: 0.8em, 0;
+}
+
+@keyframes caption-pop {
+  0% {
+    scale: 0.6;
+    opacity: 0;
+    transform: translate(var(--from, 0, 0));
+  }
+
+  15% {
+    scale: 1.08;
+    opacity: 1;
+    transform: none;
+  }
+
+  30% {
+    scale: 1;
+  }
+
+  85% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Reduced motion: shown still for 700 ms, then gone. */
+@media (prefers-reduced-motion: reduce) {
+  .caption {
+    animation: caption-hold 700ms step-end both;
+  }
+}
+
+@keyframes caption-hold {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .caption {
+    forced-color-adjust: none;
+    border: 2px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    -webkit-text-stroke: 0;
+    text-shadow: none;
+  }
+}

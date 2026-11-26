@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest";
-import type { GameRules } from "../core/model";
+import type { GameRules, Quad, WinEvent } from "../core/model";
 import { YAKU_KEYS } from "../core/yaku";
 import { MESSAGES } from "../i18n/messages";
 import {
   discardLabel,
   formatDelta,
   formatPoints,
+  logDate,
   meldLabel,
   playerNames,
   rankLabel,
+  resultSummary,
   roundLabel,
+  roundShortLabel,
   rulesLabel,
+  sourceLabel,
   standings,
   tileLabel,
+  winValueLabel,
   yakuLabel,
   yakuValueLabel,
 } from "./labels";
@@ -204,6 +209,124 @@ describe("standings", () => {
       [1, 3],
       [3, 4],
     ]);
+  });
+});
+
+describe("standings with three players", () => {
+  it("never ranks the empty chair", () => {
+    const ranked = standings([30000, 40000, 38000, 0], 3);
+    expect(ranked.map((s) => [s.seat, s.place])).toEqual([
+      [1, 1],
+      [2, 2],
+      [0, 3],
+    ]);
+    // Even when the empty chair's placeholder would outrank a negative score.
+    expect(standings([-5000, 60000, 50000, 0], 3).map((s) => s.seat)).toEqual([1, 2, 0]);
+  });
+});
+
+describe("roundShortLabel", () => {
+  it("is short in every language", () => {
+    const round = { wind: 0 as const, number: 3, honba: 1 };
+    expect(roundShortLabel(en, round)).toBe("E3-1");
+    expect(roundShortLabel(ko, round)).toBe("동3-1");
+    expect(roundShortLabel(ja, round)).toBe("東3-1");
+    expect(roundShortLabel(en, { wind: 1, number: 2, honba: 0 })).toBe("S2");
+  });
+});
+
+describe("rulesLabel with the player count", () => {
+  const rules: GameRules = { redFives: true, length: "east", room: "general", openTanyao: true };
+
+  it("marks three-player games, structured or not", () => {
+    expect(rulesLabel(en, rules, 3)).toBe(
+      "Three-player · General room · East-only game · Open tanyao · Red fives",
+    );
+    expect(rulesLabel(en, rules, 4)).toBe(
+      "General room · East-only game · Open tanyao · Red fives",
+    );
+    expect(rulesLabel(en, { redFives: true, description: "Gold room" }, 3)).toBe(
+      "Three-player · Gold room",
+    );
+    expect(rulesLabel(ko, rules, 3).startsWith("3인 대국")).toBe(true);
+  });
+});
+
+describe("results", () => {
+  const names: Quad<string> = ["A", "B", "C", "D"];
+  const win = (extra: Partial<WinEvent>): WinEvent => ({
+    type: "win",
+    seat: 0,
+    from: 0,
+    deltas: [12000, -4000, -4000, -4000],
+    han: 6,
+    fu: 30,
+    limit: "haneman",
+    points: 12000,
+    ...extra,
+  });
+
+  it("names a win's value, without fu under a limit", () => {
+    expect(winValueLabel(en, "en", win({}))).toBe("6 han · Haneman · 12,000 points");
+    expect(winValueLabel(en, "en", win({ han: 2, fu: 40, limit: undefined, points: 2600 }))).toBe(
+      "2 han · 40 fu · 2,600 points",
+    );
+    expect(
+      winValueLabel(en, "en", win({ yaku: [{ key: "kokushiMusou13", han: 26, yakuman: true }] })),
+    ).toBe("2× Yakuman · 12,000 points");
+  });
+
+  it("summarizes wins and draws in one line", () => {
+    expect(resultSummary(en, [win({})], names, "en")).toBe(
+      "A wins by tsumo · 6 han · Haneman · 12,000 points",
+    );
+    expect(
+      resultSummary(
+        en,
+        [
+          win({ seat: 1, from: 3 }),
+          win({ seat: 2, from: 3, han: 1, fu: 30, limit: undefined, points: 1000 }),
+        ],
+        names,
+        "en",
+      ),
+    ).toBe(
+      "B wins by ron off D · 6 han · Haneman · 12,000 points / C wins by ron off D · 1 han · 30 fu · 1,000 points",
+    );
+    const draw = (tenpai?: Array<0 | 1 | 2 | 3>) =>
+      resultSummary(
+        en,
+        [{ type: "ryukyoku", reason: "exhaustive", deltas: [0, 0, 0, 0], tenpai }],
+        names,
+        "en",
+      );
+    expect(draw([1, 2])).toBe("Exhaustive draw · tenpai: B and C");
+    expect(draw([])).toBe("Exhaustive draw · nobody tenpai");
+    expect(draw()).toBe("Exhaustive draw");
+    expect(
+      resultSummary(
+        ja,
+        [{ type: "ryukyoku", reason: "exhaustive", deltas: [0, 0, 0, 0], tenpai: [0, 2] }],
+        names,
+        "ja",
+      ),
+    ).toContain("聴牌：A、C");
+  });
+});
+
+describe("source", () => {
+  it("reads the day from a Tenhou log id", () => {
+    expect(logDate("en", "2000050417gm-0089-0000-0123abcd")).toBe("May 4, 2000");
+    expect(logDate("en", "2000023117gm-0089-0000-0123abcd")).toBeNull();
+    expect(logDate("en", "not-an-id")).toBeNull();
+    expect(logDate("en", undefined)).toBeNull();
+  });
+
+  it("names the format, with the day when known", () => {
+    expect(sourceLabel(en, "en", { format: "mjlog", id: "2000050417gm-0089-0000-0123abcd" })).toBe(
+      "Tenhou mjlog XML · May 4, 2000",
+    );
+    expect(sourceLabel(en, "en", { format: "mjai" })).toBe("mjai JSONL");
   });
 });
 

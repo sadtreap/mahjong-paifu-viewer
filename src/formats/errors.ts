@@ -12,7 +12,13 @@ export type LogErrorCode =
   | "decompress"
   /** The format was recognized but the content is malformed. */
   | "invalid"
-  /** Not a four-player game. */
+  /**
+   * Not a three- or four-player game (e.g. an mjai name list of another length), or the log
+   * contradicts itself about its number of players: what it declares (mjlog GO type, tenhou.net/6
+   * ratingc or rule text, mjai num_players) disagrees with who it seats and deals in, or with
+   * itself. Anything a seat does, scores or pays in a log whose player count is settled is
+   * "invalid" instead.
+   */
   | "unsupportedPlayers"
   /** Larger than any real log (protects the tab from huge or crafted input). */
   | "tooLarge";

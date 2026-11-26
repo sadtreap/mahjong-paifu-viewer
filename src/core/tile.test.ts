@@ -61,4 +61,17 @@ describe("tile helpers", () => {
     expect(doraFromIndicator("7z")).toBe("5z");
     expect(doraFromIndicator("5z")).toBe("6z");
   });
+
+  it("skips 2m-8m when finding the dora of a three-player game", () => {
+    expect(doraFromIndicator("1m", 3)).toBe("9m");
+    expect(doraFromIndicator("9m", 3)).toBe("1m");
+    expect(doraFromIndicator("9p", 3)).toBe("1p");
+    expect(doraFromIndicator("0s", 3)).toBe("6s");
+    expect(doraFromIndicator("4z", 3)).toBe("1z");
+    expect(doraFromIndicator("7z", 3)).toBe("5z");
+    // Four-player games, the default, keep the plain order.
+    expect(doraFromIndicator("1m")).toBe("2m");
+    expect(doraFromIndicator("1m", 4)).toBe("2m");
+    expect(doraFromIndicator("9m", 4)).toBe("1m");
+  });
 });

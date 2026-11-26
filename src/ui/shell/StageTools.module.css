@@ -1,0 +1,231 @@
+/*
+ * The stage toolbar. Wide and laptop: a vertical stack at the stage's top right (a child of
+ * .player, beside the far rail, covering no tiles). Elsewhere it takes the `tools` grid area of
+ * Viewer.module.css: a row in the portrait top strip, or the bottom of the phone-landscape rail.
+ * The media queries are breakpoints.ts's strings.
+ */
+.tools {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 8px;
+  background: rgb(20 28 25 / 0.86);
+  color: #e9ece9;
+  font-size: 20px;
+  touch-action: manipulation;
+}
+
+.button:hover:not(:disabled, [aria-disabled="true"]) {
+  background: #26312d;
+}
+
+.button[aria-pressed="true"],
+.button[aria-expanded="true"] {
+  border-color: rgb(255 255 255 / 0.4);
+  background: #2b3d35;
+}
+
+.icon {
+  display: block;
+}
+
+.sep {
+  flex: none;
+  height: 6px;
+}
+
+/* Wraps a button with its popup menu (seats, ⋯). */
+.anchor {
+  position: relative;
+  display: flex;
+}
+
+/* The current seat's wind on the point-of-view button. */
+.badge {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 2px;
+  border-radius: 4px;
+  background: #3a4a43;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
+.dealer {
+  background: var(--dealer-bg);
+  color: var(--dealer-fg);
+}
+
+.menu {
+  position: absolute;
+  z-index: 30;
+  right: calc(100% + 6px);
+  top: 0;
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  min-width: 12rem;
+  max-width: min(18rem, calc(100vw - 24px));
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-fg);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.45);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 10px 6px 8px;
+  border: 0;
+  border-left: 4px solid var(--seat);
+  border-radius: 6px;
+  background: none;
+  text-align: start;
+}
+
+.item[aria-checked="true"] {
+  background: color-mix(in srgb, var(--seat) 16%, var(--color-surface));
+  font-weight: 700;
+}
+
+.wind {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--color-surface-alt);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .tools {
+    grid-area: tools;
+    position: static;
+    flex-direction: row;
+    gap: 5px;
+    align-self: end;
+    padding: 4px 6px 6px;
+    background: var(--dock-bg);
+  }
+
+  .button {
+    width: auto;
+    height: 34px;
+  }
+
+  .tools > .button,
+  .tools > .anchor {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .anchor > .button {
+    flex: 1;
+  }
+
+  .sep {
+    display: none;
+  }
+
+  .menu {
+    top: auto;
+    right: 0;
+    bottom: calc(100% + 6px);
+  }
+}
+
+@media (orientation: portrait) {
+  .tools {
+    grid-area: tools;
+    position: static;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    margin: 6px 6px 4px;
+  }
+
+  .sep {
+    width: 4px;
+    height: auto;
+  }
+
+  .menu {
+    top: calc(100% + 6px);
+    right: 0;
+  }
+}
+
+@media (orientation: portrait) and (max-width: 599px) {
+  .button {
+    width: 34px;
+    height: 34px;
+  }
+}
+
+/* Below 360 px only the seat menu and ⋯ stay; hands and 3D are in the ⋯ menu. */
+@media (orientation: portrait) and (max-width: 359px) {
+  .hands,
+  .view {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .button {
+    border: 1px solid ButtonText;
+  }
+
+  .button[aria-pressed="true"],
+  .button[aria-expanded="true"],
+  .item[aria-checked="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -4px;
+  }
+
+  .badge,
+  .wind {
+    forced-color-adjust: none;
+    background: Canvas;
+    color: CanvasText;
+    outline: 1px solid CanvasText;
+  }
+
+  .menu {
+    border: 1px solid CanvasText;
+  }
+}

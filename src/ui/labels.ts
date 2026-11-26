@@ -1,5 +1,17 @@
-import type { GameRules, PlayerInfo, Quad, Round, Seat, YakuEntry } from "../core/model";
+import type {
+  GameLog,
+  GameRules,
+  PlayerCount,
+  PlayerInfo,
+  Quad,
+  Round,
+  RyukyokuEvent,
+  Seat,
+  WinEvent,
+  YakuEntry,
+} from "../core/model";
 import { SEATS } from "../core/model";
+import { activeSeats } from "../core/players";
 import { isKnownTile, isRedFive, type Suit, type Tile } from "../core/tile";
 import type { Locale } from "../i18n/locales";
 import type { Messages } from "../i18n/messages";
@@ -23,6 +35,14 @@ export function roundLabel(m: Messages, round: Pick<Round, "wind" | "number" | "
   return m.round.name(round.wind, round.number, round.honba);
 }
 
+/** Short round name for tight places (timeline, round matrix): "E3-1", "동3-1", "東3-1". */
+export function roundShortLabel(
+  m: Messages,
+  round: Pick<Round, "wind" | "number" | "honba">,
+): string {
+  return m.round.short(round.wind, round.number, round.honba);
+}
+
 export function playerName(m: Messages, players: readonly PlayerInfo[], seat: Seat): string {
   const name = players[seat]?.name.trim() ?? "";
   return name === "" ? m.viewer.unnamed(seat) : name;
@@ -35,16 +55,17 @@ export function playerNames(m: Messages, players: readonly PlayerInfo[]): Quad<s
 /**
  * Localized rule summary, e.g. "Phoenix room · East-South game · Open tanyao · Red fives". When the
  * source has rule text the parsers could not read into the Tenhou fields (room, open tanyao, fast),
- * such as a Mahjong Soul room name, that text is shown as it is instead.
+ * such as a Mahjong Soul room name, that text is shown as it is instead. With `playerCount` 3 the
+ * label starts with "Three-player" (four-player games, the usual case, are not marked).
  */
-export function rulesLabel(m: Messages, rules: GameRules): string {
+export function rulesLabel(m: Messages, rules: GameRules, playerCount: PlayerCount = 4): string {
   const structured =
     rules.room !== undefined || rules.openTanyao !== undefined || rules.fast !== undefined;
   const description = rules.description?.trim();
+  const parts: string[] = playerCount === 3 ? [m.viewer.players[3]] : [];
   if (!structured && description) {
-    return description;
+    return [...parts, description].join(" · ");
   }
-  const parts: string[] = [];
   if (rules.room) {
     parts.push(m.viewer.rooms[rules.room]);
   }
@@ -59,6 +80,31 @@ export function rulesLabel(m: Messages, rules: GameRules): string {
     parts.push(m.viewer.fast);
   }
   return parts.join(" · ");
+}
+
+const TENHOU_ID_DATE = /^(\d{4})(\d{2})(\d{2})\d{2}gm-/;
+
+/** The day a Tenhou log id starts with ("2019050417gm-…" is 4 May 2019), or null. */
+export function logDate(locale: Locale, id: string | undefined): string | null {
+  const match = id === undefined ? null : TENHOU_ID_DATE.exec(id);
+  if (!match) {
+    return null;
+  }
+  const [year, month, day] = match.slice(1).map(Number) as [number, number, number];
+  const time = Date.UTC(year, month - 1, day);
+  if (Number.isNaN(time) || new Date(time).getUTCDate() !== day) {
+    return null;
+  }
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "UTC" }).format(time);
+}
+
+/** Where the log comes from: "tenhou.net/6 JSON · 4 May 2019" (the date when the id has one). */
+export function sourceLabel(
+  m: Messages,
+  locale: Locale,
+  game: Pick<GameLog, "format" | "id">,
+): string {
+  return m.panel.source(m.viewer.formats[game.format], logDate(locale, game.id));
 }
 
 /** Highest Tenhou dan index (天鳳位); see PlayerInfo.danIndex. */
@@ -137,9 +183,68 @@ export interface Standing {
   place: number;
 }
 
-/** Final ranking: higher score first; ties go to the seat that started closer to East. */
-export function standings(scores: Quad<number>): Standing[] {
-  return [...SEATS]
+/**
+ * Ranking of the playing seats (the empty chair of a three-player game is never ranked): higher
+ * score first; ties go to the seat that started closer to East.
+ */
+export function standings(scores: Quad<number>, playerCount: PlayerCount = 4): Standing[] {
+  return [...activeSeats(playerCount)]
     .sort((a, b) => scores[b] - scores[a] || a - b)
     .map((seat, index) => ({ seat, score: scores[seat], place: index + 1 }));
+}
+
+/** A win's value: "5 han · 40 fu · 7,700 points", "Haneman · 18,000 points", "2× Yakuman". */
+export function winValueLabel(m: Messages, locale: Locale, win: WinEvent): string {
+  const yakumanCount = (win.yaku ?? [])
+    .filter((entry) => entry.yakuman)
+    .reduce((sum, entry) => sum + Math.max(1, Math.round(entry.han / 13)), 0);
+  const parts: string[] = [];
+  if (yakumanCount > 0) {
+    parts.push(m.result.yakuman(yakumanCount));
+  } else {
+    if (win.han !== undefined) {
+      parts.push(m.result.han(win.han));
+    }
+    // Limit hands are named instead; tenhou.net/6 JSON has no fu for them, so hide it for every format.
+    if (win.fu !== undefined && win.fu > 0 && win.limit === undefined) {
+      parts.push(m.result.fu(win.fu));
+    }
+    if (win.limit !== undefined) {
+      parts.push(m.result.limits[win.limit]);
+    }
+  }
+  if (win.points !== undefined) {
+    parts.push(m.result.points(formatPoints(locale, win.points)));
+  }
+  return parts.join(" · ");
+}
+
+/**
+ * One line for a round's results, for the status line and the timeline: who won and how, with
+ * the value ("A wins by tsumo · 6 han · Haneman · 12,000 points"), or the kind of draw with the
+ * tenpai seats. A multiple ron joins its wins with " / ".
+ */
+export function resultSummary(
+  m: Messages,
+  results: ReadonlyArray<WinEvent | RyukyokuEvent>,
+  names: Quad<string>,
+  locale: Locale,
+): string {
+  return results
+    .map((result) => {
+      if (result.type === "ryukyoku") {
+        const parts = [m.ryukyoku[result.reason]];
+        if (result.reason === "exhaustive" && result.tenpai !== undefined) {
+          parts.push(m.result.tenpaiSeats(result.tenpai.map((seat) => names[seat])));
+        }
+        return parts.join(" · ");
+      }
+      const who =
+        result.from === result.seat
+          ? m.event.tsumo(names[result.seat])
+          : m.event.ron(names[result.seat], names[result.from]);
+      const value = winValueLabel(m, locale, result);
+      return value === "" ? who : `${who} · ${value}`;
+    })
+    .join(" / ");
 }

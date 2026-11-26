@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { YAKU_KEYS, yakuKeyFromMjaiName, yakuKeyFromTenhouId, yakuKeyFromTenhouName } from "./yaku";
+import {
+  tenhouYakuName,
+  YAKU_KEYS,
+  yakuKeyFromMjaiName,
+  yakuKeyFromTenhouId,
+  yakuKeyFromTenhouName,
+} from "./yaku";
 
 describe("yaku lookups", () => {
   it("maps Tenhou ids in order", () => {
@@ -21,6 +27,17 @@ describe("yaku lookups", () => {
   it("maps mjai names", () => {
     expect(yakuKeyFromMjaiName("tanyaochu")).toBe("tanyao");
     expect(yakuKeyFromMjaiName("jikaze")).toBe("seatWind");
+  });
+
+  it("names every key but the generic yakuhai the way yakuKeyFromTenhouName reads it", () => {
+    expect(tenhouYakuName("chun")).toBe("役牌 中");
+    expect(tenhouYakuName("doubleRiichi")).toBe("両立直");
+    expect(tenhouYakuName("seatWind")).toBe("役牌:自風牌");
+    expect(tenhouYakuName("nukidora")).toBe("抜きドラ");
+    expect(tenhouYakuName("yakuhai")).toBeUndefined();
+    for (const key of YAKU_KEYS.filter((key) => key !== "yakuhai")) {
+      expect(yakuKeyFromTenhouName(tenhouYakuName(key) as string), key).toBe(key);
+    }
   });
 
   it("has unique keys", () => {

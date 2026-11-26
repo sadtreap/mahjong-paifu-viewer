@@ -1,0 +1,137 @@
+.section {
+  display: grid;
+  gap: 6px;
+}
+
+.heading {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.list {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 4px 8px 4px 6px;
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--seat);
+  border-radius: 8px;
+  background: var(--color-surface);
+  text-align: left;
+}
+
+.row[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--seat) 12%, var(--color-surface));
+  box-shadow: inset 0 0 0 1px var(--seat);
+}
+
+.wind {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--color-surface-alt);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.dealer {
+  background: var(--dealer-bg);
+  color: var(--dealer-fg);
+}
+
+/*
+ * One line: whatever does not fit wraps onto a second line, which is clipped. The rank is last,
+ * so it goes first, then the rating; a name longer than the line truncates on its own line.
+ */
+.who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 6px;
+  height: 1.375rem;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.375rem;
+}
+
+.name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  flex: none;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.stick {
+  display: block;
+  width: 22px;
+  height: 4px;
+  border-radius: 9px;
+  background:
+    #f4f1ea radial-gradient(circle, #d22 0 22%, transparent 26%) center / 25% 100% no-repeat;
+  box-shadow: 0 0 0 1px #888;
+}
+
+.score {
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.place {
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: var(--color-surface-alt);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+@media (forced-colors: active) {
+  .row[aria-pressed="true"] {
+    border-width: 2px 2px 2px 6px;
+    border-color: Highlight;
+  }
+
+  .dealer {
+    forced-color-adjust: none;
+    background: Canvas;
+    color: CanvasText;
+    outline: 2px solid CanvasText;
+  }
+
+  /* The riichi stick is drawn with backgrounds only. */
+  .stick {
+    forced-color-adjust: none;
+    background: Canvas;
+    box-shadow: none;
+    outline: 1px solid CanvasText;
+  }
+}

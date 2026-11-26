@@ -32,6 +32,82 @@
   --tile-outline: rgb(0 0 0 / 0.28);
   --tile-shadow: rgb(0 0 0 / 0.35);
 
+  /*
+   * Seat colors (timeline lanes, score chart, round matrix, Players rows): 4.5:1 on the surfaces.
+   * The dark values also apply in the player scene below.
+   */
+  --seat-0: #1f5fc9;
+  --seat-1: #9a5a00;
+  --seat-2: #13784a;
+  --seat-3: #7f3fc4;
+  /* Spotlight of a picked tile kind in the review rail (3:1 on the surfaces). */
+  --spot-page: #0a6aa1;
+  /* Win star in the round matrix legend (a symbol: 3:1). */
+  --win-glyph: #b8860b;
+
+  /*
+   * 3D table: an object with its own palette (green felt, red tile backs, dark green lacquer
+   * rails), the same in both themes except the felt.
+   */
+  --room-0: #1a221e;
+  --room-1: #0c100e;
+  --room-2: #060807;
+  --felt-light: #3a8a69;
+  --felt-center: #2f7a5c;
+  --felt-edge: #1b5240;
+  --felt-far: #174636;
+  --rail-top-0: #36604f;
+  --rail-top-1: #1b382d;
+  --rail-lip: #091711;
+  --rail-edge: #4d8670;
+  --console-bg: #0f201a;
+  --console-screen: #08140f;
+  --console-fg: #f3f0e7;
+  --console-muted: #cfe9dc;
+  --console-line: #2d4a3e;
+  --console-glow: rgb(120 220 170 / 0.22);
+  --turn: #f5c542;
+  --highlight: #ffcb3d;
+  --tile-edge-face: #ddd5bf;
+  --tile-edge-back: #c3312f;
+  --tile-drop: rgb(0 0 0 / 0.32);
+  --tile-lid: #efe8d4;
+  --tile-back-face: #b92b29;
+  --tile-back-dark: #8f1f1e;
+  /* Seat plates, the HUD and other labels on the felt. */
+  --plate-bg: rgb(10 22 18 / 0.86);
+  --plate-fg: #f3f0e7;
+  --plate-score: #d9e6df;
+  --plate-muted: #cfd8d2;
+  --plate-line: rgb(255 255 255 / 0.16);
+  --dealer-bg: #8e2b22;
+  --dealer-fg: #ffe1dc;
+  /* Monogram discs behind white initials (the light seat colors, in both themes). */
+  --seatc0: #1f5fc9;
+  --seatc1: #9a5a00;
+  --seatc2: #13784a;
+  --seatc3: #7f3fc4;
+  /* Review aids on the table. */
+  --spot: #5cd6ff;
+  --next: #ff6b9a;
+  --aid-tenpai: #ffd76a;
+  --fu-bg: #8e2b22;
+  --fu-fg: #ffe1dc;
+  --tip-bg: #0e1d17;
+  --tip-fg: #f3f0e7;
+  --tip-muted: #b9c4bd;
+  --tip-go: #9fd8ff;
+  /* The first-use coach mark and the result card over the table. */
+  --coach-bg: rgb(10 16 14 / 0.9);
+  --coach-fg: #f3f0e7;
+  --card-bg: rgb(11 24 19 / 0.95);
+  --card-fg: #f3f0e7;
+  --card-value: #ffd65a;
+  --card-gain: #6fd08a;
+  --card-loss: #ff8a7e;
+  --card-btn: #1d3a2f;
+  --card-btn-primary: #2f7a57;
+
   --app-bar-height: 3.25rem;
 
   font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans", sans-serif;
@@ -55,8 +131,23 @@
     -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
 }
 
+/*
+ * Korean wraps between words (at spaces), not between any two syllables ("적|도라"). Inherited
+ * from the root, so a box that sets its own breaking keeps it; a word too long for its line still
+ * breaks.
+ */
+html:lang(ko) {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+/*
+ * Dark theme: the system's choice unless the settings pick light (data-theme="light"), or the
+ * settings' explicit choice (data-theme="dark"). The two blocks must stay identical
+ * (theme.test.ts checks it).
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --color-bg: #171716;
     --color-fg: #ecebe6;
     --color-border: #34332f;
@@ -82,7 +173,101 @@
     --center-bg: #10271d;
     --tile-outline: rgb(0 0 0 / 0.5);
     --tile-shadow: rgb(0 0 0 / 0.5);
+
+    --seat-0: #6aa5ff;
+    --seat-1: #f2a541;
+    --seat-2: #4cc38a;
+    --seat-3: #c58cff;
+    --spot-page: #5cd6ff;
+
+    /* The table keeps its palette; only the felt is a shade darker. */
+    --felt-light: #2f7759;
+    --felt-center: #24624a;
+    --felt-edge: #143e30;
+    --felt-far: #113528;
   }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #171716;
+  --color-fg: #ecebe6;
+  --color-border: #34332f;
+  --color-border-strong: #4a4943;
+  --color-muted: #a8a49a;
+  --color-surface: #201f1d;
+  --color-surface-alt: #2b2a27;
+  /* White text needs 4.5:1 on the accent; hovering darkens it, so contrast only goes up. */
+  --color-accent: #2f7a57;
+  --color-accent-hover: #286b4c;
+  --color-on-accent: #ffffff;
+  --color-focus: #58a6ff;
+  --color-link: #58a6ff;
+  --color-danger: #ff7b6e;
+  --color-danger-bg: #2d1a17;
+  --color-gain: #5cc177;
+  --color-loss: #ff7b6e;
+  --color-dealer-text: #ff8f80;
+  --color-overlay: rgb(23 23 22 / 0.75);
+
+  --table-bg: #1f4c39;
+  --table-edge: #163a2b;
+  --center-bg: #10271d;
+  --tile-outline: rgb(0 0 0 / 0.5);
+  --tile-shadow: rgb(0 0 0 / 0.5);
+
+  --seat-0: #6aa5ff;
+  --seat-1: #f2a541;
+  --seat-2: #4cc38a;
+  --seat-3: #c58cff;
+  --spot-page: #5cd6ff;
+
+  /* The table keeps its palette; only the felt is a shade darker. */
+  --felt-light: #2f7759;
+  --felt-center: #24624a;
+  --felt-edge: #143e30;
+  --felt-far: #113528;
+}
+
+/*
+ * The player (table, HUD, toolbar, dock) is a dark scene in both themes. The review rail, sheets
+ * and dialogs keep the page theme; the felt keeps the page theme's shade.
+ */
+[data-scene="player"] {
+  color-scheme: dark;
+  color: var(--color-fg);
+  background: var(--color-bg);
+  --color-bg: #0c110f;
+  --color-fg: #ecebe6;
+  --color-border: #2a332f;
+  --color-border-strong: #34403b;
+  --color-muted: #a9b0aa;
+  --color-surface: #18201d;
+  --color-surface-alt: #222b27;
+  --color-accent: #2f7a57;
+  --color-accent-hover: #286b4c;
+  --color-on-accent: #ffffff;
+  --color-focus: #58a6ff;
+  --color-link: #58a6ff;
+  --color-danger: #ff7b6e;
+  --color-danger-bg: #2d1a17;
+  --color-gain: #5cc177;
+  --color-loss: #ff7b6e;
+  --color-dealer-text: #ff8f80;
+  --color-overlay: rgb(12 17 15 / 0.75);
+  --seat-0: #6aa5ff;
+  --seat-1: #f2a541;
+  --seat-2: #4cc38a;
+  --seat-3: #c58cff;
+  --dock-bg: #111815;
+  --btn-bg: #1c2522;
+  --btn-bg-hover: #26312d;
+  --btn-border: #34403b;
+  --tile-outline: rgb(0 0 0 / 0.28);
 }
 
 *,
@@ -111,6 +296,16 @@ button {
 
 button:hover:not(:disabled, [aria-disabled="true"]) {
   background: var(--color-surface-alt);
+}
+
+/* Player scene buttons; :where() keeps the specificity of the rules above, so modules still win. */
+:where([data-scene="player"]) button {
+  border-color: var(--btn-border);
+  background: var(--btn-bg);
+}
+
+:where([data-scene="player"]) button:hover:not(:disabled, [aria-disabled="true"]) {
+  background: var(--btn-bg-hover);
 }
 
 /* aria-disabled buttons stay focusable (see Controls.tsx) but look the same as disabled ones. */

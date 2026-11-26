@@ -6,7 +6,9 @@ import {
   doraSlots,
   fitScale,
   handRowWidth,
+  KITA_WIDTH,
   meldSlots,
+  ownRowUnits,
   seatDistance,
   seatOnSide,
   seatWind,
@@ -138,6 +140,38 @@ describe("hand row width", () => {
     expect(handRowWidth({ hand, drawn: null, melds: [pon(2)] }, 0)).toBeCloseTo(
       10 + 0.25 + 2 + 4 / 3,
     );
+  });
+
+  it("adds the kita group's width once, whatever the count", () => {
+    const hand = Array.from({ length: 10 }, () => "1m" as const);
+    const width = (kita: readonly ("4z" | "?")[]) =>
+      handRowWidth({ hand, drawn: null, melds: [], kita: [...kita] }, 0);
+    expect(KITA_WIDTH).toBe(1.85);
+    expect(width([])).toBe(10);
+    expect(width(["4z"])).toBeCloseTo(10 + KITA_WIDTH);
+    expect(width(["4z", "4z", "4z", "4z"])).toBeCloseTo(10 + KITA_WIDTH);
+  });
+
+  it("measures the own hand with the same parts", () => {
+    const view = {
+      hand: Array.from({ length: 7 }, () => "1m" as const),
+      drawn: "2m" as const,
+      melds: [pon(2)],
+      kita: ["4z" as const],
+      discards: [],
+      score: 0,
+      riichi: false,
+    };
+    expect(ownRowUnits(view, 0)).toBeCloseTo(7 + 1.4 + KITA_WIDTH + 0.25 + 2 + 4 / 3);
+    expect(ownRowUnits({ ...view, kita: [] }, 0)).toBeCloseTo(7 + 1.4 + 0.25 + 2 + 4 / 3);
+  });
+
+  it("keeps the drawn tile's slot in the own hand between turns", () => {
+    const drawn = { hand: Array.from({ length: 13 }, () => "1m" as const), drawn: "2m" as const };
+    const view = { ...drawn, melds: [], kita: [], discards: [], score: 0, riichi: false };
+    // After the discard the hand is 13 tiles again and nothing is drawn: same width.
+    expect(ownRowUnits({ ...view, drawn: null }, 0)).toBeCloseTo(ownRowUnits(view, 0));
+    expect(ownRowUnits({ ...view, drawn: null }, 0)).toBeCloseTo(13 + 1.4);
   });
 
   it("scales down only when the row is too wide", () => {

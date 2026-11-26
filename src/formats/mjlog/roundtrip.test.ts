@@ -15,7 +15,7 @@ import type {
   Seat,
   WinEvent,
 } from "../../core/model";
-import { sortTiles } from "../../core/tile";
+import { sortTiles, type Tile } from "../../core/tile";
 import { checkGame } from "../../replay/check";
 import { stripMjlogUnsupported, tenhouUma, toMjlogXml } from "../../test/mjlog-serialize";
 import {
@@ -26,12 +26,16 @@ import {
   dora,
   draw,
   kakan,
+  kita,
   makeGame,
   makeRound,
+  makeSanmaGame,
+  makeSanmaRound,
   pon,
   riichiAccepted,
   ryukyoku,
   sampleRound,
+  sampleSanmaRound,
   tiles,
   tsumogiri,
   wallDraw,
@@ -729,6 +733,407 @@ describe("parseMjlog(toMjlogXml(game)) on hand-built games", () => {
       hands: [null, null, null, null],
     });
     expect(back).not.toHaveProperty("finalScores");
+  });
+});
+
+/*
+ * Three-player games. Ids the encoder hands out for makeSanmaRound's default deal (seat 0
+ * 1112345678999p, seat 1 the same in sou, seat 2 1199m112233556z, seat 3 nothing):
+ *   seat 0: 1p 36,37,38  2p 40  3p 44  4p 48  5p 53  6p 56  7p 60  8p 64  9p 68,69,70
+ *   seat 1: 1s 72,73,74  2s 76  3s 80  4s 84  5s 89  6s 92  7s 96  8s 100  9s 104,105,106
+ */
+describe("toMjlogXml: three-player games", () => {
+  // Seat 0 declares riichi, then sets aside the North it draws; seat 2 (chiitoitsu waiting on 4z)
+  // wins by ron on that North and collects the deposit.
+  const kitaRon: GameLog = makeSanmaGame(
+    [
+      makeSanmaRound({
+        doraIndicators: ["9s"],
+        hands: [tiles("1112345678999p"), tiles("1112345678999s"), tiles("1199m11223355z4z"), []],
+        events: [
+          draw(0, "7z"),
+          discard(0, "7z", { tsumogiri: true, riichi: true }),
+          riichiAccepted(0),
+          draw(1, "7z"),
+          tsumogiri(1, "7z"),
+          draw(2, "6z"),
+          tsumogiri(2, "6z"),
+          draw(0, "4z"),
+          kita(0),
+          win(2, 0, [-1600, 0, 2600, 0], {
+            tile: "4z",
+            hand: tiles("1199m1122334455z"),
+            han: 2,
+            fu: 25,
+            points: 1600,
+            yaku: [{ key: "chiitoitsu", han: 2 }],
+          }),
+        ],
+      }),
+    ],
+    { finalScores: [32400, 35000, 37600, 0] },
+  );
+
+  it("writes Tenhou's tags: GO bit 0x10, the empty seat 3, a kita and a ron on it", () => {
+    expect(toMjlogXml(kitaRon)).toBe(
+      [
+        '<mjloggm ver="2.3">',
+        '<GO type="17" lobby="0"/>',
+        '<UN n0="%41" n1="%42" n2="%43" n3="" sx="M,M,M,C"/>',
+        '<TAIKYOKU oya="0"/>',
+        // The dora indicator 9s is the free copy 107; seat 3 is dealt nothing.
+        '<INIT seed="0,0,0,0,0,107" ten="350,350,350,0" oya="0" hai0="36,37,38,40,44,48,53,56,60,64,68,69,70" hai1="72,73,74,76,80,84,89,92,96,100,104,105,106" hai2="0,1,32,33,108,109,112,113,116,117,124,125,120" hai3=""/>',
+        '<T132/><REACH who="0" step="1"/><D132/><REACH who="0" ten="340,350,350,0" step="2"/>',
+        "<U133/><E133/><V128/><F128/>",
+        // The North drawn is 121 (seat 2 holds 120): (121 << 8) | 0x20. The ron names it as machi.
+        '<T121/><N who="0" m="31008" />',
+        '<AGARI ba="0,1" hai="0,1,32,33,108,109,112,113,116,117,120,121,124,125" machi="121" ten="25,1600,0" yaku="22,2" doraHai="107" who="2" fromWho="0" sc="340,-16,350,0,350,26,0,0" owari="324,-27.6,350,-5.0,376,32.6,0,0.0" />',
+        "</mjloggm>",
+      ].join(""),
+    );
+    expect(roundTrip(kitaRon)).toStrictEqual(stripMjlogUnsupported(kitaRon));
+    expect(checkGame(kitaRon)).toEqual([]);
+  });
+
+  it("writes dan and rate with Tenhou's values for the empty seat 3", () => {
+    const players: Quad<PlayerInfo> = [
+      { name: "A", rank: "七段", danIndex: 16, rating: 2000.5 },
+      { name: "B", rank: "四段", danIndex: 13, rating: 1800 },
+      { name: "C", rank: "新人", danIndex: 0, rating: 1500 },
+      { name: "" },
+    ];
+    const game = makeSanmaGame([makeSanmaRound()], { players });
+    const un = (readTags(toMjlogXml(game)) ?? []).find((tag) => tag.name === "UN");
+    expect(Object.fromEntries(un?.attrs ?? [])).toEqual({
+      n0: "%41",
+      n1: "%42",
+      n2: "%43",
+      n3: "",
+      dan: "16,13,0,0",
+      rate: "2000.50,1800.00,1500.00,1500.00",
+      sx: "M,M,M,C",
+    });
+    expect(roundTrip(game).players).toEqual(players);
+    // Ranks and ratings are kept only when all three players have them.
+    const unranked = makeSanmaGame([makeSanmaRound()], {
+      players: [players[0], players[1], { name: "C" }, { name: "" }],
+    });
+    expect(roundTrip(unranked).players).toEqual([
+      { name: "A" },
+      { name: "B" },
+      { name: "C" },
+      { name: "" },
+    ]);
+    expect(roundTrip(unranked)).toStrictEqual(stripMjlogUnsupported(unranked));
+  });
+
+  it("sets the three-player GO bit and the 三 of the description", () => {
+    const rules = {
+      redFives: true,
+      length: "south",
+      room: "phoenix",
+      openTanyao: true,
+      fast: false,
+    } as const;
+    const game = makeSanmaGame([makeSanmaRound()], { rules });
+    expect(attribute(toMjlogXml(game), "GO", "type")).toBe("185"); // 0xA9 | 0x10
+    // The player count is GameLog.playerCount, never a rule.
+    expect(roundTrip(game).rules).toStrictEqual({ ...rules, description: "三鳳南喰赤" });
+    expect(roundTrip(game).playerCount).toBe(3);
+  });
+
+  it("writes a pon across the empty chair with Tenhou's relative seat mod 4", () => {
+    // Seat 0 holds 999p, seat 1 999s and seat 2 11z; each pons the copy another seat discards.
+    const relative = (seat: Seat, from: Seat, tile: Tile, consumed: string) => {
+      const events = [draw(from, tile), tsumogiri(from, tile), pon(seat, from, tile, consumed)];
+      const game = makeSanmaGame([makeSanmaRound({ events })]);
+      expect(roundTrip(game).rounds[0]?.events[2]).toEqual(pon(seat, from, tile, consumed));
+      const meld = decodeMeld(meldValues(toMjlogXml(game))[0] as number);
+      return meld?.type === "pon" ? meld.from : undefined;
+    };
+    expect(relative(0, 1, "9p", "99p")).toBe(1);
+    expect(relative(0, 2, "9p", "99p")).toBe(2);
+    expect(relative(1, 2, "9s", "99s")).toBe(1);
+    expect(relative(1, 0, "9s", "99s")).toBe(3);
+    expect(relative(2, 0, "1z", "11z")).toBe(2);
+    expect(relative(2, 1, "1z", "11z")).toBe(3);
+  });
+
+  // Seat 0 pons 5z, sets aside two Norths (one after the kakan's replacement draw, before the kan
+  // dora as Tenhou orders it) and wins on the next replacement draw.
+  const kakanKita = (): GameLog =>
+    makeSanmaGame([
+      makeSanmaRound({
+        doraIndicators: ["6z"],
+        hands: [tiles("5544z12345678s1p"), tiles("1112345678999p"), tiles("1199m112233z999s"), []],
+        events: [
+          draw(0, "7z"),
+          tsumogiri(0, "7z"),
+          draw(1, "5z"),
+          tsumogiri(1, "5z"),
+          pon(0, 1, "5z", "55z"),
+          discard(0, "1p"),
+          draw(1, "7z"),
+          tsumogiri(1, "7z"),
+          draw(2, "7z"),
+          tsumogiri(2, "7z"),
+          draw(0, "4z"),
+          kita(0),
+          draw(0, "5z"),
+          kakan(0, "5z"),
+          draw(0, "4z"),
+          kita(0),
+          dora("8p"),
+          draw(0, "9s"),
+          win(0, 0, [12000, -6000, -6000, 0], {
+            tile: "9s",
+            hand: tiles("44z123456789s"),
+            han: 5,
+            fu: 50,
+            limit: "haneman",
+            points: 12000,
+            yaku: [
+              { key: "rinshanKaihou", han: 1 },
+              { key: "haku", han: 1 },
+              { key: "ittsu", han: 1 },
+              { key: "dora", han: 2 },
+            ],
+          }),
+        ],
+      }),
+    ]);
+
+  it("lists kita among the winner's melds newest first, a kakan in its pon's place", () => {
+    const game = kakanKita();
+    const xml = toMjlogXml(game);
+    // Pon of 126 from the right: (31*3+2)<<9 | 3<<5 | 0x8 | 1 = 48745, kakan 48753. The kita set
+    // aside the lowest North in the hand: the dealt 120, then 121.
+    expect(meldValues(xml)).toEqual([48745, 30752, 48753, 31008]);
+    expect(attribute(xml, "AGARI", "m")).toBe("31008,30752,48753");
+    expect(attribute(xml, "AGARI", "hai")).toBe("72,76,80,84,89,92,96,100,107,122,123");
+    expect(attribute(xml, "AGARI", "machi")).toBe("107");
+    expect(attribute(xml, "AGARI", "sc")).toBe("350,120,350,-60,350,-60,0,0");
+    expect(
+      (readTags(xml) ?? []).map((tag) => tag.name).filter((name) => /^(N|DORA|T\d+)$/.test(name)),
+    ).toEqual(["T132", "N", "T122", "N", "T127", "N", "T123", "N", "DORA", "T107"]);
+    expect(roundTrip(game)).toStrictEqual(stripMjlogUnsupported(game));
+    expect(checkGame(game)).toEqual([]);
+  });
+
+  it("writes an exhaustive draw of the 55-tile wall with the tenpai hands", () => {
+    const round = wallRound({
+      playerCount: 3,
+      seed: 11,
+      draws: 55,
+      kita: true,
+      results: [ryukyoku("exhaustive", [2000, -1000, -1000, 0], { tenpai: [0] })],
+    });
+    const game = makeSanmaGame([round]);
+    const tags = readTags(toMjlogXml(game)) ?? [];
+    expect(tags.filter((tag) => /^[TUV]\d+$/.test(tag.name))).toHaveLength(55);
+    expect(tags.some((tag) => /^[WG]\d+$/.test(tag.name))).toBe(false);
+    const ryuukyoku = tags.find((tag) => tag.name === "RYUUKYOKU")?.attrs ?? new Map();
+    expect(ryuukyoku.get("sc")).toBe("350,20,350,-10,350,-10,0,0");
+    expect([0, 1, 2, 3].map((seat) => ryuukyoku.has(`hai${seat}`))).toEqual([
+      true,
+      false,
+      false,
+      false,
+    ]);
+    expect(roundTrip(game)).toStrictEqual(stripMjlogUnsupported(game));
+  });
+
+  it("writes Tenhou's three-player uma in owari", () => {
+    // 40000 return, uma 0 and -20 for 2nd and 3rd, the rest to the top; seat 3 gets 0.0.
+    expect(tenhouUma([41000, 33000, 31000, 0], 3)).toEqual(["36.0", "-7.0", "-29.0", "0.0"]);
+    // A negative score still ranks below the empty seat 3's 0, which is not ranked.
+    expect(tenhouUma([-1200, 60500, 45700, 0], 3)).toEqual(["-61.2", "55.5", "5.7", "0.0"]);
+    // Equal points rank by seat.
+    expect(tenhouUma([35000, 35000, 35000, 0], 3)).toEqual(["30.0", "-5.0", "-25.0", "0.0"]);
+  });
+
+  it("rejects what a three-player mjlog cannot carry", () => {
+    const throws = (game: GameLog, message: RegExp) =>
+      expect(() => toMjlogXml(game)).toThrow(message);
+    const sanma = (round: Partial<Round>, extra: Partial<GameLog> = {}) =>
+      makeSanmaGame([makeSanmaRound(round)], extra);
+    throws(makeGame([makeRound({ events: [draw(3, "4z"), kita(3)] })]), /kita in a four-player/);
+    throws(sanma({ events: [draw(0, "1z"), kita(0, "1z")] }), /kita of 1z, which is not a North/);
+    throws(sanma({ events: [draw(0, "2m")] }), /2m, which a three-player game does not have/);
+    const dealt = makeSanmaRound().hands;
+    dealt[3] = tiles("1112345678999p");
+    throws(sanma({ hands: dealt }), /seat 3 starts with 13 tiles instead of 0/);
+    throws(sanma({ scores: [35000, 35000, 30000, 5000] }), /empty seat 3.*start score of 5000/);
+    throws(sanma({ events: [draw(3, "1z")] }), /seat of a draw is the empty seat 3/);
+    const ending = (event: RoundEvent) =>
+      sanma({ events: [draw(0, "1z"), tsumogiri(0, "1z"), event] });
+    throws(ending(ryukyoku("exhaustive", [2000, -1000, -2000, 1000])), /point change of 1000/);
+    throws(
+      ending(ryukyoku("exhaustive", [0, 0, 0, 0], { tenpai: [3] })),
+      /tenpai seat is the empty seat 3/,
+    );
+    const drawn = ending(ryukyoku("exhaustive"));
+    drawn.finalScores = [35000, 35000, 34000, 1000];
+    throws(drawn, /empty seat 3 of a three-player game has final points/);
+  });
+});
+
+/** The seat of the last event of a type in a round. */
+function lastSeat(round: Round, type: "draw" | "discard"): Seat {
+  const event = round.events.findLast((e) => e.type === type);
+  return event?.type === type ? event.seat : 0;
+}
+
+/** A three-player hanchan of hand-built rounds whose kita, dealers and honba all follow on. */
+function buildSanmaHanchan(): GameLog {
+  const rounds: Round[] = [];
+  const scores = () => endScores(rounds.at(-1) as Round);
+  // East 1: kita from a draw and from the hand, a pon across the empty chair, riichi, ankan with kan
+  // dora, a kita in riichi and a ron on that North by a non-dealer.
+  rounds.push(sampleSanmaRound());
+  // East 2: the dealer is tenpai when the 55-tile wall runs out; every North drawn is set aside.
+  rounds.push(
+    wallRound({
+      playerCount: 3,
+      seed: 12,
+      dealer: 1,
+      scores: scores(),
+      draws: 55,
+      kita: true,
+      results: [ryukyoku("exhaustive", [-1000, 2000, -1000, 0], { tenpai: [1] })],
+    }),
+  );
+  // East 2, 1 honba: kyuushu kyuuhai.
+  rounds.push(
+    wallRound({
+      playerCount: 3,
+      seed: 13,
+      dealer: 1,
+      honba: 1,
+      scores: scores(),
+      draws: 1,
+      keepLastDraw: true,
+      results: [ryukyoku("kyuushuKyuuhai")],
+    }),
+  );
+  // East 2, 2 honba: riichi, a kita in riichi, then a ron on the last discard (200 per honba).
+  const riichiRound = wallRound({
+    playerCount: 3,
+    seed: 14,
+    dealer: 1,
+    honba: 2,
+    scores: scores(),
+    draws: 12,
+    riichiAt: [2],
+    kita: true,
+  });
+  const from = lastSeat(riichiRound, "discard");
+  const declaration = riichiRound.events.find((e) => e.type === "discard" && e.riichi);
+  const declarer = declaration?.type === "discard" ? declaration.seat : 0;
+  const winner =
+    declarer !== from ? declarer : (([0, 1, 2] as Seat[]).find((s) => s !== from) as Seat);
+  const ronDeltas: Quad<number> = [0, 0, 0, 0];
+  ronDeltas[from] = -4300;
+  ronDeltas[winner] = 5300;
+  riichiRound.events.push(
+    win(winner, from, ronDeltas, {
+      fu: 40,
+      points: 3900,
+      yaku: [
+        { key: "riichi", han: 1 },
+        { key: "dora", han: 2 },
+      ],
+      ...(winner === declarer ? { uraIndicators: [wallDraw(60, 14, 3)] } : {}),
+    }),
+  );
+  rounds.push(riichiRound);
+  // Then a tsumo in a round with a kita, with tsumo loss (two payers, 100 each per honba).
+  const renchan = winner === 1;
+  const tsumoRound = wallRound({
+    playerCount: 3,
+    seed: 15,
+    dealer: renchan ? 1 : 2,
+    honba: renchan ? 3 : 0,
+    scores: scores(),
+    draws: 10,
+    keepLastDraw: true,
+    kita: true,
+  });
+  const tsumo = lastSeat(tsumoRound, "draw");
+  const extra = 100 * tsumoRound.honba;
+  const tsumoDeltas: Quad<number> = [0, 0, 0, 0];
+  for (const seat of [0, 1, 2] as Seat[]) {
+    if (seat !== tsumo) {
+      tsumoDeltas[seat] =
+        -(seat === tsumoRound.dealer || tsumo === tsumoRound.dealer ? 2000 : 1000) - extra;
+    }
+  }
+  tsumoDeltas[tsumo] = -tsumoDeltas.reduce((sum, delta) => sum + delta, 0);
+  tsumoRound.events.push(
+    win(tsumo, tsumo, tsumoDeltas, {
+      fu: 30,
+      points: -tsumoDeltas.reduce(
+        (sum, delta, seat) => sum + (seat === tsumo ? 0 : delta + extra),
+        0,
+      ),
+      yaku: [
+        { key: "menzenTsumo", han: 1 },
+        { key: "dora", han: 2 },
+      ],
+    }),
+  );
+  rounds.push(tsumoRound);
+  return makeSanmaGame(rounds, {
+    format: "mjlog",
+    players: [
+      { name: "A", rank: "七段", danIndex: 16, rating: 2201.5 },
+      { name: "B", rank: "八段", danIndex: 17, rating: 2150 },
+      { name: "C", rank: "天鳳位", danIndex: 20, rating: 2400.75 },
+      { name: "" },
+    ],
+    rules: {
+      redFives: true,
+      length: "south",
+      room: "phoenix",
+      openTanyao: true,
+      fast: false,
+      description: "三鳳南喰赤",
+    },
+    finalScores: endScores(rounds.at(-1) as Round),
+  });
+}
+
+describe("parseMjlog(toMjlogXml(game)) on a hand-built three-player hanchan", () => {
+  const hanchan = buildSanmaHanchan();
+
+  it("builds a consistent hanchan with kita in every round that draws a North", () => {
+    expect(checkGame(hanchan)).toEqual([]);
+    expect(hanchan.rounds.map((round) => round.events.at(-1)?.type)).toEqual([
+      "win",
+      "ryukyoku",
+      "ryukyoku",
+      "win",
+      "win",
+    ]);
+    expect(hanchan.rounds.map((round) => round.events.some((e) => e.type === "kita"))).toEqual([
+      true,
+      true,
+      false,
+      true,
+      true,
+    ]);
+  });
+
+  it("gives back the hanchan minus what mjlog cannot carry, with the same events in order", () => {
+    const back = roundTrip(hanchan);
+    expect(back).toStrictEqual(stripMjlogUnsupported(hanchan));
+    expect(checkGame(back)).toEqual([]);
+    hanchan.rounds.forEach((round, index) => {
+      expect(back.rounds[index]?.hands).toEqual(round.hands);
+      expect(back.rounds[index]?.events.map((event) => event.type)).toEqual(
+        round.events.map((event) => event.type),
+      );
+    });
   });
 });
 

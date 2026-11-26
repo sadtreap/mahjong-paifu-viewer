@@ -1,4 +1,4 @@
-import type { Round, RoundEvent, Seat } from "../core/model";
+import type { PlayerCount, Round, RoundEvent, Seat } from "../core/model";
 import { asSeat, RoundReplay } from "./engine";
 import type { BoardState } from "./types";
 
@@ -17,10 +17,16 @@ import type { BoardState } from "./types";
  * the lower score and one more riichi stick). A riichi discard that is ronned has no riichiAccepted,
  * so neither its step nor the result step shows a deposit for that seat.
  *
+ * Kita (three-player games) is a step of its own, like an ankan: the North moves to SeatView.kita,
+ * and the replacement draw that follows is the next step.
+ *
+ * `playerCount` is the game's (GameLog.playerCount): with 3, turns skip the empty seat 3 and the
+ * wall starts at 55 tiles.
+ *
  * Never throws: inconsistent events are applied as well as possible (see `checkRound` to find them).
  */
-export function buildTimeline(round: Round): BoardState[] {
-  const replay = new RoundReplay(round);
+export function buildTimeline(round: Round, playerCount: PlayerCount = 4): BoardState[] {
+  const replay = new RoundReplay(round, undefined, playerCount);
   const states = [replay.snapshot(-1, null, null)];
   const events: readonly RoundEvent[] =
     typeof round === "object" && round !== null && Array.isArray(round.events) ? round.events : [];
