@@ -27,15 +27,14 @@ export interface HandRowProps {
    * or melds after it keep clear of its lean (geometry.ts oppRowLayout).
    */
   spacerGap?: number;
-  /** Draw the kita group (three-player North tiles) between the concealed tiles and the melds. */
-  showKita?: boolean;
   /** Extra class on the concealed group (the 3D table's reveal animation). */
   concealedClassName?: string;
 }
 
 /**
- * Concealed tiles, the drawn tile set apart, the kita group (optional) and the melds at the right
- * end (first call rightmost).
+ * An opponent's row on the table: the concealed tiles, the drawn tile set apart, the kita group
+ * (three-player North tiles) and the melds at the right end (first call rightmost). Hidden tiles
+ * are counted in the group's name, so assistive technology does not read each back.
  */
 export function HandRow({
   seat,
@@ -44,11 +43,11 @@ export function HandRow({
   revealed,
   spacer = false,
   spacerGap = 0,
-  showKita = false,
   concealedClassName,
 }: HandRowProps) {
   const { m } = useI18n();
   const length = view.hand.length + (view.drawn === null ? 0 : 1.4);
+  const concealed = view.hand.length + (view.drawn === null ? 0 : 1);
   // Paint order on the 3D table (TileImage depth): columns follow the row from left to right, so
   // the melds, drawn right to left (first call rightmost), count from the last one.
   const meldColumn = (index: number) =>
@@ -61,27 +60,36 @@ export function HandRow({
           style={{ "--L": String(length), "--gap": spacerGap.toFixed(4) } as CSSProperties}
         />
       ) : (
-        <TileGroup className={cx(styles.concealed, concealedClassName)} label={m.board.hand(name)}>
+        <TileGroup
+          className={cx(styles.concealed, concealedClassName)}
+          label={revealed ? m.board.hand(name) : m.table.wallHand(name, concealed)}
+        >
           {keyed(view.hand).map(({ key, index, item }) => (
-            <TileImage key={key} tile={item} faceDown={!revealed} depth={[index, 0]} />
+            <TileImage
+              key={key}
+              tile={item}
+              faceDown={!revealed}
+              label={revealed ? undefined : ""}
+              depth={[index, 0]}
+            />
           ))}
           {view.drawn !== null && (
             <span className={styles.drawn}>
               <TileImage
                 tile={view.drawn}
                 faceDown={!revealed}
-                label={revealed ? m.board.drawn(tileLabel(m, view.drawn)) : m.tiles.back}
+                label={revealed ? m.board.drawn(tileLabel(m, view.drawn)) : ""}
                 depth={[view.hand.length, 0]}
               />
             </span>
           )}
         </TileGroup>
       )}
-      {showKita && view.kita.length > 0 && <KitaTiles tiles={view.kita} name={name} />}
+      {view.kita.length > 0 && <KitaTiles tiles={view.kita} name={name} />}
       {view.melds.length > 0 && (
         <TileGroup className={styles.melds} label={m.board.melds(name)}>
           {keyed(view.melds).map(({ key, index, item }) => (
-            <MeldTiles key={key} meld={item} owner={seat} column={meldColumn(index)} />
+            <MeldTiles key={key} meld={item} owner={seat} column={meldColumn(index)} low />
           ))}
         </TileGroup>
       )}

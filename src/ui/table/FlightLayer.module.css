@@ -1,6 +1,10 @@
-/* The proxy sits on its pond slot and flies in from the source: 190 ms, ease-out. */
+/*
+ * The proxy sits on its pond slot (--x, --y, tile width --slot, in units) and flies in from the
+ * source: 190 ms, ease-out. The start is --fx, --fy units away, plus --fd plane pixels for each
+ * pixel a tall dock pushes the own hand down (--drop).
+ */
 .fly {
-  --tile-w: calc(var(--u) * 0.9);
+  --tile-w: calc(var(--u) * var(--slot));
 
   position: absolute;
   left: calc(var(--x) * var(--u));
@@ -11,8 +15,9 @@
 
 @keyframes fly {
   from {
-    translate: calc(var(--fx) * var(--u) - 50%) calc(var(--fy) * var(--u) - 50%);
-    scale: var(--fs, 1.1);
+    translate: calc(var(--fx) * var(--u) - 50%)
+      calc(var(--fy) * var(--u) + var(--fd) * var(--drop) - 50%);
+    scale: var(--fs);
   }
 
   to {

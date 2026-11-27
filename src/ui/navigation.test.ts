@@ -8,7 +8,6 @@ import {
   isGameEnd,
   isGameStart,
   isRoundEnd,
-  keyMoment,
   navLimits,
   nextWhere,
   ownTurn,
@@ -90,9 +89,7 @@ describe("resolveNav", () => {
       expect(go(2, 3, next, repeat)).toBeNull();
       expect(go(0, 0, prev, repeat)).toBeNull();
       expect(go(2, 3, { kind: "ownTurn", dir: 1 }, repeat)).toBeNull();
-      expect(go(2, 3, { kind: "keyMoment", dir: 1 }, repeat)).toBeNull();
       expect(go(0, 0, { kind: "ownTurn", dir: -1 }, repeat)).toBeNull();
-      expect(go(0, 0, { kind: "keyMoment", dir: -1 }, repeat)).toBeNull();
       expect(go(2, 1, { kind: "nextRound" }, repeat)).toBeNull();
       expect(go(0, 0, { kind: "roundStartOrPrev" }, repeat)).toBeNull();
     }
@@ -122,19 +119,6 @@ describe("resolveNav", () => {
     expect(go(0, 11, own, false, 2)).toEqual({ round: 0, step: 12 });
     expect(go(0, 12, own, false, 2)).toEqual({ round: 0, step: last });
     expect(go(0, 0, own, false, 1)).toEqual({ round: 0, step: 3 });
-  });
-
-  it("jumps by key moments: riichi, calls and kans", () => {
-    const moment: NavCommand = { kind: "keyMoment", dir: 1 };
-    const stops = [3, 5, 8, 11, 15, 19, last];
-    let step = 0;
-    for (const expected of stops) {
-      const target = go(0, step, moment);
-      expect(target).toEqual({ round: 0, step: expected });
-      step = target?.step ?? -1;
-    }
-    expect(go(0, last, { kind: "keyMoment", dir: -1 })).toEqual({ round: 0, step: 19 });
-    expect(go(0, 3, { kind: "keyMoment", dir: -1 })).toEqual({ round: 0, step: 0 });
   });
 
   it("goes to the next round's start, but a repeat never leaves a round's last step", () => {
@@ -188,16 +172,6 @@ describe("resolveNav", () => {
       forward.push(step);
     }
     expect(forward).toEqual([1, 3, 11, 17, 19, SANMA_STEPS - 1]);
-    const moments: number[] = [];
-    for (let step = 0; step < SANMA_STEPS - 1; ) {
-      step =
-        resolveNav({ round: 0, step }, { kind: "keyMoment", dir: 1 }, sanma, {
-          pov: 0,
-          repeat: false,
-        })?.step ?? SANMA_STEPS;
-      moments.push(step);
-    }
-    expect(moments).toEqual([2, 6, 11, 14, 18, 22, SANMA_STEPS - 1]);
     expect(own(SANMA_STEPS - 1, 0)).toEqual({ round: 1, step: 0 });
   });
 });
@@ -212,24 +186,20 @@ describe("nextWhere and prevWhere", () => {
     expect(prevWhere({ round: 0, step: 0 }, ix, never)).toBeNull();
   });
 
-  it("match own turns and key moments by step kind", () => {
+  it("match own turns by step kind", () => {
     const info = (kind: StepInfo["kind"], seat: Seat | null): StepInfo => ({
       kind,
       seat,
       tsumogiri: false,
-      doraReveal: false,
     });
     expect(ownTurn(1)(info("draw", 1))).toBe(true);
     expect(ownTurn(1)(info("pon", 1))).toBe(true);
     expect(ownTurn(1)(info("discard", 1))).toBe(false);
     expect(ownTurn(1)(info("ankan", 1))).toBe(false);
     expect(ownTurn(1)(info("draw", 2))).toBe(false);
-    for (const kind of ["riichi", "chi", "pon", "daiminkan", "ankan", "kakan", "kita"] as const) {
-      expect(keyMoment(info(kind, 0))).toBe(true);
-    }
-    for (const kind of ["deal", "draw", "discard", "result"] as const) {
-      expect(keyMoment(info(kind, 0))).toBe(false);
-    }
+    expect(ownTurn(1)(info("chi", 1))).toBe(true);
+    expect(ownTurn(1)(info("daiminkan", 1))).toBe(true);
+    expect(ownTurn(1)(info("kita", 1))).toBe(false);
   });
 });
 
@@ -249,13 +219,11 @@ describe("position predicates", () => {
     expect(navLimits({ round: 0, step: 0 }, bounds)).toEqual({
       gameStart: true,
       gameEnd: false,
-      firstRound: true,
       lastRound: false,
     });
     expect(navLimits({ round: 2, step: 3 }, bounds)).toEqual({
       gameStart: false,
       gameEnd: true,
-      firstRound: false,
       lastRound: true,
     });
     expect(navLimits({ round: 2, step: 1 }, bounds).gameEnd).toBe(false);

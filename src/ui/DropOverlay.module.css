@@ -1,23 +1,28 @@
+/* Fills the window. The size, margin, border and colours undo the browser's popover defaults. */
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  inline-size: auto;
+  block-size: auto;
+  margin: 0;
   padding: 1rem;
+  border: 0;
   background: var(--color-overlay);
-  /* Let drag events reach the page underneath, so text fields still accept dropped text. */
+  color: var(--color-fg);
+  /* Drag events go to the page underneath, so text fields still accept dropped text. */
   pointer-events: none;
 }
 
 .message {
   margin: 0;
-  padding: 2rem 2.5rem;
-  border: 3px dashed var(--color-accent);
-  border-radius: 1rem;
-  background: var(--color-bg);
-  font-size: 1.25rem;
+  padding: 1.5rem 2rem;
+  border: 2px dashed var(--color-accent);
+  border-radius: var(--radius-card);
+  background: var(--chrome-bg-solid);
+  font-size: 1.125rem;
   font-weight: 600;
   text-align: center;
 }

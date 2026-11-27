@@ -1,10 +1,12 @@
 import { type RefObject, useEffect, useRef } from "react";
 
 /**
- * Drives a native <dialog> from an `open` flag: showModal() when it turns true, close() when it
- * turns false, and the focus back to the control that had it when the dialog opened (if that
- * control still exists). A close the browser makes on its own (a form with method="dialog")
- * reports through `onClose`, so the flag stays in sync.
+ * Drives a native <dialog> from an `open` flag: showModal() when it turns true (the focus goes to
+ * the element marked `data-autofocus`, else where the browser puts it), close() when it turns
+ * false, and the focus back to the element that had it when the dialog opened (if that element
+ * still exists). The focus is back before the effects of the components around the dialog
+ * run, so they see where it ended up. A close the browser makes on its own (a form with
+ * method="dialog") reports through `onClose`, so the flag stays in sync.
  */
 export function useModalDialog(
   open: boolean,
@@ -35,8 +37,12 @@ export function useModalDialog(
         // Not connected, or already open as a non-modal dialog: show it anyway.
         dialog.setAttribute("open", "");
       }
+      // React does not write the autofocus attribute that showModal() looks for, so a field that
+      // asks for the focus is given it here.
+      dialog.querySelector<HTMLElement>("[data-autofocus]")?.focus();
     } else if (!open && dialog.open) {
       dialog.close();
+      returnFocus(dialog, opener);
     }
   }, [open]);
 
@@ -46,11 +52,7 @@ export function useModalDialog(
       return;
     }
     const handleClose = () => {
-      const target = opener.current;
-      opener.current = null;
-      if (target?.isConnected && !dialog.contains(target)) {
-        target.focus();
-      }
+      returnFocus(dialog, opener);
       if (openRef.current) {
         onCloseRef.current();
       }
@@ -71,4 +73,13 @@ export function useModalDialog(
   );
 
   return ref;
+}
+
+/** Focuses the element that had the focus when the dialog opened, once per opening. */
+function returnFocus(dialog: HTMLDialogElement, opener: RefObject<HTMLElement | null>): void {
+  const target = opener.current;
+  opener.current = null;
+  if (target?.isConnected && !dialog.contains(target)) {
+    target.focus();
+  }
 }

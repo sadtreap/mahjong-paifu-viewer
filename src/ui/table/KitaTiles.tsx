@@ -12,8 +12,9 @@ export interface KitaTilesProps {
 }
 
 /**
- * A seat's kita (three-player North tiles set aside): one North tile with a ×n pill over its
- * corner. The pill turns with `--kita-rot` (set per seat layer) so it reads upright.
+ * A seat's kita (three-player North tiles set aside): one North tile and, for two or more, a ×n
+ * pill over its corner, the one place the count is shown. The pill turns with `--kita-rot` (set
+ * per seat layer) so it reads upright.
  */
 export function KitaTiles({ tiles, name }: KitaTilesProps) {
   const { m } = useI18n();
@@ -24,9 +25,11 @@ export function KitaTiles({ tiles, name }: KitaTilesProps) {
   return (
     <TileGroup className={styles.kita} label={m.table.kita(name, tiles.length)}>
       <TileImage tile={first} />
-      <span className={styles.count} aria-hidden="true">
-        {m.table.kitaCount(tiles.length)}
-      </span>
+      {tiles.length > 1 && (
+        <span className={styles.count} aria-hidden="true">
+          {m.table.kitaCount(tiles.length)}
+        </span>
+      )}
     </TileGroup>
   );
 }

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Quad } from "../../core/model";
 import { I18nProvider } from "../../i18n/I18nProvider";
@@ -24,19 +25,22 @@ afterEach(() => {
   localStorage.clear();
 });
 
-function Probe({ picked }: { picked: number | null }) {
-  useSpotlight(picked);
+function Probe({ kind }: { kind: number | null }) {
+  const spotlight = useSpotlight();
+  useEffect(() => {
+    spotlight.hover(kind);
+  }, [spotlight, kind]);
   return null;
 }
 
 describe("useSpotlight", () => {
-  it("shows the sticky pick in one <style> and removes it on unmount", () => {
-    const { rerender, unmount } = render(<Probe picked={null} />);
+  it("keeps one <style> for the outlined kind and removes it on unmount", () => {
+    const { rerender, unmount } = render(<Probe kind={null} />);
     expect(styles()).toHaveLength(0);
-    rerender(<Probe picked={22} />);
+    rerender(<Probe kind={22} />);
     expect(styles()).toHaveLength(1);
     expect(styles()[0]?.textContent).toContain('[data-k="22"]');
-    rerender(<Probe picked={null} />);
+    rerender(<Probe kind={null} />);
     expect(styles()[0]?.textContent).toBe("");
     unmount();
     expect(styles()).toHaveLength(0);
@@ -65,7 +69,7 @@ describe("the table's hover spotlight", () => {
     renderWith(spotlight);
     move(screen.getByAltText("5 Man (red)"));
     expect(spotlight.hover).toHaveBeenLastCalledWith(4);
-    move(screen.getByRole("button", { name: "East 1. Open the round list" }));
+    move(screen.getByText("East 1"));
     expect(spotlight.clear).not.toHaveBeenCalled();
     act(() => {
       vi.advanceTimersByTime(SPOTLIGHT_LINGER_MS);

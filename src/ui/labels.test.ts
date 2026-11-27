@@ -1,20 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { GameRules, Quad, WinEvent } from "../core/model";
+import type { Quad, WinEvent } from "../core/model";
 import { YAKU_KEYS } from "../core/yaku";
 import { MESSAGES } from "../i18n/messages";
 import {
   discardLabel,
   formatDelta,
   formatPoints,
-  logDate,
   meldLabel,
   playerNames,
-  rankLabel,
   resultSummary,
   roundLabel,
-  roundShortLabel,
-  rulesLabel,
-  sourceLabel,
   standings,
   tileLabel,
   winValueLabel,
@@ -61,7 +56,7 @@ describe("roundLabel", () => {
   });
 });
 
-describe("players and rules", () => {
+describe("playerNames", () => {
   it("falls back to a numbered name for blank names", () => {
     expect(playerNames(en, [{ name: "A" }, { name: " " }, { name: "" }, { name: "D" }])).toEqual([
       "A",
@@ -69,78 +64,6 @@ describe("players and rules", () => {
       "Player 3",
       "D",
     ]);
-  });
-
-  it("localizes Tenhou rules from the structured fields", () => {
-    const rules = {
-      redFives: true,
-      length: "south",
-      room: "phoenix",
-      openTanyao: true,
-      fast: false,
-      description: "鳳南喰赤",
-    } as const;
-    expect(rulesLabel(en, rules)).toBe("Phoenix room · East-South game · Open tanyao · Red fives");
-    expect(rulesLabel(ko, rules)).toBe("봉황탁 · 반장전 · 쿠이탕 있음 · 적도라 있음");
-    expect(rulesLabel(ja, rules)).toBe("鳳凰卓 · 東南戦 · 喰いタンあり · 赤あり");
-
-    const fast: GameRules = {
-      redFives: false,
-      length: "east",
-      room: "upper",
-      openTanyao: false,
-      fast: true,
-    };
-    expect(rulesLabel(en, fast)).toBe(
-      "Upper room · East-only game · No open tanyao · No red fives · Fast",
-    );
-    expect(rulesLabel(ja, fast)).toBe("上級卓 · 東風戦 · 喰いタンなし · 赤なし · 高速");
-  });
-
-  it("falls back to the source's rule text without the structured fields, then summarizes", () => {
-    expect(rulesLabel(en, { redFives: true, description: "玉の間南喰赤" })).toBe("玉の間南喰赤");
-    expect(rulesLabel(en, { redFives: false, length: "east" })).toBe(
-      "East-only game · No red fives",
-    );
-  });
-});
-
-describe("rankLabel", () => {
-  it("localizes Tenhou ranks from the dan index", () => {
-    const player = (danIndex: number) => ({ name: "A", rank: "raw", danIndex });
-    expect([0, 1, 9, 10, 16, 19, 20].map((dan) => rankLabel(en, player(dan)))).toEqual([
-      "Novice",
-      "9 kyu",
-      "1 kyu",
-      "1 dan",
-      "7 dan",
-      "10 dan",
-      "Tenhoui",
-    ]);
-    expect([0, 1, 10, 16, 19, 20].map((dan) => rankLabel(ko, player(dan)))).toEqual([
-      "신인",
-      "9급",
-      "초단",
-      "7단",
-      "10단",
-      "천봉위",
-    ]);
-    expect([0, 1, 9, 10, 16, 19, 20].map((dan) => rankLabel(ja, player(dan)))).toEqual([
-      "新人",
-      "9級",
-      "1級",
-      "初段",
-      "七段",
-      "十段",
-      "天鳳位",
-    ]);
-  });
-
-  it("falls back to the source's rank text without a known dan index", () => {
-    expect(rankLabel(en, { name: "A", rank: " 雀豪★1 " })).toBe("雀豪★1");
-    expect(rankLabel(en, { name: "A", rank: "七段", danIndex: 21 })).toBe("七段");
-    expect(rankLabel(en, { name: "A", danIndex: 2.5 })).toBeUndefined();
-    expect(rankLabel(en, { name: "A" })).toBeUndefined();
   });
 });
 
@@ -195,9 +118,11 @@ describe("board labels", () => {
 describe("numbers", () => {
   it("formats points and signed deltas", () => {
     expect(formatPoints("en", 25000)).toBe("25,000");
+    expect(formatPoints("en", -4900)).toBe("−4,900");
     expect(formatDelta("en", 8000)).toBe("+8,000");
-    expect(formatDelta("en", -2000)).toBe("-2,000");
-    expect(formatDelta("en", 0)).toBe("0");
+    expect(formatDelta("en", -2000)).toBe("−2,000");
+    expect(formatDelta("en", 0)).toBe("±0");
+    expect(formatDelta("ko", -12300, false)).toBe("−12300");
   });
 });
 
@@ -222,33 +147,6 @@ describe("standings with three players", () => {
     ]);
     // Even when the empty chair's placeholder would outrank a negative score.
     expect(standings([-5000, 60000, 50000, 0], 3).map((s) => s.seat)).toEqual([1, 2, 0]);
-  });
-});
-
-describe("roundShortLabel", () => {
-  it("is short in every language", () => {
-    const round = { wind: 0 as const, number: 3, honba: 1 };
-    expect(roundShortLabel(en, round)).toBe("E3-1");
-    expect(roundShortLabel(ko, round)).toBe("동3-1");
-    expect(roundShortLabel(ja, round)).toBe("東3-1");
-    expect(roundShortLabel(en, { wind: 1, number: 2, honba: 0 })).toBe("S2");
-  });
-});
-
-describe("rulesLabel with the player count", () => {
-  const rules: GameRules = { redFives: true, length: "east", room: "general", openTanyao: true };
-
-  it("marks three-player games, structured or not", () => {
-    expect(rulesLabel(en, rules, 3)).toBe(
-      "Three-player · General room · East-only game · Open tanyao · Red fives",
-    );
-    expect(rulesLabel(en, rules, 4)).toBe(
-      "General room · East-only game · Open tanyao · Red fives",
-    );
-    expect(rulesLabel(en, { redFives: true, description: "Gold room" }, 3)).toBe(
-      "Three-player · Gold room",
-    );
-    expect(rulesLabel(ko, rules, 3).startsWith("3인 대국")).toBe(true);
   });
 });
 
@@ -311,22 +209,6 @@ describe("results", () => {
         "ja",
       ),
     ).toContain("聴牌：A、C");
-  });
-});
-
-describe("source", () => {
-  it("reads the day from a Tenhou log id", () => {
-    expect(logDate("en", "2000050417gm-0089-0000-0123abcd")).toBe("May 4, 2000");
-    expect(logDate("en", "2000023117gm-0089-0000-0123abcd")).toBeNull();
-    expect(logDate("en", "not-an-id")).toBeNull();
-    expect(logDate("en", undefined)).toBeNull();
-  });
-
-  it("names the format, with the day when known", () => {
-    expect(sourceLabel(en, "en", { format: "mjlog", id: "2000050417gm-0089-0000-0123abcd" })).toBe(
-      "Tenhou mjlog XML · May 4, 2000",
-    );
-    expect(sourceLabel(en, "en", { format: "mjai" })).toBe("mjai JSONL");
   });
 });
 

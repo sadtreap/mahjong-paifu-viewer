@@ -68,3 +68,13 @@ function linkParam(text: string, name: string): number | null {
 export function tenhouLogDataUrl(logId: string): string {
   return `https://tenhou.net/0/log/?${logId}`;
 }
+
+/**
+ * Tenhou's replay link to a log, viewed from `start.pov` (`tw`) at the round `start.round`
+ * (0-based, `ts`); the first round and an unknown seat are left out, as Tenhou writes them.
+ */
+export function tenhouReplayUrl(logId: string, start: TenhouLinkStart): string {
+  const tw = start.pov === null ? "" : `&tw=${start.pov}`;
+  const ts = start.round !== null && start.round > 0 ? `&ts=${start.round}` : "";
+  return `https://tenhou.net/0/?log=${logId}${tw}${ts}`;
+}

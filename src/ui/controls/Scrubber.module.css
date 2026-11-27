@@ -1,0 +1,112 @@
+/*
+ * A slim track with a round thumb, filling the box its parent gives it (the box is the area to
+ * aim at). --fill (0..1, set inline) is the played share of the round; the thumb's centre runs
+ * from half a thumb in to half a thumb from the end, and the played part ends under it. A parent
+ * may set --scrub-track and --scrub-thumb, and --scrub-above to keep the track that far below the
+ * box's top (it is centred in what remains).
+ */
+.scrubber {
+  --thumb: var(--scrub-thumb, 16px);
+  --track: var(--scrub-track, 4px);
+  --played: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--fill, 0));
+
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: var(--scrub-above, 0) 0 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.scrubber::-webkit-slider-runnable-track {
+  height: var(--track);
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--color-fg) var(--played),
+    var(--scrub-rest) var(--played)
+  );
+}
+
+.scrubber::-moz-range-track {
+  height: var(--track);
+  border-radius: 999px;
+  background: var(--scrub-rest);
+}
+
+.scrubber::-moz-range-progress {
+  height: var(--track);
+  border-radius: 999px;
+  background: var(--color-fg);
+}
+
+.scrubber::-webkit-slider-thumb {
+  width: var(--thumb);
+  height: var(--thumb);
+  margin-top: calc((var(--track) - var(--thumb)) / 2);
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-fg);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.scrubber::-moz-range-thumb {
+  width: var(--thumb);
+  height: var(--thumb);
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-fg);
+}
+
+.scrubber:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* A finger needs a larger thumb. */
+@media (pointer: coarse) {
+  .scrubber {
+    --thumb: var(--scrub-thumb, 20px);
+  }
+}
+
+/* The track and the thumb are drawn with backgrounds only. */
+@media (forced-colors: active) {
+  .scrubber {
+    forced-color-adjust: none;
+  }
+
+  .scrubber::-webkit-slider-runnable-track {
+    background: linear-gradient(to right, Highlight var(--played), CanvasText var(--played));
+  }
+
+  .scrubber::-moz-range-track {
+    background: CanvasText;
+  }
+
+  .scrubber::-moz-range-progress {
+    background: Highlight;
+  }
+
+  .scrubber::-webkit-slider-thumb {
+    background: ButtonText;
+    outline: 2px solid Canvas;
+  }
+
+  .scrubber::-moz-range-thumb {
+    background: ButtonText;
+    outline: 2px solid Canvas;
+  }
+
+  .scrubber:focus-visible {
+    outline-color: Highlight;
+  }
+}

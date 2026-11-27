@@ -18,10 +18,8 @@ export function spotlightCss(kind: number | null): string {
   );
 }
 
-/** A spotlight that also keeps a sticky pick (the unseen grid) and can be disposed. */
+/** A spotlight that can be asked what it shows and disposed. */
 export interface SpotlightController extends Spotlight {
-  /** The sticky kind, shown whenever nothing is hovered. */
-  setSticky(kind: number | null): void;
   /** The kind the rule currently outlines. */
   current(): number | null;
   dispose(): void;
@@ -34,12 +32,9 @@ export interface SpotlightController extends Spotlight {
  */
 export function createSpotlight(doc?: Document): SpotlightController {
   let style: HTMLStyleElement | null = null;
-  let hovered: number | null = null;
-  let sticky: number | null = null;
   let shown: number | null = null;
   // The element is created on the first change, so creating a spotlight has no side effect.
-  const render = () => {
-    const kind = hovered ?? sticky;
+  const render = (kind: number | null) => {
     if (kind === shown && (style?.isConnected ?? kind === null)) {
       return;
     }
@@ -55,18 +50,8 @@ export function createSpotlight(doc?: Document): SpotlightController {
     style.textContent = spotlightCss(kind);
   };
   return {
-    hover(kind) {
-      hovered = kind;
-      render();
-    },
-    clear() {
-      hovered = null;
-      render();
-    },
-    setSticky(kind) {
-      sticky = kind;
-      render();
-    },
+    hover: render,
+    clear: () => render(null),
     current: () => shown,
     dispose() {
       style?.remove();

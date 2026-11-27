@@ -1,0 +1,70 @@
+/*
+ * The surface and the rows shared by the three popovers (point-of-view menu, app menu, round
+ * list). The panel is a child of the page body, fixed to the viewport; usePopover's `place` sets
+ * where (inline top, right, bottom, left and max-height).
+ */
+.panel {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: calc(100dvh - 16px);
+  padding: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--chrome-border);
+  border-radius: var(--radius-card);
+  background: var(--chrome-bg-solid);
+  box-shadow: var(--chrome-shadow);
+  color: var(--color-fg);
+  cursor: default;
+  animation: open var(--dur) var(--ease);
+}
+
+@keyframes open {
+  from {
+    opacity: 0;
+  }
+}
+
+/* A row: a ghost button as wide as the panel, its content starting at the left. */
+.item {
+  flex: none;
+  justify-content: flex-start;
+  width: 100%;
+  padding-inline: 0.75rem;
+  text-align: start;
+  white-space: nowrap;
+}
+
+/* The checked or current row: a lighter fill and a bar at its start (not colour alone). */
+.item:where([aria-checked="true"], [aria-current="true"]) {
+  background:
+    linear-gradient(currentcolor, currentcolor) 0.1875rem 50% / 0.1875rem 1rem no-repeat,
+    var(--btn-bg-pressed);
+}
+
+/* Where the viewer's controls are 40px (the page's side-column arrangement), so are the rows. */
+@media (min-aspect-ratio: 8 / 5) and (max-height: 480px) {
+  .panel {
+    --control: 2.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .panel {
+    border-color: CanvasText;
+  }
+
+  /* The system removes fills, so the checked or current row gets a thick border. */
+  .item:where([aria-checked="true"], [aria-current="true"]) {
+    border: 2px solid Highlight;
+  }
+}

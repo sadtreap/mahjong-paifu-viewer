@@ -1,47 +1,25 @@
 .error {
   display: flex;
-  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 0.5rem 1rem;
-  padding: 0.75rem 1rem;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-danger);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-control);
   background: var(--color-danger-bg);
+  font-size: var(--text-control);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
-/* On narrow screens the Dismiss button wraps below the text instead of squeezing it. */
-.body {
-  flex: 1 1 15rem;
-  min-width: 0;
-}
-
-.title {
-  margin: 0 0 0.25rem;
-  font-weight: 700;
+/* As tall as one line of the sentence, so it sits centred beside the first line. */
+.icon {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1.4em;
   color: var(--color-danger);
 }
 
-.message {
-  margin: 0;
-}
-
-.help {
-  margin: 0.5rem 0;
-}
-
-ul.help {
-  padding-left: 1.25rem;
-}
-
-.help li + li {
-  margin-top: 0.25rem;
-}
-
-.dismiss {
-  flex: none;
-}
-
-/* The link text is a long URL; let it wrap anywhere on narrow screens. */
 .link {
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }

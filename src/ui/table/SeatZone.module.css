@@ -1,101 +1,21 @@
 /*
- * Seat layer contents, in bottom-seat coordinates (units u = S / 20):
- *   console edge  12.05..12.9 high, 7.15..12.85 wide (the console's near strip, pinwheel)
- *   turn bar      12.84 high, 8.2..11.8 wide
- *   riichi stick  11.6..11.8 high, 8.6..11.4 wide
- *   pond          from 13.3 down, 0.9-unit tiles in rows of six
- *   hand row      0.45 from the bottom edge, --row0..17.9 (geometry.ts OPP_ROW_START, OPP_ROW_END):
- *                 a pinwheel, each row holds the corner on its owner's left and stops short of the
- *                 next seat's row (1.94 deep); the right row leaves the near-right corner to the
- *                 own hand
+ * Seat layer contents, in bottom-seat coordinates (units u = S / 20). The places come from
+ * geometry.ts as custom properties: the pond (--pond-x, --pond-y, --pond-tile and the seat's own
+ * --ps when a long pond shrinks its tiles), and the hand row (--row0 to --row-end, --row-gap from
+ * the edge), a pinwheel in which each row holds the corner on its owner's left.
  */
-.edge {
-  position: absolute;
-  left: calc(var(--u) * 7.15);
-  top: calc(var(--u) * 12.05);
-  width: calc(var(--u) * 5.7);
-  height: calc(var(--u) * 0.85);
-  display: flex;
-  align-items: center;
-  color: var(--console-fg);
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-  pointer-events: none;
-}
-
-/* The far seat's edge reads upright. */
-.upright {
-  rotate: 180deg;
-}
-
-.wind {
-  flex: none;
-  width: calc(var(--u) * 0.85);
-  height: calc(var(--u) * 0.85);
-  display: grid;
-  place-items: center;
-  border-radius: calc(var(--u) * 0.18);
-  background: #23392f;
-  font-weight: 800;
-  font-size: calc(var(--u) * 0.5);
-  box-shadow: inset 0 calc(var(--u) * -0.05) 0 rgb(0 0 0 / 0.3);
-}
-
-.dealer {
-  background: var(--dealer-bg);
-  color: var(--dealer-fg);
-}
-
-.score {
-  flex: 1;
-  text-align: center;
-  font-weight: 700;
-  font-size: calc(var(--u) * 0.55);
-}
-
-.score small {
-  font-size: 0.7em;
-  opacity: 0.8;
-}
-
-.turnBar {
-  position: absolute;
-  left: calc(var(--u) * 8.2);
-  top: calc(var(--u) * 12.84);
-  width: calc(var(--u) * 3.6);
-  height: calc(var(--u) * 0.13);
-  border-radius: 99px;
-  background: var(--turn);
-  box-shadow: 0 0 calc(var(--u) * 0.35) var(--turn);
-  pointer-events: none;
-}
-
-.stick {
-  position: absolute;
-  left: calc(var(--u) * 8.6);
-  top: calc(var(--u) * 11.6);
-  width: calc(var(--u) * 2.8);
-  height: calc(var(--u) * 0.2);
-  border-radius: 99px;
-  background:
-    #f4f1ea radial-gradient(circle, #d22 0 18%, transparent 22%) center / 15% 100% no-repeat;
-  box-shadow:
-    0 calc(var(--u) * 0.06) 0 #b9b2a3,
-    0 calc(var(--u) * 0.12) calc(var(--u) * 0.12) rgb(0 0 0 / 0.45);
-}
-
 .pond {
-  --tile-w: calc(var(--u) * 0.9);
+  --tile-w: calc(var(--u) * var(--pond-tile) * var(--ps, 1));
 
   position: absolute;
-  left: calc(var(--u) * 7.1);
-  top: calc(var(--u) * 13.3);
+  left: calc(var(--u) * var(--pond-x));
+  top: calc(var(--u) * var(--pond-y));
 }
 
 /*
  * The far seat's pond is nearer the camera than its hand row, whose drawn thickness falls toward
- * the pond (--dy: -1 in that layer): a fourth pond row ends 0.1 unit short of the hand row, so the
- * pond paints over that thickness instead of under it (in document order the row came later).
+ * the pond (--dy: -1 in that layer) and ends where the pond's last row begins: the pond paints
+ * over that thickness instead of under it (in document order the row came later).
  */
 [data-side="top"] > .pond {
   z-index: 1;
@@ -110,13 +30,41 @@
   box-shadow: none;
 }
 
+/*
+ * The riichi stick: along the console's edge on the seat's side, half on the rim and half in the
+ * gap between the console and the seat's pond.
+ */
+.stick {
+  --edge: calc(var(--console-from) + var(--console-size));
+
+  position: absolute;
+  left: calc(var(--u) * (var(--console-from) + 0.8));
+  top: calc(var(--u) * (var(--edge) - 0.05));
+  width: calc(var(--u) * (var(--console-size) - 1.6));
+  height: calc(var(--u) * (var(--pond-y) - var(--edge)));
+  border-radius: 99px;
+  background:
+    var(--stick) radial-gradient(circle, var(--stick-dot) 0 30%, transparent 36%) center / 7% 100%
+    no-repeat;
+  box-shadow: 0 calc(var(--u) * 0.03) calc(var(--u) * 0.05) rgb(0 0 0 / 0.5);
+  pointer-events: none;
+}
+
+/*
+ * The far seat's first pond row shows its drawn thickness toward the camera, across that same gap:
+ * the stick lies in front of those tiles, so it is painted over the pond.
+ */
+[data-side="top"] > .stick {
+  z-index: 2;
+}
+
 .opp {
   --tile-w: calc(var(--u) * var(--hs, 1));
 
   position: absolute;
   left: calc(var(--u) * var(--row0));
-  bottom: calc(var(--u) * 0.45);
-  width: calc(var(--u) * (17.9 - var(--row0)));
+  bottom: calc(var(--u) * var(--row-gap));
+  width: calc(var(--u) * (var(--row-end) - var(--row0)));
   display: flex;
   align-items: flex-end;
 }
@@ -136,12 +84,12 @@
   }
 }
 
-/* The sanma empty chair: a dashed outline on its side, nothing else. */
-.emptyChair {
+/* The empty seat of a three-player game: a dashed outline where its pond would be. */
+.emptySeat {
   position: absolute;
-  left: calc(var(--u) * 8.5);
-  top: calc(var(--u) * 16.2);
-  width: calc(var(--u) * 3);
+  left: calc(var(--u) * (var(--console-from) + 1));
+  top: calc(var(--u) * (var(--pond-y) + 2.5));
+  width: calc(var(--u) * (var(--console-size) - 2));
   height: calc(var(--u) * 1.4);
   border: calc(var(--u) * 0.06) dashed rgb(255 255 255 / 0.16);
   border-radius: calc(var(--u) * 0.3);
@@ -159,21 +107,12 @@
 }
 
 @media (forced-colors: active) {
-  .edge {
-    border: 1px solid CanvasText;
-  }
-
-  .wind {
-    border: 1px solid CanvasText;
-  }
-
-  .turnBar,
   .stick {
     forced-color-adjust: none;
     outline: 2px solid Highlight;
   }
 
-  .emptyChair {
+  .emptySeat {
     border-color: GrayText;
   }
 }

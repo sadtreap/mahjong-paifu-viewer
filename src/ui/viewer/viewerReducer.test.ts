@@ -26,10 +26,8 @@ describe("initialViewerState", () => {
       position: { round: 0, step: 0 },
       pov: 0,
       playing: false,
-      resultHidden: false,
+      resultCard: "shown",
       lastMove: { kind: "init", dir: 0 },
-      pickedKind: null,
-      pin: null,
     });
     const start = initialViewerState({ round: 9, step: 99, pov: 3 }, ix);
     expect(start.position).toEqual({ round: 2, step: 3 });
@@ -54,7 +52,7 @@ describe("navigation", () => {
       kind: "step",
       dir: 1,
     });
-    expect(reduce(at(0, 3), nav({ kind: "keyMoment", dir: 1 })).lastMove).toEqual({
+    expect(reduce(at(0, 3), nav({ kind: "nextRound" })).lastMove).toEqual({
       kind: "jump",
       dir: 1,
     });
@@ -93,23 +91,51 @@ describe("navigation", () => {
     expect(stuck.playing).toBe(false);
   });
 
-  it("shows the result again and drops the pin on every move, but keeps the tile pick", () => {
-    const pinned = at(0, 3, {
-      resultHidden: true,
-      pin: { seat: 1, index: 0 },
-      pickedKind: 12,
-    });
-    const moved = reduce(pinned, nav(next));
-    expect(moved.resultHidden).toBe(false);
-    expect(moved.pin).toBeNull();
-    expect(moved.pickedKind).toBe(12);
+  it("shows the result again on every move", () => {
+    const hidden = at(0, 3, { resultCard: "hidden" });
+    expect(reduce(hidden, nav(next)).resultCard).toBe("shown");
+    expect(
+      reduce(hidden, { type: "seek", position: { round: 1, step: 0 }, kind: "jump" }).resultCard,
+    ).toBe("shown");
   });
 
-  it("re-opens a hidden result with End at the round's last step", () => {
-    const hidden = at(0, last, { resultHidden: true });
-    const shown = reduce(hidden, nav({ kind: "roundEnd" }));
-    expect(shown.resultHidden).toBe(false);
+  it("lets the card wait when a step forward reaches the result, and only then", () => {
+    const before = at(0, last - 1, { playing: true });
+    expect(reduce(before, nav(next)).resultCard).toBe("due");
+    expect(reduce(before, nav(next, "repeat")).resultCard).toBe("due");
+    expect(reduce(before, nav(next, "autoplay")).resultCard).toBe("due");
+    // Jumps and steps back show it at once.
+    expect(reduce(at(0, 3), nav({ kind: "roundEnd" })).resultCard).toBe("shown");
+    expect(reduce(at(1, 0), nav(prev)).resultCard).toBe("shown");
+    const sought = reduce(at(0, 3), {
+      type: "seek",
+      position: { round: 0, step: last },
+      kind: "scrub",
+    });
+    expect(sought.resultCard).toBe("shown");
+  });
+
+  it("brings a waiting card up on a fresh step forward, staying in the round", () => {
+    const due = at(0, last, { resultCard: "due" });
+    const shown = reduce(due, nav(next));
     expect(shown.position).toEqual({ round: 0, step: last });
+    expect(shown.resultCard).toBe("shown");
+    expect(reduce(due, nav({ kind: "ownTurn", dir: 1 })).resultCard).toBe("shown");
+    // A held or repeated press stops at the round's end and leaves the card waiting.
+    expect(reduce(due, nav(next, "repeat"))).toBe(due);
+    // Anything else moves as usual.
+    expect(reduce(due, nav(prev)).position).toEqual({ round: 0, step: last - 1 });
+    expect(reduce(due, nav({ kind: "nextRound" })).position).toEqual({ round: 1, step: 0 });
+  });
+
+  it("brings a hidden or waiting result up with End at the round's last step", () => {
+    const hidden = at(0, last, { resultCard: "hidden" });
+    const shown = reduce(hidden, nav({ kind: "roundEnd" }));
+    expect(shown.resultCard).toBe("shown");
+    expect(shown.position).toEqual({ round: 0, step: last });
+    expect(reduce(at(0, last, { resultCard: "due" }), nav({ kind: "roundEnd" })).resultCard).toBe(
+      "shown",
+    );
     const visible = at(0, last);
     expect(reduce(visible, nav({ kind: "roundEnd" }))).toBe(visible);
   });
@@ -140,7 +166,7 @@ describe("seek", () => {
   });
 
   it("changes only the point of view when the position is the same", () => {
-    const state = at(1, 5, { pin: { seat: 0, index: 1 } });
+    const state = at(1, 5, { resultCard: "hidden" });
     const same = reduce(state, {
       type: "seek",
       position: { round: 1, step: 5 },
@@ -148,7 +174,7 @@ describe("seek", () => {
       pov: 1,
     });
     expect(same.pov).toBe(1);
-    expect(same.pin).toEqual({ seat: 0, index: 1 });
+    expect(same.resultCard).toBe("hidden");
     expect(same.lastMove).toEqual({ kind: "history", dir: 0 });
     const scrub = reduce(state, { type: "seek", position: { round: 1, step: 5 }, kind: "scrub" });
     expect(scrub).toBe(state);
@@ -225,23 +251,18 @@ describe("autoplay", () => {
   });
 });
 
-describe("result card, pick and pin", () => {
+describe("result card", () => {
   it("hides and shows the result", () => {
     const hidden = reduce(at(0, last), { type: "hideResult" });
-    expect(hidden.resultHidden).toBe(true);
+    expect(hidden.resultCard).toBe("hidden");
     expect(reduce(hidden, { type: "hideResult" })).toBe(hidden);
-    expect(reduce(hidden, { type: "showResult" }).resultHidden).toBe(false);
+    expect(reduce(hidden, { type: "showResult" }).resultCard).toBe("shown");
   });
 
-  it("sets and clears the sticky pick and the pin", () => {
-    const picked = reduce(at(0, 3), { type: "pick", kind: 5 });
-    expect(picked.pickedKind).toBe(5);
-    expect(reduce(picked, { type: "pick", kind: 5 })).toBe(picked);
-    expect(reduce(picked, { type: "pick", kind: null }).pickedKind).toBeNull();
-    const ref = { seat: 2 as const, index: 3 };
-    const pinned = reduce(picked, { type: "pin", ref });
-    expect(pinned.pin).toBe(ref);
-    expect(reduce(pinned, { type: "pin", ref: null }).pin).toBeNull();
+  it("shows a waiting card when its time comes, unless it was hidden first", () => {
+    const due = at(0, last, { resultCard: "due" });
+    expect(reduce(due, { type: "showResult" }).resultCard).toBe("shown");
+    expect(reduce(due, { type: "hideResult" }).resultCard).toBe("hidden");
   });
 });
 
@@ -250,18 +271,25 @@ describe("a walk through the game", () => {
     let state = at(0, 0);
     const rounds = new Set<number>();
     let steps = 0;
+    let cards = 0;
     for (;;) {
       const nextState = reduce(state, nav(next));
       if (nextState === state) {
         break;
       }
+      if (nextState.position === state.position) {
+        // The press at a round's result (the game's last one too) brought up the waiting card.
+        cards++;
+      } else {
+        steps++;
+      }
       state = nextState;
       rounds.add(state.position.round);
-      steps++;
     }
     const end: Position = { round: 2, step: 3 };
     expect(state.position).toEqual(end);
     expect(steps).toBe(SAMPLE_STEPS * 2 + 4 - 1);
+    expect(cards).toBe(3);
     expect([...rounds]).toEqual([0, 1, 2]);
   });
 });

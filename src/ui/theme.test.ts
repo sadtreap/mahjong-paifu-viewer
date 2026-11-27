@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BREAKPOINT_QUERIES } from "./breakpoints";
+import { SHORT, WIDE } from "./arrangement";
 
 const fileUrl = (path: string) => new URL(path, import.meta.url);
 const read = (path: string) => readFileSync(fileUrl(path), "utf8");
@@ -39,8 +39,6 @@ function blockAt(css: string, start: number): string {
   }
   throw new Error("unbalanced CSS");
 }
-
-const ruleBody = (selector: string) => blockAt(indexCss, indexCss.indexOf(`${selector} {`));
 
 /** `#rrggbb`, `rgb(r g b)` or `rgb(r g b / a)`. */
 function parseColor(value: string): Color {
@@ -95,105 +93,49 @@ function solid(palette: Palette, name: string): Rgb {
   return color.rgb;
 }
 
-const root = declarations(blockAt(indexCss, indexCss.search(/^:root\s*\{/m)));
-const darkMedia = declarations(
-  blockAt(blockAt(indexCss, indexCss.indexOf("@media (prefers-color-scheme: dark)")), 0),
+/** The top-level `:root { ... }` blocks of index.css, in order. */
+const rootBlocks = [...indexCss.matchAll(/^:root\s*\{/gm)].map((match) =>
+  blockAt(indexCss, match.index),
 );
-const darkAttribute = declarations(ruleBody(':root[data-theme="dark"]'));
-const scene = declarations(ruleBody('[data-scene="player"]'));
-
-const light: Palette = root;
-const dark: Palette = { ...root, ...darkAttribute };
-const themes = [
-  ["light", light],
-  ["dark", dark],
-] as const;
+const palette: Palette = Object.assign({}, ...rootBlocks.map(declarations));
+const color = (name: string) => solid(palette, name);
+/** Looks up a token as a color that may be translucent. */
+const translucent = (name: string) => {
+  const value = palette[name];
+  if (!value) {
+    throw new Error(`missing --${name}`);
+  }
+  return parseColor(value);
+};
+/** Tokens that are sizes, times, easings or shadows; every other token is a color. */
+const NOT_A_COLOR =
+  /^(radius-.+|control|text-.+|dur|ease|chrome-shadow|top-bar|side-column|scrub-rise)$/;
 
 describe("theme structure", () => {
-  it("defines the dark theme for the system setting and for data-theme=dark alike", () => {
-    expect(Object.keys(darkMedia).length).toBeGreaterThan(10);
-    expect(darkMedia).toEqual(darkAttribute);
+  it("has one dark palette on :root and nothing that switches it", () => {
+    expect(rootBlocks[0]).toMatch(/color-scheme:\s*dark;/);
+    expect(Object.keys(palette).length).toBeGreaterThan(40);
+    expect(indexCss).not.toMatch(/prefers-color-scheme|data-theme|data-scene/);
   });
 
-  it("lets the settings force either color scheme", () => {
-    expect(ruleBody(':root[data-theme="light"]')).toMatch(/color-scheme:\s*light;/);
-    expect(ruleBody(':root[data-theme="dark"]')).toMatch(/color-scheme:\s*dark;/);
-  });
-
-  it("makes the player a dark scene that defines every themed page color", () => {
-    expect(ruleBody('[data-scene="player"]')).toMatch(/color-scheme:\s*dark;/);
-    // The page colors that change with the theme; the scene must not inherit the light ones.
-    const pageTokens = Object.keys(darkAttribute).filter((name) => name.startsWith("color-"));
-    expect(pageTokens.length).toBeGreaterThan(10);
-    for (const name of pageTokens) {
-      expect(scene, `--${name}`).toHaveProperty(name);
-    }
-    for (const name of ["seat-0", "seat-1", "seat-2", "seat-3"]) {
-      expect(scene, `--${name}`).toHaveProperty(name);
-    }
-    for (const name of ["dock-bg", "btn-bg", "btn-bg-hover", "btn-border"]) {
-      expect(scene, `--${name}`).toHaveProperty(name);
-    }
-  });
-
-  it("gives the table the same palette in both themes, except the felt", () => {
-    const tableTokens = Object.keys(root).filter((name) =>
-      /^(room|rail|console|tile-(edge|lid|back|drop)|plate|seatc|turn|highlight|spot$|next|tip|fu|card|coach|dealer-)/.test(
-        name,
-      ),
+  it("labels the token blocks: base, chrome and table", () => {
+    const labels = [...indexCss.matchAll(/^\/\* ---- (\w+):.*\*\/\n:root \{/gm)].map(
+      (match) => match[1],
     );
-    expect(tableTokens.length).toBeGreaterThan(30);
-    for (const name of tableTokens) {
-      expect(dark[name], `--${name}`).toBe(light[name]);
-    }
-    for (const name of ["felt-light", "felt-center", "felt-edge", "felt-far"]) {
-      expect(dark[name], `--${name}`).not.toBe(light[name]);
-    }
-  });
-});
-
-describe.each(themes)("%s theme contrast", (_scheme, colors) => {
-  const color = (name: string) => solid(colors, `color-${name}`);
-
-  it.each([
-    ["on-accent", "accent"],
-    ["on-accent", "accent-hover"],
-    ["link", "bg"],
-    ["link", "surface"],
-    ["link", "danger-bg"],
-    ["fg", "bg"],
-    ["fg", "surface"],
-    ["muted", "bg"],
-    ["muted", "surface"],
-    ["danger", "danger-bg"],
-    ["gain", "surface"],
-    ["loss", "surface"],
-  ])("--color-%s on --color-%s reaches 4.5:1 for text", (text, background) => {
-    expect(contrast(color(text), color(background))).toBeGreaterThanOrEqual(4.5);
+    expect(labels).toEqual(["base", "chrome", "table"]);
   });
 
-  it.each(["seat-0", "seat-1", "seat-2", "seat-3"])(
-    "--%s reaches 4.5:1 on the page and its surfaces",
-    (seat) => {
-      for (const background of ["bg", "surface"]) {
-        expect(contrast(solid(colors, seat), color(background))).toBeGreaterThanOrEqual(4.5);
+  it("declares each token once", () => {
+    const names = rootBlocks.flatMap((block) => Object.keys(declarations(block)));
+    expect(names.filter((name, index) => names.indexOf(name) !== index)).toEqual([]);
+  });
+
+  it("writes every color as #rrggbb or rgb(r g b / a)", () => {
+    for (const [name, value] of Object.entries(palette)) {
+      if (!NOT_A_COLOR.test(name)) {
+        expect(() => parseColor(value), `--${name}`).not.toThrow();
       }
-    },
-  );
-
-  it("keeps the rail's pick outline and win star at 3:1 (non-text)", () => {
-    expect(contrast(solid(colors, "spot-page"), color("surface"))).toBeGreaterThanOrEqual(3);
-    expect(contrast(solid(colors, "win-glyph"), color("surface"))).toBeGreaterThanOrEqual(3);
-  });
-
-  it("keeps the accent (slider, checkbox) at 3:1 against the page", () => {
-    expect(contrast(color("accent"), color("bg"))).toBeGreaterThanOrEqual(3);
-  });
-
-  it("darkens the file button on hover instead of lowering its contrast", () => {
-    expect(contrast(color("on-accent"), color("accent-hover"))).toBeGreaterThanOrEqual(
-      contrast(color("on-accent"), color("accent")),
-    );
+    }
   });
 
   it("colors links with the link token", () => {
@@ -201,26 +143,14 @@ describe.each(themes)("%s theme contrast", (_scheme, colors) => {
   });
 });
 
-describe.each(themes)("player scene contrast (page in the %s theme)", (_scheme, page) => {
-  const colors: Palette = { ...page, ...scene };
-  const color = (name: string) => solid(colors, name);
-
+describe("page, card and field contrast", () => {
+  // Opaque surfaces: the room behind everything, cards and dialogs, fields and key caps, an alert.
   it.each([
-    [
-      "color-fg",
-      ["color-bg", "dock-bg", "btn-bg", "btn-bg-hover", "color-surface", "color-surface-alt"],
-    ],
-    ["color-muted", ["color-bg", "dock-bg", "btn-bg", "color-surface", "color-surface-alt"]],
+    ["color-fg", ["room-1", "chrome-bg-solid", "color-surface", "color-danger-bg"]],
+    ["color-muted", ["chrome-bg-solid", "color-surface"]],
     ["color-on-accent", ["color-accent", "color-accent-hover"]],
-    ["color-gain", ["color-bg", "dock-bg", "color-surface"]],
-    ["color-loss", ["color-bg", "dock-bg", "color-surface"]],
-    ["color-link", ["color-bg", "color-surface"]],
-    ["color-danger", ["color-danger-bg"]],
-    ["color-dealer-text", ["color-surface"]],
-    ["seat-0", ["color-bg", "dock-bg", "color-surface", "color-surface-alt"]],
-    ["seat-1", ["color-bg", "dock-bg", "color-surface", "color-surface-alt"]],
-    ["seat-2", ["color-bg", "dock-bg", "color-surface", "color-surface-alt"]],
-    ["seat-3", ["color-bg", "dock-bg", "color-surface", "color-surface-alt"]],
+    ["color-link", ["chrome-bg-solid", "color-danger-bg"]],
+    ["color-danger", ["room-1", "color-danger-bg"]],
   ] as const)("--%s reaches 4.5:1 for text on its backgrounds", (text, backgrounds) => {
     for (const background of backgrounds) {
       expect(contrast(color(text), color(background)), `on --${background}`).toBeGreaterThanOrEqual(
@@ -229,75 +159,153 @@ describe.each(themes)("player scene contrast (page in the %s theme)", (_scheme, 
     }
   });
 
-  it("keeps the focus ring at 3:1 on the scene", () => {
-    for (const background of ["color-bg", "dock-bg", "btn-bg"]) {
-      expect(contrast(color("color-focus"), color(background))).toBeGreaterThanOrEqual(3);
+  it("keeps the border of a field or a key cap at 3:1 on its fill and on the card around it", () => {
+    for (const background of ["color-surface", "chrome-bg-solid"]) {
+      expect(contrast(color("color-border"), color(background)), background).toBeGreaterThanOrEqual(
+        3,
+      );
     }
+  });
+
+  it("keeps the focus ring at 3:1 on the room, the cards, the fields and the console", () => {
+    for (const background of [
+      "room-1",
+      "chrome-bg-solid",
+      "color-surface",
+      "color-danger-bg",
+      "console-bg",
+      "console-lit",
+    ]) {
+      expect(contrast(color("color-focus"), color(background)), background).toBeGreaterThanOrEqual(
+        3,
+      );
+    }
+  });
+
+  it("keeps the accent (a primary button, a checked box) at 3:1 against a card", () => {
+    expect(contrast(color("color-accent"), color("chrome-bg-solid"))).toBeGreaterThanOrEqual(3);
+  });
+
+  it("darkens an accent button on hover instead of lowering its contrast", () => {
+    expect(contrast(color("color-on-accent"), color("color-accent-hover"))).toBeGreaterThanOrEqual(
+      contrast(color("color-on-accent"), color("color-accent")),
+    );
   });
 });
 
-describe.each(themes)("table contrast (%s theme)", (_scheme, colors) => {
-  const color = (name: string) => solid(colors, name);
-  const translucent = (name: string) => {
-    const value = colors[name];
-    if (!value) {
-      throw new Error(`missing --${name}`);
-    }
-    return parseColor(value);
-  };
-  /** What a label on the table can sit on: any part of the felt, or a tile face. */
-  const backdrops = () => [
-    ...["felt-light", "felt-center", "felt-edge", "felt-far"].map(color),
-    [255, 255, 255] as const,
+describe("floating chrome contrast", () => {
+  /** What chrome floats over: the felt, the rails and the room (never a tile). */
+  const BEHIND = [
+    "felt-light",
+    "felt-center",
+    "felt-edge",
+    "felt-far",
+    "rail-top-0",
+    "rail-top-1",
+    "rail-lip",
+    "rail-edge",
+    "room-0",
+    "room-1",
+    "room-2",
   ];
+  /** Every colour a chrome surface can have: translucent over each backdrop, and the solid one. */
+  const surfaces = (): ReadonlyArray<readonly [string, Rgb]> => [
+    ...BEHIND.map(
+      (name) => [`over --${name}`, over(translucent("chrome-bg"), color(name))] as const,
+    ),
+    ["solid", color("chrome-bg-solid")],
+  ];
+  const TEXTS = ["color-fg", "color-muted"];
 
-  it.each([
-    ["plate-bg", ["plate-fg", "plate-score", "plate-muted", "aid-tenpai"]],
-    ["coach-bg", ["coach-fg"]],
-    ["card-bg", ["card-fg", "card-value", "card-gain", "card-loss"]],
-  ] as const)("text on --%s reaches 4.5:1 wherever it sits", (background, texts) => {
-    for (const backdrop of backdrops()) {
-      const composite = over(translucent(background), backdrop);
-      for (const text of texts) {
-        expect(contrast(color(text), composite), `--${text}`).toBeGreaterThanOrEqual(4.5);
+  it("keeps text at 4.5:1 on the chrome, over every felt tone, the rails and the room", () => {
+    for (const [where, surface] of surfaces()) {
+      for (const text of TEXTS) {
+        expect(contrast(color(text), surface), `--${text} ${where}`).toBeGreaterThanOrEqual(4.5);
       }
     }
   });
 
+  it.each(["btn-bg", "btn-bg-hover", "btn-bg-pressed"])(
+    "keeps text at 4.5:1 on a button filled with --%s on the chrome",
+    (fill) => {
+      for (const [where, surface] of surfaces()) {
+        const button = over(translucent(fill), surface);
+        for (const text of TEXTS) {
+          expect(contrast(color(text), button), `--${text} ${where}`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    },
+  );
+
+  it("keeps button text at 4.5:1 on an alert", () => {
+    for (const fill of ["btn-bg", "btn-bg-hover", "btn-bg-pressed"]) {
+      const button = over(translucent(fill), color("color-danger-bg"));
+      expect(contrast(color("color-fg"), button), `--${fill}`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it("keeps gains, losses and links at 4.5:1 on the chrome", () => {
+    for (const [where, surface] of surfaces()) {
+      for (const text of ["color-gain", "color-loss", "color-link"]) {
+        expect(contrast(color(text), surface), `--${text} ${where}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  // A seat tag's tenpai word and dealer's wind, and a caption naming a win.
+  it("keeps the table's coloured words at 4.5:1 on the chrome", () => {
+    for (const [where, surface] of surfaces()) {
+      for (const text of ["aid-tenpai", "dealer-mark", "highlight"]) {
+        expect(contrast(color(text), surface), `--${text} ${where}`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it("keeps the focus ring and the accent at 3:1 on the chrome", () => {
+    for (const [where, surface] of surfaces()) {
+      for (const mark of ["color-focus", "color-accent"]) {
+        expect(contrast(color(mark), surface), `--${mark} ${where}`).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
+  it("makes the solid chrome the colour the translucent one has over the room", () => {
+    const shown = over(translucent("chrome-bg"), color("room-1"));
+    color("chrome-bg-solid").forEach((channel, index) => {
+      expect(Math.abs(channel - (shown[index] ?? 0))).toBeLessThanOrEqual(1);
+    });
+  });
+});
+
+describe("table contrast", () => {
   it.each([
-    ["fu-fg", "fu-bg"],
-    ["dealer-fg", "dealer-bg"],
+    ["badge-fg", "badge-bg"],
     ["console-fg", "console-screen"],
     ["console-fg", "console-bg"],
+    ["console-fg", "console-lit"],
+    ["console-fg", "console-wind"],
     ["console-muted", "console-screen"],
-    ["console-muted", "console-bg"],
-    ["tip-fg", "tip-bg"],
-    ["tip-muted", "tip-bg"],
-    ["tip-go", "tip-bg"],
-    ["card-fg", "card-btn"],
   ])("--%s on --%s reaches 4.5:1 for text", (text, background) => {
     expect(contrast(color(text), color(background))).toBeGreaterThanOrEqual(4.5);
   });
 
-  it.each(["seatc0", "seatc1", "seatc2", "seatc3", "card-btn-primary"])(
-    "white text reaches 4.5:1 on --%s",
-    (background) => {
-      expect(contrast([255, 255, 255], color(background))).toBeGreaterThanOrEqual(4.5);
-    },
-  );
-
-  it("keeps the review outlines at 3:1 where they are drawn", () => {
-    // The spotlight outlines tiles on the felt in the middle and on the apron behind the own hand.
+  it("keeps the same-tile spotlight at 3:1 where it is drawn", () => {
+    // It outlines tiles on the felt in the middle and on the apron behind the own hand.
     for (const felt of ["felt-center", "felt-far"]) {
       expect(contrast(color("spot"), color(felt)), felt).toBeGreaterThanOrEqual(3);
     }
-    // The next-discard marker sits on the apron.
-    expect(contrast(color("next"), color("felt-far"))).toBeGreaterThanOrEqual(3);
   });
 
-  it("keeps the turn bar and the last-discard highlight at 3:1 on the felt", () => {
-    for (const indicator of ["turn", "highlight"]) {
-      expect(contrast(color(indicator), color("felt-center")), indicator).toBeGreaterThanOrEqual(3);
+  it("keeps the turn bar at 3:1 on the console and the last-discard outline at 3:1 on the felt", () => {
+    for (const slab of ["console-bg", "console-lit"]) {
+      expect(contrast(color("turn"), color(slab)), slab).toBeGreaterThanOrEqual(3);
+    }
+    expect(contrast(color("highlight"), color("felt-center"))).toBeGreaterThanOrEqual(3);
+  });
+
+  it("keeps a riichi stick at 3:1 on the felt it lies on", () => {
+    for (const felt of ["felt-light", "felt-center", "felt-edge"]) {
+      expect(contrast(color("stick"), color(felt)), felt).toBeGreaterThanOrEqual(3);
     }
   });
 });
@@ -314,96 +322,83 @@ describe("forced colors (Windows High Contrast)", () => {
     return result;
   };
 
-  it("keeps the riichi sticks, the counter sticks and the active seat visible", () => {
-    expect(forcedBlock(read("./table/SeatZone.module.css"))).toMatch(
-      /\.stick[^{]*\{[^}]*Highlight/,
-    );
-    const hud = forcedBlock(read("./table/Hud.module.css"));
-    expect(hud).toMatch(/\.stick100/);
-    expect(hud).toMatch(/\.stick1000/);
-    expect(hud).toMatch(/forced-color-adjust:\s*none/);
-    expect(forcedBlock(read("./table/SeatPlates.module.css"))).toMatch(
-      /\.active[^{]*\{[^}]*Highlight/,
-    );
-  });
-
-  // The viewer's stylesheets that draw with backgrounds.
+  // The stylesheets around the table that draw a surface, a mark or a state with a fill alone.
+  // (The table's own are checked in table/styles.test.ts.)
   it.for([
-    "./table/TableStage.module.css",
-    "./table/SeatPlates.module.css",
-    "./table/Hud.module.css",
-    "./table/CallCaption.module.css",
-    "./timeline/RoundBand.module.css",
-    "./panels/RoundMatrix.module.css",
-    "./panels/PlayersList.module.css",
-    "./shell/StageTools.module.css",
-    "./shell/Welcome.module.css",
-    "./shell/FirstUseHint.module.css",
+    "./Viewer.module.css",
+    "./controls/InfoChip.module.css",
+    "./controls/Popover.module.css",
+    "./controls/PovMenu.module.css",
+    "./controls/Scrubber.module.css",
+    "./controls/Toast.module.css",
+    "./controls/Toolbar.module.css",
+    "./controls/Transport.module.css",
+    "./result/ResultCard.module.css",
+    "./settings/HelpDialog.module.css",
+    "./settings/SettingsDialog.module.css",
     "./shell/Dialog.module.css",
+    "./shell/Landing.module.css",
+    "./shell/Shell.module.css",
   ])("has a forced-colors block in %s", (path) => {
     expect(forcedBlock(read(path))).not.toBe("");
   });
 
-  // Sticks in the HUD, the plates and the Players rows keep their own colors plus an outline.
-  it.for([
-    "./table/Hud.module.css",
-    "./table/SeatPlates.module.css",
-    "./panels/PlayersList.module.css",
-  ])("keeps the sticks' colors and outlines them in %s", (path) => {
-    const forced = forcedBlock(read(path));
+  it("draws the scrubber's track and thumb in system colours", () => {
+    const forced = forcedBlock(read("./controls/Scrubber.module.css"));
     expect(forced).toMatch(/forced-color-adjust:\s*none/);
-    expect(forced).toMatch(/outline:[^;]*(CanvasText|Highlight)/);
+    expect(forced).toMatch(/track\s*\{[^}]*Highlight/);
+    expect(forced).toMatch(/thumb\s*\{[^}]*ButtonText/);
+  });
+
+  it("marks the checked or current row of a popover with Highlight", () => {
+    const forced = forcedBlock(read("./controls/Popover.module.css"));
+    expect(forced).toMatch(/aria-checked="true"[^{]*aria-current="true"[^{]*\{[^}]*Highlight/);
+  });
+
+  it("marks the chosen table view in the settings with Highlight", () => {
+    expect(forcedBlock(read("./settings/SettingsDialog.module.css"))).toMatch(
+      /input:checked[^{]*\{[^}]*Highlight/,
+    );
   });
 });
 
-describe("stage toolbar in forced colors", () => {
-  it("marks pressed toggles, open menus and the checked seat with Highlight", () => {
-    const css = read("./shell/StageTools.module.css");
-    const start = css.indexOf("@media (forced-colors: active)");
-    const forced = blockAt(css, start);
-    for (const selector of [
-      '.button[aria-pressed="true"]',
-      '.button[aria-expanded="true"]',
-      '.item[aria-checked="true"]',
-    ]) {
-      expect(forced).toContain(selector);
-    }
-    expect(forced).toMatch(/outline:[^;]*Highlight/);
+describe("buttons in forced colors", () => {
+  it("marks a pressed toggle and an open popover's opener with Highlight, and a disabled button with GrayText", () => {
+    const forced = blockAt(indexCss, indexCss.indexOf("@media (forced-colors: active)"));
+    expect(forced).toMatch(
+      /button\[aria-pressed="true"\],\s*button\[aria-expanded="true"\]\s*\{[^}]*Highlight/,
+    );
+    expect(forced).toMatch(/button\[aria-disabled="true"\]\s*\{[^}]*GrayText/);
   });
 });
 
-describe("shell media queries", () => {
-  // The shell's stylesheets use breakpoints.ts's strings (plus the 360 px phone width).
-  it.for(["./shell/StageTools.module.css", "./shell/Welcome.module.css"])(
-    "only uses breakpoint queries in %s",
-    (path) => {
-      const allowed = [
-        ...Object.values(BREAKPOINT_QUERIES),
-        "(orientation: portrait)",
-        "(orientation: portrait) and (max-width: 359px)",
-        "(forced-colors: active)",
-        "(prefers-reduced-motion: reduce)",
-      ];
-      const queries = [...read(path).matchAll(/@media ([^{]+)\{/g)].map((match) =>
-        (match[1] ?? "").trim(),
-      );
-      expect(queries.length).toBeGreaterThan(0);
-      for (const query of queries) {
-        for (const part of query.split(/,\s*/)) {
-          expect(allowed, path).toContain(part);
-        }
+describe("arrangement queries", () => {
+  /** Every stylesheet of the UI, by its path from this folder. */
+  const sheets = (dir: string): string[] =>
+    readdirSync(fileUrl(dir), { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory()
+        ? sheets(`${dir}${entry.name}/`)
+        : entry.name.endsWith(".css")
+          ? [`${dir}${entry.name}`]
+          : [],
+    );
+  const mediaQueries = (path: string) =>
+    [...read(path).matchAll(/@media ([^{]+)\{/g)].map((match) => (match[1] ?? "").trim());
+
+  // CSS cannot import arrangement.ts, so the stylesheets repeat its strings.
+  it.for(["./Viewer.module.css"])("lays %s out with both queries, verbatim", (path) => {
+    const queries = mediaQueries(path);
+    expect(queries).toContain(WIDE);
+    expect(queries).toContain(SHORT);
+  });
+
+  it("asks about the viewport's shape only with those queries, in every stylesheet", () => {
+    const all = sheets("./");
+    expect(all.length).toBeGreaterThan(30);
+    for (const path of all) {
+      for (const query of mediaQueries(path).filter((text) => text.includes("aspect-ratio"))) {
+        expect(query.startsWith(WIDE) || query.startsWith(SHORT), `${path}: ${query}`).toBe(true);
       }
-    },
-  );
-});
-
-describe("breakpoints", () => {
-  const viewerCss = read("./Viewer.module.css");
-  const queries = Object.values(BREAKPOINT_QUERIES);
-
-  it("repeats breakpoints.ts's media queries verbatim in Viewer.module.css", () => {
-    for (const query of queries) {
-      expect(viewerCss).toContain(query);
     }
   });
 });

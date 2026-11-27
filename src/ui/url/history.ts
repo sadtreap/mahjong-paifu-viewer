@@ -63,12 +63,11 @@ export function parseHistoryState(raw: unknown): HistoryState | null {
 }
 
 /**
- * How a move is written to the browser history. A jump (round list, matrix cell, timeline click,
- * Moves row, pin, Alt+click, key-moment and round buttons, ↑/↓, Home/End) and a change of the
- * point of view push a new entry, so Back returns to where the user was; a second one within
- * JUMP_MERGE_MS replaces it instead. Single steps, holds, wheel turns, scrubs and autoplay only
- * update the current entry. A move made by the history itself (Back, Forward) and the initial
- * position write nothing.
+ * How a move is written to the browser history. A jump (a round button, Alt+click on a discard,
+ * ↑/↓, Home/End) and a change of the point of view push a new entry, so Back returns to where the
+ * user was; a second one within JUMP_MERGE_MS replaces it instead. Single steps, holds, wheel
+ * turns, scrubs and autoplay only update the current entry. A move made by the history itself
+ * (Back, Forward) and the initial position write nothing.
  */
 export function historyMode(kind: MoveKind, msSinceLastPush: number): "push" | "replace" | "none" {
   switch (kind) {

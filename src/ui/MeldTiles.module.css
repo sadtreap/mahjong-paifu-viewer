@@ -8,3 +8,18 @@
   display: flex;
   flex-direction: column;
 }
+
+/*
+ * A low stack: its two tiles are two thirds as large, so together they are as tall as an upright
+ * tile, centred in the place a sideways tile takes (layout.ts counts the stack as one).
+ */
+.low {
+  --meld-w: var(--tile-w, 2rem);
+}
+
+.low > .stack {
+  --tile-w: calc(var(--meld-w) * 2 / 3);
+
+  align-items: center;
+  width: calc(var(--meld-w) * 4 / 3);
+}

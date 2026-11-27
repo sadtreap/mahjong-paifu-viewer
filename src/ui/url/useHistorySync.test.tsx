@@ -18,10 +18,9 @@ interface ViewState {
 let view: ViewState;
 let sync: HistorySync;
 let move: (round: number, step: number, kind: MoveKind, pov?: Seat) => void;
-let setOrigin: (origin: LinkSource | null) => void;
 
 function Harness({
-  origin: initialOrigin,
+  origin,
   newEntry = false,
   onRestore,
 }: {
@@ -34,9 +33,7 @@ function Harness({
     pov: 0,
     kind: "init",
   });
-  const [origin, setOriginState] = useState(initialOrigin);
   view = state;
-  setOrigin = setOriginState;
   move = (round, step, kind, pov) =>
     setState((previous) => ({ position: { round, step }, pov: pov ?? previous.pov, kind }));
   sync = useHistorySync({
@@ -69,6 +66,19 @@ function popTo(state: unknown, url?: string) {
 
 const lastCall = (spy: MockInstance<History["pushState"]>) => spy.mock.calls.at(-1);
 
+/** The state the hook last wrote for its entry `n`: what Back or Forward to it hands back. */
+function entryState(n: number): unknown {
+  const written = [pushSpy, replaceSpy]
+    .flatMap((spy) =>
+      spy.mock.calls.map((call, index) => ({
+        order: spy.mock.invocationCallOrder[index] ?? 0,
+        state: call[0] as { n?: number } | null,
+      })),
+    )
+    .sort((a, b) => a.order - b.order);
+  return written.findLast((entry) => entry.state?.n === n)?.state ?? null;
+}
+
 beforeEach(() => {
   window.history.replaceState(null, "", "/viewer/?lang=en");
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date", "performance"] });
@@ -92,7 +102,6 @@ describe("useHistorySync", () => {
     expect(state).toEqual({ v: 1, round: 0, step: 0, pov: 0, sid: expect.any(String), n: 0 });
     expect(url).toBe("/viewer/?sample=tenhou-json&round=1&step=1&pov=1&lang=en");
     expect(window.location.search).toBe("?sample=tenhou-json&round=1&step=1&pov=1&lang=en");
-    expect(sync.back).toBeNull();
   });
 
   it("pushes the first entry of a game that replaced another", () => {
@@ -127,7 +136,7 @@ describe("useHistorySync", () => {
     expect(pushSpy).toHaveBeenCalledTimes(1);
     expect(lastCall(pushSpy)?.[0]).toMatchObject({ round: 2, step: 0, n: 1 });
     expect(lastCall(pushSpy)?.[2]).toBe("/viewer/?sample=tenhou-json&round=3&step=1&pov=1&lang=en");
-    expect(sync.back).toMatchObject({ round: 0, step: 3, pov: 0 });
+    expect(entryState(0)).toMatchObject({ round: 0, step: 3, pov: 0 });
   });
 
   it("folds a burst of jumps into one entry, and pushes again after a second", () => {
@@ -143,13 +152,14 @@ describe("useHistorySync", () => {
     act$(() => move(3, 0, "jump"));
     expect(pushSpy).toHaveBeenCalledTimes(1);
     expect(lastCall(replaceSpy)?.[0]).toMatchObject({ round: 3, step: 0, n: 1 });
-    expect(sync.back).toMatchObject({ round: 0, step: 0 });
+    expect(entryState(0)).toMatchObject({ round: 0, step: 0 });
     act$(() => {
       vi.advanceTimersByTime(1000);
     });
     act$(() => move(4, 0, "jump"));
     expect(pushSpy).toHaveBeenCalledTimes(2);
-    expect(sync.back).toMatchObject({ round: 3, step: 0 });
+    expect(lastCall(pushSpy)?.[0]).toMatchObject({ round: 4, step: 0, n: 2 });
+    expect(entryState(1)).toMatchObject({ round: 3, step: 0 });
   });
 
   it("pushes a change of the point of view", () => {
@@ -168,28 +178,17 @@ describe("useHistorySync", () => {
     expect(sync.link()).toBeNull();
   });
 
-  it("writes the parameters once the origin becomes linkable", () => {
-    render(<Harness origin={null} />);
-    expect(window.location.search).toBe("?lang=en");
-    act$(() => setOrigin(SAMPLE));
-    act$(() => {
-      vi.advanceTimersByTime(250);
-    });
-    expect(window.location.search).toBe("?sample=tenhou-json&round=1&step=1&pov=1&lang=en");
-  });
-
   it("restores this game's entry on Back without writing a new one", () => {
     const onRestore = vi.fn();
     render(<Harness origin={SAMPLE} onRestore={onRestore} />);
     act$(() => move(0, 7, "step"));
     act$(() => move(3, 0, "jump"));
-    const previous = sync.back;
+    const previous = entryState(0);
     pushSpy.mockClear();
     popTo(previous, "/viewer/?sample=tenhou-json&round=1&step=8&pov=1&lang=en");
     replaceSpy.mockClear();
     expect(onRestore).toHaveBeenCalledWith({ round: 0, step: 7 }, 0);
     expect(view).toMatchObject({ position: { round: 0, step: 7 }, kind: "history" });
-    expect(sync.back).toBeNull();
     act$(() => {
       vi.advanceTimersByTime(500);
     });
@@ -204,19 +203,23 @@ describe("useHistorySync", () => {
       vi.advanceTimersByTime(1000);
     });
     act$(() => move(2, 0, "jump"));
-    const second = window.history.state;
-    popTo(sync.back);
+    const first = entryState(1);
+    const second = entryState(2);
+    expect(first).toMatchObject({ round: 1 });
+    popTo(first);
     expect(view.position).toEqual({ round: 1, step: 0 });
     popTo(second);
     expect(view.position).toEqual({ round: 2, step: 0 });
-    expect(sync.back).toMatchObject({ round: 1 });
-    popTo(sync.back);
+    popTo(first);
     act$(() => {
       vi.advanceTimersByTime(1000);
     });
     act$(() => move(5, 0, "jump"));
     expect(lastCall(pushSpy)?.[0]).toMatchObject({ round: 5, n: 2 });
-    expect(sync.back).toMatchObject({ round: 1 });
+    // The entry that was at 2 is gone: going "forward" to it now restores the new one.
+    popTo(first);
+    popTo(second);
+    expect(view.position).toEqual({ round: 5, step: 0 });
   });
 
   it("adopts an entry from before a reload when the address names this game", () => {
@@ -239,20 +242,6 @@ describe("useHistorySync", () => {
     popTo(null);
     popTo({ page: 2 });
     expect(onRestore).not.toHaveBeenCalled();
-  });
-
-  it("goes back only to an entry of this game, writing the waiting step first", () => {
-    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
-    render(<Harness origin={SAMPLE} />);
-    act$(() => sync.goBack());
-    expect(back).not.toHaveBeenCalled();
-    act$(() => move(2, 0, "jump"));
-    act$(() => move(2, 4, "step"));
-    replaceSpy.mockClear();
-    act$(() => sync.goBack());
-    expect(replaceSpy).toHaveBeenCalledTimes(1);
-    expect(lastCall(replaceSpy)?.[0]).toMatchObject({ round: 2, step: 4 });
-    expect(back).toHaveBeenCalledTimes(1);
   });
 
   it("writes the waiting step when a mouse back button is pressed", () => {

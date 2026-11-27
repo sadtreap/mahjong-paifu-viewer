@@ -1,73 +1,241 @@
-/* The console: 7..13 on both axes of the plane, a raised slab with an inset screen. */
+/*
+ * The console: a low slab in the middle of the plane (--console-from, --console-size from
+ * geometry.ts). Lengths are in u; text has a floor of 11 px, so on the smallest tables it takes a
+ * larger share of the slab.
+ */
+/* A container, so the text can ask how much slab it has (the smallest flat tables). */
 .console {
+  --rim: var(--console-line);
+
   position: absolute;
-  left: calc(var(--u) * 7);
-  top: calc(var(--u) * 7);
-  width: calc(var(--u) * 6);
-  height: calc(var(--u) * 6);
+  container: console / size;
+  left: calc(var(--u) * var(--console-from));
+  top: calc(var(--u) * var(--console-from));
+  width: calc(var(--u) * var(--console-size));
+  height: calc(var(--u) * var(--console-size));
+  border-radius: calc(var(--u) * 0.4);
+  background: linear-gradient(160deg, var(--console-lit), var(--console-bg) 45%);
+  box-shadow:
+    inset 0 0 0 max(1px, calc(var(--u) * 0.05)) var(--rim),
+    0 calc(var(--u) * 0.07) 0 var(--console-side),
+    0 calc(var(--u) * 0.1) calc(var(--u) * 0.16) rgb(0 0 0 / 0.5);
+}
+
+/*
+ * The button covers the slab inside its rim and takes none of the app's button look. It stops a
+ * little short of the slab's edge: the plane is seen in perspective, where the box of a console
+ * that reached its corners would lap over the boxes of the pond tiles beside it.
+ */
+.press {
+  position: absolute;
+  inset: calc(var(--u) * 0.05);
+  display: block;
+  min-block-size: 0;
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--u) * 0.35);
+  background: none;
+  color: var(--console-fg);
+  line-height: 1;
+  transition: none;
+}
+
+@media (hover: hover) {
+  .console:has(.press:hover) {
+    --rim: var(--console-muted);
+  }
+}
+
+/* Showing differences: a bright rim. */
+.console:has(.press[aria-pressed="true"]) {
+  --rim: var(--console-fg);
+}
+
+.press:focus-visible {
+  outline: max(2px, calc(var(--u) * 0.07)) solid var(--color-focus);
+  outline-offset: 0;
+}
+
+/* The middle: the round name and the tiles left, on a darker plate between the four cells. */
+.screen {
+  position: absolute;
+  inset: calc(var(--u) * 1.05);
   display: grid;
   place-content: center;
-  border-radius: calc(var(--u) * 0.55);
-  background: linear-gradient(160deg, #1b3329, var(--console-bg) 45%);
-  color: var(--console-fg);
-  text-align: center;
-  box-shadow:
-    inset 0 0 0 calc(var(--u) * 0.06) var(--console-line),
-    inset 0 calc(var(--u) * 0.08) 0 rgb(255 255 255 / 0.06),
-    0 calc(var(--u) * 0.3) 0 #07120d,
-    0 calc(var(--u) * 0.34) 0 #040a07,
-    0 calc(var(--u) * 0.5) calc(var(--u) * 0.5) rgb(0 0 0 / 0.45);
-}
-
-.screen {
-  display: grid;
   place-items: center;
-  gap: calc(var(--u) * 0.08);
-  padding: calc(var(--u) * 0.2) calc(var(--u) * 0.35);
-  border-radius: calc(var(--u) * 0.3);
+  gap: calc(var(--u) * 0.1);
+  border-radius: calc(var(--u) * 0.25);
   background: var(--console-screen);
-  box-shadow:
-    inset 0 0 0 calc(var(--u) * 0.04) var(--console-glow),
-    inset 0 0 calc(var(--u) * 0.4) rgb(80 200 150 / 0.1);
-}
-
-/* all: unset beats the global button rules, so the focus ring is drawn here. */
-.round {
-  all: unset;
-  padding: calc(var(--u) * 0.08) calc(var(--u) * 0.2);
-  border-radius: calc(var(--u) * 0.2);
-  font-weight: 700;
-  font-size: calc(var(--u) * 0.74);
-  line-height: 1;
-  letter-spacing: 0.02em;
   white-space: nowrap;
-  cursor: pointer;
 }
 
-/* Doubled class: beats the global button:hover background. */
-.round.round:hover {
-  background: rgb(255 255 255 / 0.08);
-}
-
-.round:focus-visible {
-  outline: calc(var(--u) * 0.12) solid var(--turn);
-  outline-offset: calc(var(--u) * 0.06);
+.round {
+  font-weight: 700;
+  font-size: max(calc(var(--u) * 0.62), 11px);
+  letter-spacing: -0.01em;
 }
 
 .left {
-  font-size: calc(var(--u) * 0.46);
-  line-height: 1.2;
   color: var(--console-muted);
+  font-size: max(calc(var(--u) * 0.5), 11px);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+}
+
+/* One layer per player, turned to that player's edge and laid out as the near edge. */
+.edge {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.edge[data-edge="right"] {
+  rotate: -90deg;
+}
+
+.edge[data-edge="top"] {
+  rotate: 180deg;
+}
+
+.edge[data-edge="left"] {
+  rotate: 90deg;
+}
+
+/*
+ * A cell: the wind at the player's left end of the edge, the score in the middle of the edge. Each
+ * corner of the console so holds one wind, with the scores between them.
+ */
+.cell {
+  position: absolute;
+  left: calc(var(--u) * 0.25);
+  right: calc(var(--u) * 0.25);
+  bottom: calc(var(--u) * 0.21);
+  height: calc(var(--u) * 0.76);
+  display: flex;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The far player's cell reads upright; its wind stays at that player's left, the top right. */
+.edge[data-edge="top"] > .cell {
+  flex-direction: row-reverse;
+  rotate: 180deg;
+}
+
+.wind {
+  flex: none;
+  width: max(calc(var(--u) * 0.72), 12px);
+  height: max(calc(var(--u) * 0.72), 12px);
+  display: grid;
+  place-items: center;
+  border-radius: calc(var(--u) * 0.16);
+  background: var(--console-wind);
+  font-weight: 800;
+  font-size: max(calc(var(--u) * 0.5), 11px);
+}
+
+.dealer {
+  background: var(--badge-bg);
+  color: var(--badge-fg);
+}
+
+.score {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: max(calc(var(--u) * 0.62), 11px);
+}
+
+/* Whose turn it is: a bar along that player's edge. */
+.turn {
+  position: absolute;
+  left: calc(var(--u) * 0.85);
+  right: calc(var(--u) * 0.85);
+  bottom: calc(var(--u) * 0.04);
+  height: max(2px, calc(var(--u) * 0.11));
+  border-radius: 99px;
+  background: var(--turn);
+  box-shadow: 0 0 calc(var(--u) * 0.3) var(--turn);
+}
+
+/*
+ * The smallest tables: the slab is about 60 px wide, and text at its floor size leaves no room for
+ * the winds. They stay on the seat tags, which mark the dealer's there (SeatTags.module.css, the
+ * same query). Each score is centred on its edge, around the round name and the tiles left, just
+ * inside the turn bar.
+ */
+@container stage (max-width: 310px) or (max-height: 290px) {
+  .screen {
+    inset: 12px;
+    gap: 0;
+    background: none;
+  }
+
+  .cell {
+    left: 0;
+    right: 0;
+    bottom: calc(max(2px, var(--u) * 0.11) + 1px);
+    height: 11px;
+  }
+
+  .wind {
+    display: none;
+  }
+
+  .round,
+  .left,
+  .score {
+    letter-spacing: -0.04em;
+  }
+
+  .turn {
+    left: 13px;
+    right: 13px;
+    bottom: 0;
+  }
+}
+
+/*
+ * A slab under 60 px (the flat table on the smallest phones) has no room between the side scores
+ * for the round name: it gives way (the round button names the round), and the tiles left may
+ * take two lines.
+ */
+@container console (width < 60px) {
+  .round {
+    display: none;
+  }
+
+  .screen {
+    white-space: normal;
+    text-align: center;
+  }
+
+  .left {
+    overflow-wrap: anywhere;
+  }
 }
 
 @media (forced-colors: active) {
-  .console {
+  .press {
+    border: 1px solid ButtonText;
+  }
+
+  .screen {
+    background: none;
+  }
+
+  .wind {
     border: 1px solid CanvasText;
   }
 
-  .round:focus-visible {
-    outline-color: Highlight;
+  .dealer {
+    border-width: 2px;
+  }
+
+  .turn {
+    forced-color-adjust: none;
+    background: Highlight;
+    box-shadow: none;
   }
 }

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { classifyGesture, HOLD_DELAY_MS, holdDelay, type PointerSample, tapSlop } from "./gestures";
+import {
+  classifyGesture,
+  HOLD_DELAY_MS,
+  holdDelay,
+  type PointerSample,
+  startsAtEdge,
+  tapSlop,
+} from "./gestures";
 
 function at(x: number, y: number, extra: Partial<PointerSample> = {}): PointerSample {
   return {
@@ -82,8 +89,28 @@ describe("classifyGesture", () => {
     });
   });
 
+  it("leaves a swipe from a side edge of the screen to the system, but still taps there", () => {
+    const edge = { held: false, edge: true };
+    expect(classifyGesture(touch(10, 100), touch(70, 100, 300), edge)).toEqual({ kind: "none" });
+    expect(classifyGesture(touch(10, 100), touch(12, 100, 100), edge)).toMatchObject({
+      kind: "step",
+      dir: 1,
+      swipe: false,
+    });
+  });
+
   it("never swipes with a mouse (a drag does nothing)", () => {
     expect(classifyGesture(at(100, 100), at(200, 100, { t: 100 }), free)).toEqual({ kind: "none" });
+  });
+});
+
+describe("startsAtEdge", () => {
+  it("is the 24 px strip along either side of the screen", () => {
+    expect(startsAtEdge(0, 390)).toBe(true);
+    expect(startsAtEdge(23, 390)).toBe(true);
+    expect(startsAtEdge(24, 390)).toBe(false);
+    expect(startsAtEdge(366, 390)).toBe(false);
+    expect(startsAtEdge(367, 390)).toBe(true);
   });
 });
 

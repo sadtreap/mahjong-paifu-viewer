@@ -1,7 +1,8 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readStorage, removeStorage, writeStorage } from "../../storage";
-import type { DialogName, Settings, Theme } from "../viewer/types";
+import type { DialogName, Settings } from "../viewer/types";
 import {
+  blobKind,
   DEFAULT_SETTINGS,
   LEGACY_SHOW_ALL_HANDS_STORAGE_NAME,
   parseSettings,
@@ -19,21 +20,10 @@ function loadSettings(): Settings {
 }
 
 /**
- * Applies the theme to the page: `data-theme` on <html> picks light or dark in index.css, and no
- * attribute follows the system.
- */
-export function applyTheme(theme: Theme, root: HTMLElement = document.documentElement): void {
-  if (theme === "system") {
-    delete root.dataset.theme;
-  } else {
-    root.dataset.theme = theme;
-  }
-}
-
-/**
- * Holds the persistent preferences (one versioned JSON blob in src/storage.ts), applies the theme
- * and tracks which app dialog is open. The legacy "showAllHands" key is migrated into the blob
- * once, then deleted.
+ * Holds the persistent preferences (one versioned JSON blob in src/storage.ts) and tracks which
+ * app dialog is open. A blob of an older version and the legacy "showAllHands" key are migrated
+ * into the current blob once; the old key is then deleted. A stored value this version cannot
+ * read (a newer version's blob, text that is not JSON) is left alone until a setting changes.
  */
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(loadSettings);
@@ -42,9 +32,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const persisted = useRef<string | null>(null);
   persisted.current ??= serializeSettings(settings);
 
-  // Migrate the old flag: the blob now carries its value, so the old key can go.
+  // Migrate what an older version stored: rewrite its blob in the current form and fold in the old
+  // flag. Never over a blob this version cannot read.
   useEffect(() => {
-    if (readStorage(LEGACY_SHOW_ALL_HANDS_STORAGE_NAME) !== null) {
+    const kind = blobKind(readStorage(SETTINGS_STORAGE_NAME));
+    const legacy = readStorage(LEGACY_SHOW_ALL_HANDS_STORAGE_NAME);
+    if (kind === "old" || (legacy !== null && kind !== "unknown")) {
       writeStorage(SETTINGS_STORAGE_NAME, serializeSettings(loadSettings()));
       removeStorage(LEGACY_SHOW_ALL_HANDS_STORAGE_NAME);
     }
@@ -58,12 +51,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [settings]);
 
-  useEffect(() => {
-    applyTheme(settings.theme);
-  }, [settings.theme]);
-
   const update = useCallback((patch: Partial<Settings>) => {
-    setSettings((previous) => ({ ...previous, ...patch, version: 1 }));
+    setSettings((previous) => ({ ...previous, ...patch, version: 2 }));
   }, []);
 
   const reset = useCallback(() => setSettings({ ...DEFAULT_SETTINGS }), []);

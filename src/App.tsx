@@ -3,9 +3,9 @@ import { Shell } from "./ui/shell/Shell";
 import { Viewer } from "./ui/Viewer";
 
 /**
- * The app: SettingsProvider holds the preferences (and the theme), Shell does the loading (file
- * picker, drop and paste anywhere, samples, Tenhou links, `?sample=` and `?tenhou=` addresses),
- * the welcome card and the app dialogs, and Viewer replays the loaded game.
+ * The app: SettingsProvider holds the preferences, Shell does the loading (the load form, drop and
+ * paste anywhere, `?sample=` and `?tenhou=` addresses), the landing card shown while no game is
+ * loaded and the app dialogs, and Viewer replays the loaded game.
  */
 export function App() {
   return (

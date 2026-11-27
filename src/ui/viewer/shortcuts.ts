@@ -70,7 +70,7 @@ const letter = (char: string, shift?: boolean): KeyMatch => ({
   shift,
 });
 
-/** The keyboard map (SPEC §3.4), in help order. */
+/** The keyboard map, in help order. */
 export const SHORTCUTS: readonly ShortcutRow[] = [
   row("step", false, [
     {
@@ -96,18 +96,6 @@ export const SHORTCUTS: readonly ShortcutRow[] = [
       command: nav({ kind: "ownTurn", dir: -1 }),
     },
   ]),
-  row("moment", true, [
-    {
-      display: ".",
-      match: { key: ["."], fallbackCode: "Period" },
-      command: nav({ kind: "keyMoment", dir: 1 }),
-    },
-    {
-      display: ",",
-      match: { key: [","], fallbackCode: "Comma" },
-      command: nav({ kind: "keyMoment", dir: -1 }),
-    },
-  ]),
   row("nextRound", false, [
     { display: "↓", match: { key: ["ArrowDown"] }, command: nav({ kind: "nextRound" }) },
   ]),
@@ -117,9 +105,6 @@ export const SHORTCUTS: readonly ShortcutRow[] = [
   row("roundEnds", false, [
     { display: "Home", match: { key: ["Home"] }, command: nav({ kind: "roundStart" }) },
     { display: "End", match: { key: ["End"] }, command: nav({ kind: "roundEnd" }) },
-  ]),
-  row("back", false, [
-    { display: "Backspace", match: { key: ["Backspace"] }, command: { type: "back" } },
   ]),
   row("autoplay", true, [
     {
@@ -154,8 +139,12 @@ export const SHORTCUTS: readonly ShortcutRow[] = [
     { display: "Shift+V", match: letter("v", true), command: { type: "cyclePov", delta: -1 } },
   ]),
   row("hands", true, [{ display: "H", match: letter("h"), command: { type: "toggleHands" } }]),
+  row("waits", true, [{ display: "W", match: letter("w"), command: { type: "toggleWaits" } }]),
+  row("scoreDiff", true, [
+    { display: "D", match: letter("d"), command: { type: "toggleScoreDiff" } },
+  ]),
   row("view", true, [{ display: "C", match: letter("c"), command: { type: "toggleView" } }]),
-  row("rounds", true, [{ display: "R", match: letter("r"), command: { type: "rounds" } }]),
+  row("roundList", true, [{ display: "R", match: letter("r"), command: { type: "roundList" } }]),
   row("helpKey", true, [{ display: "?", match: { key: ["?"] }, command: { type: "help" } }]),
   row("escape", false, [
     { display: "Esc", match: { key: ["Escape", "Esc"] }, command: { type: "escape" } },
@@ -181,22 +170,26 @@ export function shortcutKey(command: KeyCommand): string | null {
   return keysByCommand.get(JSON.stringify(command)) ?? null;
 }
 
+/** The keys of a row as the help shows them, e.g. ["V", "Shift+V"]. */
+export function shortcutKeys(id: ShortcutRow["id"]): readonly string[] {
+  return SHORTCUTS.find((row) => row.id === id)?.keys ?? [];
+}
+
 /** The mouse and touch sections of the help, in order (they have no key bindings). */
 export const MOUSE_HELP: readonly ((m: Messages) => string)[] = [
   (m) => m.help.click,
   (m) => m.help.rightClick,
-  (m) => m.help.shiftClick,
-  (m) => m.help.hold,
   (m) => m.help.wheel,
+  (m) => m.help.shift,
+  (m) => m.help.hold,
   (m) => m.help.hover,
   (m) => m.help.altClick,
-  (m) => m.help.backButton,
-  (m) => m.help.pov,
-  (m) => m.help.timeline,
+  (m) => m.help.console,
 ];
 
 export const TOUCH_HELP: readonly ((m: Messages) => string)[] = [
   (m) => m.help.tap,
   (m) => m.help.swipe,
   (m) => m.help.longPress,
+  (m) => m.help.tapConsole,
 ];

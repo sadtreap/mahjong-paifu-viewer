@@ -35,7 +35,8 @@ function faceStyle(
  * contact shadow, the faces (one image per tile, each sheared toward the camera), the lids (the
  * footprint scaled about the eye) and, for side seats, the near tile's end cap.
  *
- * The faces take hits like any tile (a click steps); everything else ignores the pointer.
+ * The faces take hits like any tile (a click steps); everything else ignores the pointer. The
+ * group's name counts the tiles, so the faces themselves are not announced.
  */
 export const WallParts = memo(function WallParts({
   side,
@@ -47,14 +48,15 @@ export const WallParts = memo(function WallParts({
 }: WallPartsProps) {
   const { m } = useI18n();
   const faces = Array.from({ length: count }, (_, i) => i);
-  const sideClass = side === "top" ? styles.top : side === "left" ? styles.left : styles.right;
+  // The stylesheet's base rules draw the right wall; the other two sides adjust them.
+  const sideClass = side === "top" ? styles.top : side === "left" ? styles.left : undefined;
   const leave = leaving && styles.leaving;
   const face = (i: number) => (
     <img
       key={i}
       className={styles.face}
       src={TILE_BACK_URL}
-      alt={m.tiles.back}
+      alt=""
       draggable={false}
       decoding="async"
       style={faceStyle(i, count, drawn, side, hs)}

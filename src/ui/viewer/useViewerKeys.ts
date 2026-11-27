@@ -15,10 +15,8 @@ const CONTROL_KEYS = new Set([
 ]);
 
 export interface ViewerKeysOptions {
-  /** Single-key shortcuts (letters, digits, punctuation, Space); off leaves arrows, Home, End, Backspace and Esc. */
+  /** Single-key shortcuts (letters, digits, punctuation, Space); off leaves arrows, Home, End and Esc. */
   charKeys: boolean;
-  /** False while no game is shown. */
-  enabled?: boolean;
   /**
    * Runs a command. `repeat` is the key's auto-repeat (navigation from it uses the "repeat"
    * source, which stops at round ends). Return false when the command did not apply, so the key
@@ -42,7 +40,7 @@ function modalOpen(doc: Document): boolean {
 }
 
 /**
- * The viewer's keyboard shortcuts, on `window` (SPEC §3.4). Ignored: presses with Ctrl, Cmd or
+ * The viewer's keyboard shortcuts, on `window`. Ignored: presses with Ctrl, Cmd or
  * Alt; presses in text fields and select boxes; presses inside an open dialog or while a modal
  * dialog is open; IME composition; the arrow, Home, End and paging keys on a focused slider, tab
  * or radio button; Space on a focused button or other control Space presses.
@@ -55,8 +53,8 @@ export function useViewerKeys(options: ViewerKeysOptions): void {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const { charKeys, enabled = true, onCommand } = latest.current;
-      if (!enabled || event.defaultPrevented || event.isComposing) {
+      const { charKeys, onCommand } = latest.current;
+      if (event.defaultPrevented || event.isComposing) {
         return;
       }
       const target = event.target;

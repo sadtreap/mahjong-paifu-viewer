@@ -2,15 +2,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { loadLog } from "../formats/index";
+import { en } from "../i18n/messages/en";
 import { checkGame } from "../replay/check";
-import {
-  isSampleId,
-  SAMPLE_IDS,
-  SAMPLE_PLAYER_COUNTS,
-  type SampleId,
-  sampleUrl,
-  WELCOME_SAMPLE,
-} from "./samples";
+import { isSampleId, SAMPLE_IDS, type SampleId, sampleUrl } from "./samples";
 
 const PUBLIC_DIR = new URL("../../public/", import.meta.url);
 
@@ -47,11 +41,7 @@ describe("bundled sample files", () => {
 
   it.each(SAMPLE_IDS)("%s has the player count its button names", async (id) => {
     const game = await loadLog(readSample(id));
-    expect(game.playerCount).toBe(SAMPLE_PLAYER_COUNTS[id]);
-  });
-
-  it("opens the four-player sample under the welcome card", () => {
-    expect(SAMPLE_PLAYER_COUNTS[WELCOME_SAMPLE]).toBe(4);
+    expect(en.load.samples[id]).toBe(`${game.playerCount}-player`);
   });
 
   it("keeps Tenhou log ids out of the samples", () => {

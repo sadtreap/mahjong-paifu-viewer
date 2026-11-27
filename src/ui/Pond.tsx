@@ -13,9 +13,7 @@ export interface PondProps {
   name: string;
   /** Index of the discard to highlight (the one just made), or -1. */
   lastIndex: number;
-  /** Dim tsumogiri discards (a setting; on by default). */
-  dimTsumogiri?: boolean;
-  /** The pond's seat: each tile then carries `data-d="seat:index"` (pond tooltip, Alt+click). */
+  /** The pond's seat: each tile then carries `data-d="seat:index"` (Alt+click on a discard). */
   seat?: Seat;
   /** Index of a discard drawn invisible while its flight proxy is in the air, or -1. */
   hiddenIndex?: number;
@@ -23,12 +21,15 @@ export interface PondProps {
   hiddenClassName?: string;
 }
 
-/** Discards in rows of six: riichi tile sideways, tsumogiri dimmed, called tiles faded. */
+/**
+ * Discards in rows of six, the last row taking every discard after the first rows (layout.ts
+ * discardRows): the riichi tile sideways, tsumogiri dimmed, called tiles faded, the last discard
+ * outlined.
+ */
 export function Pond({
   discards,
   name,
   lastIndex,
-  dimTsumogiri = true,
   seat,
   hiddenIndex = -1,
   hiddenClassName,
@@ -44,7 +45,7 @@ export function Pond({
               depth={[column, rowIndex]}
               tile={item.tile}
               sideways={item.riichi}
-              dimmed={dimTsumogiri && item.tsumogiri}
+              dimmed={item.tsumogiri}
               called={item.called}
               highlighted={index === lastIndex}
               label={discardLabel(m, item, index === lastIndex)}

@@ -18,7 +18,6 @@ import { sanmaCrossFormatGame } from "../../test/sanma-game";
 import { boardState } from "../__fixtures__/game";
 import {
   concealedTiles,
-  doraKinds,
   isDiscardFuriten,
   kindCounts,
   liveShanten,
@@ -208,16 +207,6 @@ describe("helpers", () => {
     const discards = [{ tile: "0p" as Tile, tsumogiri: false, riichi: false, called: true }];
     expect(isDiscardFuriten([tileKind("5p")], discards)).toBe(true);
     expect(isDiscardFuriten([tileKind("4p")], discards)).toBe(false);
-  });
-
-  it("doraKinds follows the indicators, with the three-player 1m-9m wrap", () => {
-    expect([...doraKinds(["3m", "4z", "7z"], 4)]).toEqual([
-      tileKind("4m"),
-      tileKind("1z"),
-      tileKind("5z"),
-    ]);
-    expect([...doraKinds(["1m"], 3)]).toEqual([tileKind("9m")]);
-    expect([...doraKinds(["1m"], 4)]).toEqual([tileKind("2m")]);
   });
 
   it("kindCounts is null with an unknown tile; concealedTiles adds the drawn tile", () => {

@@ -91,25 +91,3 @@ export function focusIsLost(doc: Document = document): boolean {
   const active = doc.activeElement;
   return active === null || active === doc.body || !active.isConnected;
 }
-
-const TABBABLE = [
-  "a[href]",
-  "button:not([disabled])",
-  'input:not([disabled]):not([type="hidden"])',
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  '[tabindex]:not([tabindex="-1"])',
-].join(", ");
-
-/** The first focusable control that comes after `element` (and outside it) in document order. */
-export function nextTabbable(element: Element): HTMLElement | null {
-  for (const candidate of element.ownerDocument.querySelectorAll<HTMLElement>(TABBABLE)) {
-    if (
-      !element.contains(candidate) &&
-      element.compareDocumentPosition(candidate) & Node.DOCUMENT_POSITION_FOLLOWING
-    ) {
-      return candidate;
-    }
-  }
-  return null;
-}

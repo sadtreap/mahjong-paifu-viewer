@@ -5,8 +5,8 @@ import type { BoardState, SeatView } from "../../replay/types";
 import { round } from "../__fixtures__/game";
 import { revealedSeats } from "../reveal";
 import type { ViewerState } from "../viewer/types";
-import { PRESETS } from "./geometry";
-import { flightOffset, motionFor, ownHandLine, pondSlotCenter } from "./motion";
+import { CAMERAS, cameraFor, OPP_ROW_START, OWN_HAND, POND, pondSlot, project } from "./geometry";
+import { flightOffset, motionFor, ownHandLine } from "./motion";
 
 type LastMove = ViewerState["lastMove"];
 const states = buildTimeline(round);
@@ -25,46 +25,56 @@ function seat(view: Partial<SeatView> = {}): SeatView {
   };
 }
 
-describe("pondSlotCenter", () => {
-  it("centres slots in rows of six 0.9-unit tiles from (7.1, 13.3)", () => {
-    expect(pondSlotCenter(0).x).toBeCloseTo(7.55);
-    expect(pondSlotCenter(0).y).toBeCloseTo(13.9);
-    expect(pondSlotCenter(5).x).toBeCloseTo(12.05);
-    expect(pondSlotCenter(6).x).toBeCloseTo(7.55);
-    expect(pondSlotCenter(6).y).toBeCloseTo(15.1);
-    expect(pondSlotCenter(23).x).toBeCloseTo(12.05);
-    expect(pondSlotCenter(23).y).toBeCloseTo(17.5);
-  });
-
-  it("widens the row after a sideways riichi tile", () => {
-    const discards = [{ riichi: false }, { riichi: true }, { riichi: false }];
-    expect(pondSlotCenter(1, discards).x).toBeCloseTo(7.1 + 0.9 + 0.6);
-    expect(pondSlotCenter(2, discards).x).toBeCloseTo(7.1 + 0.9 + 1.2 + 0.45);
-  });
-});
-
 describe("ownHandLine", () => {
-  it("puts the own hand's centre line just beyond the near edge", () => {
-    const line = ownHandLine(PRESETS.landscape, 14.4);
+  it("puts the own hand's centre line just beyond the near edge, in every camera", () => {
+    const line = ownHandLine(CAMERAS.wide, 14.4);
     expect(line.y).toBeCloseTo(20.98, 2);
-    expect(line.tw).toBeCloseTo(1.3);
-    expect(ownHandLine(PRESETS.portrait, 14.4).y).toBeGreaterThan(20);
-    expect(ownHandLine(PRESETS.flat, 14.4).y).toBeGreaterThan(20);
+    expect(line.tw).toBeCloseTo(OWN_HAND.tile);
+    expect(line.scale).toBeGreaterThan(1);
+    for (const camera of [CAMERAS.short, CAMERAS.stack, cameraFor("wide", "flat")]) {
+      expect(ownHandLine(camera, 14.4).y).toBeGreaterThan(20);
+    }
+  });
+
+  it("is the line two thirds of a tile above the frame's bottom", () => {
+    for (const camera of [CAMERAS.wide, CAMERAS.stack, cameraFor("stack", "flat")]) {
+      const { y, tw } = ownHandLine(camera, 14.4);
+      expect((camera.below + project(10, y, camera).up) * 20).toBeCloseTo((2 / 3) * tw);
+    }
+  });
+
+  it("makes the tiles smaller when the row is longer than the frame", () => {
+    expect(ownHandLine(CAMERAS.wide, 16).tw).toBeCloseTo((20 * OWN_HAND.fit) / 16);
   });
 });
 
 describe("flightOffset", () => {
+  const slot = pondSlot(0);
+
   it("flies an opponent's discard from the end of its hand row", () => {
     const view = seat();
-    const { fx, fy, fs } = flightOffset(
+    const { fx, fy, fs, drop } = flightOffset(
       { seat: 1, index: 0, source: "opponent", riichi: false },
       view,
-      PRESETS.landscape,
+      CAMERAS.wide,
       14,
     );
-    expect(fx).toBeCloseTo(0.4 + 13.9 - 7.55);
-    expect(fy).toBeCloseTo(18.88 - 13.9);
-    expect(fs).toBeCloseTo(1 / 0.9);
+    expect(fx).toBeCloseTo(0.4 + 13.9 - slot.x);
+    expect(fy).toBeCloseTo(18.88 - slot.y);
+    expect(fs).toBeCloseTo(1 / POND.tile);
+    // An opponent's hand lies on the plane: a tall dock does not move it.
+    expect(drop).toBe(0);
+  });
+
+  it("starts where the opponent's row starts", () => {
+    const { fx } = flightOffset(
+      { seat: 1, index: 0, source: "opponent", riichi: false },
+      seat(),
+      CAMERAS.wide,
+      14,
+      { start: OPP_ROW_START.right, hs: 1 },
+    );
+    expect(fx).toBeCloseTo(OPP_ROW_START.right + 13.9 - slot.x);
   });
 
   it("flies the point of view's discard up from its own hand", () => {
@@ -72,24 +82,49 @@ describe("flightOffset", () => {
     const drawn = flightOffset(
       { seat: 0, index: 0, source: "drawn", riichi: false },
       view,
-      PRESETS.landscape,
+      CAMERAS.wide,
       14.4,
     );
     const hand = flightOffset(
       { seat: 0, index: 0, source: "hand", riichi: false },
       view,
-      PRESETS.landscape,
+      CAMERAS.wide,
       14.4,
     );
-    expect(drawn.fy).toBeCloseTo(20.98 - 13.9, 1);
-    expect(drawn.fs).toBeCloseTo(1.3 / 0.9);
+    expect(drawn.fy).toBeCloseTo(20.98 - slot.y, 1);
+    // The proxy starts as large as an own tile looks, which stands a little nearer than the edge.
+    const { scale } = ownHandLine(CAMERAS.wide, 14.4);
+    expect(drawn.fs).toBeCloseTo(OWN_HAND.tile / (POND.tile * scale));
     // The drawn tile is right of the centre line, a tile from mid-hand left of it.
-    expect(7.55 + drawn.fx).toBeGreaterThan(10);
-    expect(7.55 + hand.fx).toBeLessThan(10);
+    expect(slot.x + drawn.fx).toBeGreaterThan(10);
+    expect(slot.x + hand.fx).toBeLessThan(10);
+    // Each pixel a tall dock pushes the hand down moves the start a little more on the plane.
+    expect(drawn.drop).toBeCloseTo(1 / (CAMERAS.wide.cos * scale * scale));
+    expect(hand.drop).toBe(drawn.drop);
+  });
+
+  it("lands on the slot of a long pond's shrunken tiles", () => {
+    const discards = Array.from({ length: 24 }, () => ({
+      tile: "9s" as const,
+      tsumogiri: false,
+      riichi: false,
+      called: false,
+    }));
+    const view = seat({ discards });
+    const target = pondSlot(23, discards);
+    const { fx, fs } = flightOffset(
+      { seat: 1, index: 23, source: "opponent", riichi: false },
+      view,
+      CAMERAS.wide,
+      14,
+    );
+    expect(target.tile).toBeLessThan(POND.tile);
+    expect(fx).toBeCloseTo(0.4 + 13.9 - target.x);
+    expect(fs).toBeCloseTo(1 / target.tile);
   });
 
   it("starts smaller for a scaled-down opponent row", () => {
-    // 13 tiles, kita and four melds do not fit the 18-unit row.
+    // 13 tiles, kita and four melds do not fit the row.
     const view = seat({
       melds: Array(4).fill({ type: "pon", tiles: ["5p", "5p"], from: 2, calledTile: "5p" }),
       kita: ["4z"],
@@ -97,10 +132,10 @@ describe("flightOffset", () => {
     const { fs } = flightOffset(
       { seat: 1, index: 0, source: "opponent", riichi: false },
       view,
-      PRESETS.landscape,
+      CAMERAS.wide,
       14,
     );
-    expect(fs).toBeLessThan(1 / 0.9);
+    expect(fs).toBeLessThan(1 / POND.tile);
   });
 });
 

@@ -1,41 +1,53 @@
-import { type CSSProperties, memo } from "react";
+import { type CSSProperties, memo, useEffect, useState } from "react";
 import type { Seat } from "../../core/model";
 import { useI18n } from "../../i18n/context";
 import { cx } from "../cx";
 import { sideOf } from "../layout";
 import type { CaptionSpec } from "../viewer/types";
 import styles from "./CallCaption.module.css";
-import { CAPTION_X, captionSlots } from "./geometry";
+import { type Camera, captionAnchor } from "./geometry";
+
+/** How long a caption stays. */
+export const CAPTION_MS = 700;
 
 export interface CallCaptionProps {
   captions: readonly CaptionSpec[];
   pov: Seat;
+  camera: Camera;
 }
 
 /**
- * Call captions (Chi, Pon, Kan, Riichi, Kita, Ron, Tsumo) on the console, in one of its two strips
- * without text (geometry.ts captionSlots): a heavy oblique title on an opaque band that slides in
- * from the caller's side, pops and fades in 700 ms. Decoration only: hidden from screen readers
- * (the status line announces the step) and never in the pointer's way.
+ * Call captions (Chi, Pon, Kan, Riichi, Kita, Ron, Tsumo): a short label over the middle of the
+ * caller's pond, gone after CAPTION_MS. Flat DOM above the plane, so it reads the same from every
+ * seat. Decoration only: hidden from screen readers (the viewer announces the step) and never in
+ * the pointer's way. A timer removes it, so it also goes away where animations are off.
  */
-export const CallCaption = memo(function CallCaption({ captions, pov }: CallCaptionProps) {
+export const CallCaption = memo(function CallCaption({ captions, pov, camera }: CallCaptionProps) {
   const { m } = useI18n();
-  if (captions.length === 0) {
+  const shown = captions.map((caption) => caption.id).join(",");
+  const [gone, setGone] = useState("");
+  useEffect(() => {
+    if (shown === "") {
+      return;
+    }
+    const timer = window.setTimeout(() => setGone(shown), CAPTION_MS);
+    return () => window.clearTimeout(timer);
+  }, [shown]);
+  if (shown === "" || gone === shown) {
     return null;
   }
-  const placed = captions.map((caption) => ({ caption, side: sideOf(caption.seat, pov) }));
-  const slots = captionSlots(placed.map(({ side }) => side));
   return (
     <div className={styles.captions} aria-hidden="true">
-      {placed.map(({ caption, side }, index) => {
-        const y = slots[index] ?? 10;
+      {captions.map((caption) => {
+        const side = sideOf(caption.seat, pov);
+        const at = captionAnchor(side, camera);
         const win = caption.kind === "ron" || caption.kind === "tsumo";
         return (
           <div
             key={caption.id}
             className={cx(styles.caption, win && styles.win)}
             data-side={side}
-            style={{ "--X": String(CAPTION_X), "--Y": String(y) } as CSSProperties}
+            style={{ "--ax": at.x.toFixed(5), "--ay": at.y.toFixed(5) } as CSSProperties}
           >
             {m.captions[caption.kind]}
           </div>

@@ -22,12 +22,27 @@ function arrays(tree: unknown, path = ""): Map<string, readonly unknown[]> {
   return found;
 }
 
+/** How many arguments every message that is a function takes, by its dotted path. */
+function arities(tree: unknown, path = ""): Map<string, number> {
+  const found = new Map<string, number>();
+  if (typeof tree === "function") {
+    found.set(path, tree.length);
+  } else if (typeof tree === "object" && tree !== null && !Array.isArray(tree)) {
+    for (const [key, value] of Object.entries(tree)) {
+      for (const [inner, arity] of arities(value, path ? `${path}.${key}` : key)) {
+        found.set(inner, arity);
+      }
+    }
+  }
+  return found;
+}
+
 const english = arrays(MESSAGES.en);
 
 describe.each(LOCALES.filter((locale) => locale !== "en"))("%s messages", (locale) => {
   const translated = arrays(MESSAGES[locale]);
 
-  // The typecheck matches the keys but not the lengths of lists (hint pairs, formats, winds).
+  // The typecheck matches the keys but not the lengths of lists (formats, winds, honors).
   it("has lists of the same length as English", () => {
     expect([...translated.keys()].sort()).toEqual([...english.keys()].sort());
     for (const [path, list] of english) {
@@ -35,28 +50,86 @@ describe.each(LOCALES.filter((locale) => locale !== "en"))("%s messages", (local
     }
   });
 
-  it("translates the first-use hint's pairs", () => {
-    for (const pair of [...MESSAGES[locale].hint.mouse, ...MESSAGES[locale].hint.touch]) {
-      expect(pair[0].length).toBeGreaterThan(0);
-      expect(pair[1].length).toBeGreaterThan(0);
-    }
-    expect(MESSAGES[locale].hint.mouse).not.toEqual(MESSAGES.en.hint.mouse);
+  // A function that takes fewer arguments still type-checks, and silently drops what it is told.
+  it("uses every argument English uses", () => {
+    expect(Object.fromEntries(arities(MESSAGES[locale]))).toEqual(
+      Object.fromEntries(arities(MESSAGES.en)),
+    );
+  });
+});
+
+describe("mahjong terms", () => {
+  /** The strings in which a player meets each of the usual terms. */
+  const used = (locale: "ko" | "ja") => {
+    const m = MESSAGES[locale];
+    return [
+      m.round.name(0, 2, 1),
+      m.info.deposits(2),
+      m.transport.turn(8),
+      m.captions.tsumo,
+      m.captions.ron,
+      m.captions.riichi,
+      m.info.dora,
+      m.table.waitsShort,
+      m.table.shanten(1),
+      m.table.tenpai,
+      m.table.furiten,
+      m.tools.hands,
+      m.board.discards("A"),
+      m.tools.pov,
+    ];
+  };
+
+  it("uses the usual Korean terms", () => {
+    expect(used("ko")).toEqual([
+      "동 2국 1본장",
+      "공탁 2",
+      "8순",
+      "쯔모",
+      "론",
+      "리치",
+      "도라",
+      "대기",
+      "1샹텐",
+      "텐파이",
+      "후리텐",
+      "손패",
+      "A의 버림패",
+      "시점",
+    ]);
+  });
+
+  it("uses the usual Japanese terms", () => {
+    expect(used("ja")).toEqual([
+      "東2局 1本場",
+      "供託 2",
+      "8巡目",
+      "ツモ",
+      "ロン",
+      "リーチ",
+      "ドラ",
+      "待ち",
+      "1向聴",
+      "聴牌",
+      "フリテン",
+      "手牌",
+      "Aの捨て牌",
+      "視点",
+    ]);
   });
 });
 
 describe("interpolated messages", () => {
-  it.each(LOCALES)("lists waits, facts and notes in %s", (locale) => {
+  it.each(LOCALES)("lists waits, names rounds and counts honba and deposits in %s", (locale) => {
     const m = MESSAGES[locale];
     expect(m.table.waitsSr(["A", "B"], 6, true)).toMatch(/A.*B.*6/);
-    expect(m.panel.cellLabel("E1", "C", "+3900", ["F1", "F2"], "Go")).toMatch(
-      /E1.*C.*\+3900.*F1.*F2.*Go/,
-    );
-    expect(m.panel.cellLabel("E1", "C", "0", [], "Go")).not.toMatch(/[,、]\s*[.。]/);
-    expect(m.panel.moveRow(3, "C", "9p", ["N1"])).toMatch(/3.*C.*9p.*N1/);
-    expect(m.panel.moveRow(9, null, null, [])).toMatch(/9/);
-    expect(m.panel.source("mjai", null)).toBe("mjai");
-    expect(m.round.short(0, 3, 1)).toMatch(/3-1$/);
-    expect(m.round.short(1, 2, 0)).toMatch(/2$/);
+    expect(m.round.name(1, 3, 0)).toMatch(/3/);
+    expect(m.round.name(1, 3, 2)).toMatch(/3.*2/);
+    expect(m.info.honba(2)).toContain("2");
+    expect(m.info.deposits(3)).toContain("3");
+    expect(m.transport.turn(8)).toContain("8");
+    expect(m.tools.povButton("W", "N")).toMatch(/W.*N/);
+    expect(m.rounds.ron("A", "B")).toMatch(/A.*B/);
   });
 
   it("uses English plurals and ordinals", () => {
@@ -66,11 +139,9 @@ describe("interpolated messages", () => {
     expect(en.table.waitsSr(["1 Man", "4 Man", "7 Man"], 6, false)).toBe(
       "Waits 1 Man, 4 Man and 7 Man, 6 left",
     );
-    // A no-break space before each "·" keeps the separator off the start of a wrapped line.
-    expect(en.ptip.head("C", 3, 3)).toBe("C\u00a0· 3rd discard\u00a0· turn 3");
-    expect(en.ptip.headShort("C", 3)).toBe("C\u00a0· 3rd discard");
-    expect(en.timeline.pinLabel("C", 11)).toBe("Go to C's 11th discard");
-    expect(en.round.short(0, 3, 1)).toBe("E3-1");
-    expect(en.panel.moveRow(3, "C", "9 Pin", ["tsumogiri"])).toBe("Turn 3, C: 9 Pin, tsumogiri");
+    expect(en.round.name(0, 3, 1)).toBe("East 3, 1 honba");
+    expect(en.info.deposits(1)).toBe("1 deposit");
+    expect(en.info.deposits(2)).toBe("2 deposits");
+    expect(en.standings.place(11)).toBe("11th");
   });
 });

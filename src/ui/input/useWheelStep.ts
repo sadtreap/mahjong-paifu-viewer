@@ -5,8 +5,6 @@ import { GESTURE_IGNORE } from "./useStageGestures";
 import { INITIAL_WHEEL_STATE, type WheelState, wheelStep } from "./wheel";
 
 export interface WheelStepOptions {
-  /** The wheelToStep setting. */
-  enabled: boolean;
   /** Takes one step; `source` is "repeat" within 350 ms of the previous wheel step. */
   onStep(dir: Dir, options: { ownTurn: boolean; source: NavSource }): boolean;
   /** The clock of the wheel events, in ms (performance.now by default; tests replace it). */
@@ -14,9 +12,22 @@ export interface WheelStepOptions {
 }
 
 /**
- * Wheel stepping over the given elements (the stage and the dock), sharing one accumulator.
- * Non-passive listeners, so a handled event stops the page from scrolling; Ctrl/Cmd+wheel and
- * anything inside `[data-gesture="ignore"]` are left to the browser.
+ * True when the wheel turned over something inside `host` that scrolls by itself: a part marked
+ * `[data-gesture="ignore"]` (a card over the table). `host` itself may carry the mark (the
+ * transport does, for the table's sake) and still steps.
+ */
+function overIgnoredPart(target: EventTarget | null, host: HTMLElement): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  const part = target.closest(GESTURE_IGNORE);
+  return part !== null && part !== host && host.contains(part);
+}
+
+/**
+ * Wheel stepping over the given elements (the stage and the transport), sharing one accumulator.
+ * Non-passive listeners, so a handled event stops the page from scrolling; Ctrl/Cmd+wheel and the
+ * parts of an element marked `[data-gesture="ignore"]` are left to the browser.
  */
 export function useWheelStep(
   targets: readonly RefObject<HTMLElement | null>[],
@@ -30,10 +41,10 @@ export function useWheelStep(
 
   useAttach(targets, (elements) => {
     const onWheel = (event: WheelEvent) => {
-      const { enabled, onStep, now = () => performance.now() } = latest.current;
+      const { onStep, now = () => performance.now() } = latest.current;
       if (
-        !enabled ||
-        (event.target instanceof Element && event.target.closest(GESTURE_IGNORE) !== null)
+        !(event.currentTarget instanceof HTMLElement) ||
+        overIgnoredPart(event.target, event.currentTarget)
       ) {
         return;
       }

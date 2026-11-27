@@ -3,7 +3,6 @@ import type { Seat } from "../core/model";
 import type { DiscardView, MeldView } from "../replay/types";
 import {
   discardRows,
-  doraSlots,
   fitScale,
   handRowWidth,
   KITA_WIDTH,
@@ -11,7 +10,6 @@ import {
   ownRowUnits,
   seatDistance,
   seatOnSide,
-  seatWind,
   sideOf,
   splitWinningHand,
 } from "./layout";
@@ -38,13 +36,6 @@ describe("seat geometry", () => {
     expect(seatDistance(0, 3)).toBe(3);
     expect(seatDistance(3, 0)).toBe(1);
     expect(seatDistance(2, 2)).toBe(0);
-  });
-
-  it("gives the dealer East and the others in turn order", () => {
-    expect(seatWind(2, 2)).toBe(0);
-    expect(seatWind(3, 2)).toBe(1);
-    expect(seatWind(0, 2)).toBe(2);
-    expect(seatWind(1, 2)).toBe(3);
   });
 });
 
@@ -117,27 +108,26 @@ describe("discardRows", () => {
     expect(new Set(rows.flat().map((entry) => entry.key)).size).toBe(14);
   });
 
+  it("keeps a long pond in three rows: the third takes every discard after the twelfth", () => {
+    for (const n of [18, 19, 24]) {
+      const rows = discardRows(Array.from({ length: n }, () => discard("1m")));
+      expect(rows.map((row) => row.length)).toEqual([6, 6, n - 12]);
+      expect(rows[2]?.at(-1)?.index).toBe(n - 1);
+    }
+  });
+
   it("returns no rows for an empty pond", () => {
     expect(discardRows([])).toEqual([]);
-  });
-});
-
-describe("doraSlots", () => {
-  it("pads the revealed indicators to five slots", () => {
-    expect(doraSlots(["3m", "7z"])).toEqual(["3m", "7z", null, null, null]);
-  });
-
-  it("never drops indicators beyond five", () => {
-    expect(doraSlots(["1m", "2m", "3m", "4m", "5m", "6m"])).toHaveLength(6);
   });
 });
 
 describe("hand row width", () => {
   it("counts tiles, the drawn tile gap and sideways tiles", () => {
     const hand = Array.from({ length: 10 }, () => "1m" as const);
-    expect(handRowWidth({ hand, drawn: null, melds: [] }, 0)).toBe(10);
-    expect(handRowWidth({ hand, drawn: "2m", melds: [] }, 0)).toBeCloseTo(11.4);
-    expect(handRowWidth({ hand, drawn: null, melds: [pon(2)] }, 0)).toBeCloseTo(
+    const kita: never[] = [];
+    expect(handRowWidth({ hand, drawn: null, melds: [], kita }, 0)).toBe(10);
+    expect(handRowWidth({ hand, drawn: "2m", melds: [], kita }, 0)).toBeCloseTo(11.4);
+    expect(handRowWidth({ hand, drawn: null, melds: [pon(2)], kita }, 0)).toBeCloseTo(
       10 + 0.25 + 2 + 4 / 3,
     );
   });

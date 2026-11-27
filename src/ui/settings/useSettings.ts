@@ -3,7 +3,7 @@ import type { DialogName, SettingsContextValue } from "../viewer/types";
 
 /** What SettingsProvider shares: the settings, plus which app dialog is open. */
 export interface SettingsStore extends SettingsContextValue {
-  /** The open app dialog (settings, help, paste, open), or null. */
+  /** The open app dialog (settings, help, open), or null. */
   dialog: DialogName | null;
   closeDialog(): void;
 }

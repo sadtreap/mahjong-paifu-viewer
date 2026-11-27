@@ -1,0 +1,30 @@
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+/* Drawn with borders, which the system keeps when it picks the colours. */
+.ring {
+  flex: none;
+  inline-size: 0.875em;
+  block-size: 0.875em;
+  border: 2px solid var(--chrome-border);
+  border-block-start-color: currentcolor;
+  border-radius: 50%;
+  animation: turn 0.8s linear infinite;
+}
+
+@keyframes turn {
+  to {
+    rotate: 1turn;
+  }
+}
+
+/* Without motion the ring stands still; the words say what is happening. */
+@media (prefers-reduced-motion: reduce) {
+  .ring {
+    animation: none;
+  }
+}

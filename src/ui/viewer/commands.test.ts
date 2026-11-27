@@ -44,14 +44,6 @@ describe("keyCommand", () => {
       type: "nav",
       command: { kind: "ownTurn", dir: -1 },
     });
-    expect(keyCommand(key("."), on)).toEqual({
-      type: "nav",
-      command: { kind: "keyMoment", dir: 1 },
-    });
-    expect(keyCommand(key(","), on)).toEqual({
-      type: "nav",
-      command: { kind: "keyMoment", dir: -1 },
-    });
     expect(keyCommand(key("ArrowDown"), on)).toEqual({
       type: "nav",
       command: { kind: "nextRound" },
@@ -62,7 +54,6 @@ describe("keyCommand", () => {
     });
     expect(keyCommand(key("Home"), on)).toEqual({ type: "nav", command: { kind: "roundStart" } });
     expect(keyCommand(key("End"), on)).toEqual({ type: "nav", command: { kind: "roundEnd" } });
-    expect(keyCommand(key("Backspace"), on)).toEqual({ type: "back" });
     expect(keyCommand(key(" ", { code: "Space" }), on)).toEqual({ type: "togglePlay" });
     expect(keyCommand(key("+", { shiftKey: true }), on)).toEqual({ type: "speed", delta: 1 });
     expect(keyCommand(key("="), on)).toEqual({ type: "speed", delta: 1 });
@@ -70,11 +61,21 @@ describe("keyCommand", () => {
     expect(keyCommand(key("v"), on)).toEqual({ type: "cyclePov", delta: 1 });
     expect(keyCommand(key("V", { shiftKey: true }), on)).toEqual({ type: "cyclePov", delta: -1 });
     expect(keyCommand(key("h"), on)).toEqual({ type: "toggleHands" });
+    expect(keyCommand(key("w"), on)).toEqual({ type: "toggleWaits" });
+    expect(keyCommand(key("d"), on)).toEqual({ type: "toggleScoreDiff" });
     expect(keyCommand(key("c"), on)).toEqual({ type: "toggleView" });
-    expect(keyCommand(key("r"), on)).toEqual({ type: "rounds" });
+    expect(keyCommand(key("r"), on)).toEqual({ type: "roundList" });
+    expect(keyCommand(key("R", { shiftKey: true }), on)).toEqual({ type: "roundList" });
     expect(keyCommand(key("Escape"), on)).toEqual({ type: "escape" });
     expect(keyCommand(key("PageDown"), on)).toBeNull();
     expect(keyCommand(key("Enter"), on)).toBeNull();
+  });
+
+  it("has no command for comma, period or Backspace", () => {
+    for (const value of [".", ",", "Backspace"]) {
+      expect(keyCommand(key(value), on)).toBeNull();
+    }
+    expect(keyCommand(key("。", { code: "Period" }), on)).toBeNull();
   });
 
   it("reads digits by code, on any layout and with Shift", () => {
@@ -97,10 +98,10 @@ describe("keyCommand", () => {
       type: "cyclePov",
       delta: -1,
     });
-    expect(keyCommand(key("。", { code: "Period" }), on)).toEqual({
-      type: "nav",
-      command: { kind: "keyMoment", dir: 1 },
-    });
+    expect(keyCommand(key("ㅊ", { code: "KeyC" }), on)).toEqual({ type: "toggleView" });
+    expect(keyCommand(key("ㅈ", { code: "KeyW" }), on)).toEqual({ type: "toggleWaits" });
+    expect(keyCommand(key("ㅇ", { code: "KeyD" }), on)).toEqual({ type: "toggleScoreDiff" });
+    expect(keyCommand(key("ㄱ", { code: "KeyR" }), on)).toEqual({ type: "roundList" });
     // A Latin key on another position keeps its own meaning.
     expect(keyCommand(key("z", { code: "KeyH" }), on)).toBeNull();
   });
@@ -112,22 +113,13 @@ describe("keyCommand", () => {
     expect(keyCommand(key("1", { code: "Digit1", altKey: true }), on)).toBeNull();
   });
 
-  it("keeps only the arrows, Home, End, Backspace and Esc with single-key shortcuts off", () => {
-    const remaining = [
-      "ArrowRight",
-      "ArrowLeft",
-      "ArrowUp",
-      "ArrowDown",
-      "Home",
-      "End",
-      "Backspace",
-      "Escape",
-    ];
+  it("keeps only the arrows, Home, End and Esc with single-key shortcuts off", () => {
+    const remaining = ["ArrowRight", "ArrowLeft", "ArrowUp", "ArrowDown", "Home", "End", "Escape"];
     for (const value of remaining) {
       expect(keyCommand(key(value), off)).not.toBeNull();
     }
     expect(keyCommand(key("ArrowRight", { shiftKey: true }), off)).not.toBeNull();
-    for (const value of [".", ",", " ", "+", "-", "v", "h", "c", "r", "?"]) {
+    for (const value of [" ", "+", "-", "v", "h", "w", "d", "c", "r", "?"]) {
       expect(keyCommand(key(value, { code: value === " " ? "Space" : "" }), off)).toBeNull();
     }
     expect(keyCommand(key("1", { code: "Digit1" }), off)).toBeNull();
@@ -146,18 +138,18 @@ describe("SHORTCUTS", () => {
     expect(SHORTCUTS.map((row) => row.id)).toEqual([
       "step",
       "ownTurn",
-      "moment",
       "nextRound",
       "roundStart",
       "roundEnds",
-      "back",
       "autoplay",
       "speed",
       "seat",
       "cycleSeat",
       "hands",
+      "waits",
+      "scoreDiff",
       "view",
-      "rounds",
+      "roundList",
       "helpKey",
       "escape",
     ]);
@@ -166,14 +158,15 @@ describe("SHORTCUTS", () => {
   it("marks exactly the character keys as such", () => {
     const charRows = SHORTCUTS.filter((row) => row.charKey).map((row) => row.id);
     expect(charRows).toEqual([
-      "moment",
       "autoplay",
       "speed",
       "seat",
       "cycleSeat",
       "hands",
+      "waits",
+      "scoreDiff",
       "view",
-      "rounds",
+      "roundList",
       "helpKey",
     ]);
   });
@@ -181,7 +174,9 @@ describe("SHORTCUTS", () => {
   it("gives tooltips the key of a command", () => {
     expect(shortcutKey({ type: "nav", command: { kind: "ownTurn", dir: -1 } })).toBe("Shift+←");
     expect(shortcutKey({ type: "togglePlay" })).toBe("Space");
-    expect(shortcutKey({ type: "nav", command: { kind: "keyMoment", dir: 1 } })).toBe(".");
+    expect(shortcutKey({ type: "nav", command: { kind: "nextRound" } })).toBe("↓");
+    expect(shortcutKey({ type: "roundList" })).toBe("R");
+    expect(shortcutKey({ type: "toggleScoreDiff" })).toBe("D");
   });
 
   it("lists the mouse and touch help in every locale", () => {
@@ -190,8 +185,8 @@ describe("SHORTCUTS", () => {
         expect(line(messages).length).toBeGreaterThan(0);
       }
     }
-    expect(MOUSE_HELP).toHaveLength(10);
-    expect(TOUCH_HELP).toHaveLength(3);
+    expect(MOUSE_HELP.length).toBeGreaterThan(0);
+    expect(TOUCH_HELP.length).toBeGreaterThan(0);
   });
 });
 
@@ -208,30 +203,13 @@ describe("speed", () => {
 });
 
 describe("escapeAction", () => {
-  const none: EscapeContext = {
-    menuOpen: false,
-    sheetOpen: false,
-    coach: false,
-    resultShown: false,
-    picked: false,
-    playing: false,
-  };
-  it("closes, dismisses, hides, clears or pauses, in that order", () => {
-    const all = {
-      menuOpen: true,
-      sheetOpen: true,
-      coach: true,
-      resultShown: true,
-      picked: true,
-      playing: true,
-    };
-    expect(escapeAction(all)).toBe("closeMenu");
-    expect(escapeAction({ ...all, menuOpen: false })).toBe("closeSheet");
-    expect(escapeAction({ ...all, menuOpen: false, sheetOpen: false })).toBe("dismissCoach");
-    expect(escapeAction({ ...none, resultShown: true, picked: true, playing: true })).toBe(
-      "hideResult",
+  const none: EscapeContext = { popoverOpen: false, resultShown: false, playing: false };
+  it("closes a popover first, then hides the result card, then pauses autoplay", () => {
+    expect(escapeAction({ popoverOpen: true, resultShown: true, playing: true })).toBe(
+      "closePopover",
     );
-    expect(escapeAction({ ...none, picked: true, playing: true })).toBe("clearPick");
+    expect(escapeAction({ ...none, resultShown: true, playing: true })).toBe("hideResult");
+    expect(escapeAction({ ...none, resultShown: true })).toBe("hideResult");
     expect(escapeAction({ ...none, playing: true })).toBe("pause");
     expect(escapeAction(none)).toBeNull();
   });

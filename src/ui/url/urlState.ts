@@ -44,7 +44,7 @@ function linkSource(params: URLSearchParams): LinkSource | null {
 
 /**
  * Reads `?sample=<id>` or `?tenhou=<log id>` with `round`, `step` and `pov`, all 1-based like the
- * round list, the step counter and the seat keys. A missing or invalid round or step means the
+ * round names, the step slider and the seat keys. A missing or invalid round or step means the
  * first one, and a missing or invalid pov (outside 1-4) means none. Returns null without a known
  * sample or a valid Tenhou log id.
  */

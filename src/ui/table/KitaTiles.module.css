@@ -9,23 +9,27 @@
 }
 
 /*
- * At the tile's top-right corner, anchored at its right: whatever its width (the font has a 10 px
- * floor on small tiles), it reaches at most 0.4 tile past the tile, inside the group's 0.45-tile
- * right margin, so it never covers the meld after it, and covers little of its own tile.
+ * At the tile's top-right corner, anchored at its right: whatever its width (its text is a
+ * caption, at least 11 px on small tiles and at most 14 px on large ones), it reaches at most 0.4
+ * tile past the tile, inside the group's 0.45-tile right margin, so it never covers the meld after
+ * it, and covers little of its own tile.
  */
 .count {
+  --size: clamp(11px, calc(var(--tile-w) * 0.22), 14px);
+
   position: absolute;
   right: calc(var(--tile-w) * -0.4);
-  bottom: calc(var(--tile-w) * 0.95);
-  min-width: calc(var(--tile-w) * 0.7);
-  padding: 0 0.25em;
+  bottom: calc(var(--tile-w) * 1.1);
+  min-width: calc(var(--size) * 1.9);
+  padding: 0 calc(var(--size) * 0.35);
+  border: 1px solid var(--chrome-border);
   border-radius: 99px;
-  background: #1d1d1b;
-  color: #fff;
-  box-shadow: 0 0 0 max(1px, calc(var(--tile-w) * 0.04)) #fff;
-  font:
-    700 max(10px, calc(var(--tile-w) * 0.42)) / 1.3 system-ui,
-    sans-serif;
+  background: var(--chrome-bg-solid);
+  color: var(--color-fg);
+  font-size: var(--size);
+  font-weight: 700;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
   text-align: center;
   white-space: nowrap;
   rotate: var(--kita-rot, 0deg);
@@ -34,6 +38,6 @@
 
 @media (forced-colors: active) {
   .count {
-    border: 1px solid CanvasText;
+    border-color: CanvasText;
   }
 }

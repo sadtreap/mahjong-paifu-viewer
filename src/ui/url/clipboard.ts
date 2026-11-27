@@ -1,25 +1,18 @@
-/** How Copy link went, for the status line: `app.linkCopied`, `app.linkUnavailable` or `app.linkCopyFailed`. */
-export type CopyResult = "copied" | "unavailable" | "failed";
-
 /**
- * Copies a deep link (useHistorySync's `link()`) to the clipboard. A null link (a local file or
- * pasted log) gives "unavailable"; a missing or refused clipboard (no secure context, permission
- * denied) gives "failed".
+ * Copies a deep link (useHistorySync's `link()`) to the clipboard. False when there is no
+ * clipboard or it refuses (no secure context, permission denied).
  */
 export async function copyLink(
-  link: string | null,
+  link: string,
   clipboard: Pick<Clipboard, "writeText"> | undefined = globalThis.navigator?.clipboard,
-): Promise<CopyResult> {
-  if (link === null) {
-    return "unavailable";
-  }
+): Promise<boolean> {
   if (!clipboard) {
-    return "failed";
+    return false;
   }
   try {
     await clipboard.writeText(link);
-    return "copied";
+    return true;
   } catch {
-    return "failed";
+    return false;
   }
 }

@@ -99,8 +99,8 @@ describe("useViewerKeys", () => {
   it("keeps the key's default when the command did not apply", () => {
     const onCommand = vi.fn<(command: KeyCommand) => boolean | undefined>(() => false);
     setup({ onCommand });
-    expect(press(document.body, "Backspace")).toBe(true);
-    expect(onCommand).toHaveBeenCalledWith({ type: "back" }, { repeat: false });
+    expect(press(document.body, "Escape")).toBe(true);
+    expect(onCommand).toHaveBeenCalledWith({ type: "escape" }, { repeat: false });
   });
 
   it("drops the single-key shortcuts when they are off", () => {
@@ -113,11 +113,5 @@ describe("useViewerKeys", () => {
       { type: "nav", command: { kind: "roundEnd" } },
       { repeat: false },
     );
-  });
-
-  it("does nothing while disabled", () => {
-    const onCommand = setup({ enabled: false });
-    expect(press(document.body, "ArrowRight")).toBe(true);
-    expect(onCommand).not.toHaveBeenCalled();
   });
 });

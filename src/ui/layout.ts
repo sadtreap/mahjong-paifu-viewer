@@ -1,9 +1,7 @@
-import type { Seat, Wind } from "../core/model";
-import { isRedFive, isSameKind, type KnownTile, sortTiles, type Tile } from "../core/tile";
+import type { Seat } from "../core/model";
+import { isRedFive, isSameKind, sortTiles, type Tile } from "../core/tile";
 import type { DiscardView, MeldView, SeatView } from "../replay/types";
-
-/** Where a seat sits on screen, seen from the point-of-view seat. */
-export type Side = "bottom" | "right" | "top" | "left";
+import type { Side } from "./viewer/types";
 
 /** Sides in turn order starting from the point of view: the next player sits on the right. */
 export const SIDES: readonly Side[] = ["bottom", "right", "top", "left"];
@@ -20,11 +18,6 @@ export function sideOf(seat: Seat, pov: Seat): Side {
 /** The seat drawn on a side of the table. */
 export function seatOnSide(side: Side, pov: Seat): Seat {
   return ((pov + SIDES.indexOf(side)) % 4) as Seat;
-}
-
-/** A seat's wind in a round: the dealer is East. */
-export function seatWind(seat: Seat, dealer: Seat): Wind {
-  return seatDistance(dealer, seat) as Wind;
 }
 
 export interface MeldSlot {
@@ -80,33 +73,26 @@ export function keyed<T>(items: readonly T[], prefix = ""): KeyedItem<T>[] {
 }
 
 export const DISCARDS_PER_ROW = 6;
+/** Rows of a pond. The last one takes every discard after the first rows, however many. */
+export const POND_ROWS = 3;
 
-/** Splits a pond into rows of six, keeping each discard's index in the full list. */
+/**
+ * Splits a pond into its rows, keeping each discard's index in the full list: six per row, and a
+ * last row that keeps growing (a long pond extends its third row instead of starting a fourth).
+ */
 export function discardRows(
   discards: readonly DiscardView[],
   perRow = DISCARDS_PER_ROW,
+  maxRows = POND_ROWS,
 ): KeyedItem<DiscardView>[][] {
   const rows: KeyedItem<DiscardView>[][] = [];
   keyed(discards, "d").forEach((entry, index) => {
-    if (index % perRow === 0) {
+    if (index % perRow === 0 && rows.length < maxRows) {
       rows.push([]);
     }
     rows[rows.length - 1]?.push(entry);
   });
   return rows;
-}
-
-export const DORA_SLOTS = 5;
-
-/** The dora indicator row: revealed indicators first, null for slots still face down. */
-export function doraSlots(
-  indicators: readonly KnownTile[],
-  total = DORA_SLOTS,
-): (KnownTile | null)[] {
-  return Array.from(
-    { length: Math.max(total, indicators.length) },
-    (_, i) => indicators[i] ?? null,
-  );
 }
 
 /** Width of a sideways tile, in upright tile widths (tiles are 3:4). */
@@ -121,16 +107,13 @@ export const MELD_GAP = 0.25;
  */
 export const KITA_WIDTH = 1.85;
 
-/**
- * Width of a seat's hand row (concealed tiles, drawn tile, kita and melds), in tile widths. `kita`
- * is optional so callers that predate three-player games keep compiling.
- */
+/** Width of a seat's hand row (concealed tiles, drawn tile, kita and melds), in tile widths. */
 export function handRowWidth(
-  seat: Pick<SeatView, "hand" | "drawn" | "melds"> & { kita?: readonly Tile[] },
+  seat: Pick<SeatView, "hand" | "drawn" | "melds" | "kita">,
   owner: Seat,
 ): number {
   let width = seat.hand.length + (seat.drawn === null ? 0 : 1 + DRAWN_GAP);
-  if ((seat.kita?.length ?? 0) > 0) {
+  if (seat.kita.length > 0) {
     width += KITA_WIDTH;
   }
   for (const meld of seat.melds) {

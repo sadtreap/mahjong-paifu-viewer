@@ -1,0 +1,96 @@
+/*
+ * The point-of-view button (seat wind, name, caret) and its menu's rows. The toolbar's stylesheet
+ * hides the name (marked data-label) where the toolbar has no room for it; the caret always shows,
+ * so the button reads as one that opens a menu.
+ */
+.button {
+  flex: 0 1 auto;
+  min-width: var(--control);
+  padding-inline: 0.375rem;
+}
+
+/* The seat wind as a badge. */
+.wind {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 0.25rem;
+  background: var(--btn-bg-pressed);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* The dealer's wind, as on the table's console. */
+.wind[data-dealer] {
+  background: var(--badge-bg);
+  color: var(--badge-fg);
+}
+
+.name {
+  min-width: 0;
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.caret {
+  margin-inline: -0.375rem -0.125rem;
+  color: var(--color-muted);
+  font-size: 1rem;
+  line-height: 0;
+}
+
+.menu {
+  width: max-content;
+  max-width: calc(100vw - 16px);
+}
+
+.menu > .head {
+  flex: none;
+  margin: 0;
+  padding: 0.25rem 0.75rem 0.125rem;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}
+
+/* A row: wind, name (which gives way first), score, difference. */
+.menu > .row {
+  display: grid;
+  grid-template-columns: auto minmax(3rem, 1fr) auto minmax(4rem, auto);
+  gap: 0.625rem;
+  padding-inline: 0.625rem 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.player {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: start;
+}
+
+.score {
+  text-align: end;
+}
+
+.diff {
+  color: var(--color-muted);
+  font-size: var(--text-secondary);
+  text-align: end;
+}
+
+@media (forced-colors: active) {
+  /* The badge is a fill only; the dealer's has a double line. */
+  .wind {
+    border: 1px solid currentcolor;
+  }
+
+  .wind[data-dealer] {
+    border-style: double;
+    border-width: 3px;
+  }
+}

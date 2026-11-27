@@ -8,21 +8,38 @@ let now = 0;
 
 function Surfaces(options: WheelStepOptions) {
   const stage = useRef<HTMLDivElement>(null);
-  const dock = useRef<HTMLDivElement>(null);
-  useWheelStep([stage, dock], options);
+  const controls = useRef<HTMLDivElement>(null);
+  useWheelStep([stage, controls], options);
   return (
     <>
       <div ref={stage} data-testid="stage">
         <div data-gesture="ignore" data-testid="card" />
       </div>
-      <div ref={dock} data-testid="dock" />
+      <div ref={controls} data-testid="controls" />
     </>
   );
 }
 
-function setup(enabled = true) {
+/** The transport as a bar on the felt: inside the stage, itself marked for gestures to skip. */
+function Docked(options: WheelStepOptions) {
+  const stage = useRef<HTMLDivElement>(null);
+  const bar = useRef<HTMLDivElement>(null);
+  useWheelStep([stage, bar], options);
+  return (
+    <div ref={stage} data-testid="stage">
+      <div data-gesture="ignore">
+        <div ref={bar} data-gesture="ignore" data-testid="bar">
+          <button type="button">step</button>
+          <div data-gesture="ignore" data-testid="list" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function setup() {
   const onStep = vi.fn<WheelStepOptions["onStep"]>(() => true);
-  render(<Surfaces enabled={enabled} onStep={onStep} now={() => now} />);
+  render(<Surfaces onStep={onStep} now={() => now} />);
   return onStep;
 }
 
@@ -49,16 +66,16 @@ afterEach(() => {
 });
 
 describe("useWheelStep", () => {
-  it("runs a burst through the accumulator, sharing it between the stage and the dock", () => {
+  it("runs a burst through the accumulator, sharing it between the stage and the controls", () => {
     const onStep = setup();
     const stage = screen.getByTestId("stage");
-    const dock = screen.getByTestId("dock");
+    const controls = screen.getByTestId("controls");
     expect(wheel(stage, 1000, { deltaY: 4 })).toBe(false);
     for (let i = 1; i <= 12; i++) {
-      wheel(i % 2 ? dock : stage, 1000 + i * 10, { deltaY: 4 });
+      wheel(i % 2 ? controls : stage, 1000 + i * 10, { deltaY: 4 });
     }
     expect(onStep).toHaveBeenCalledTimes(1);
-    wheel(dock, 1130, { deltaY: 4 });
+    wheel(controls, 1130, { deltaY: 4 });
     expect(onStep).toHaveBeenCalledTimes(2);
     expect(onStep.mock.calls).toEqual([
       [1, { ownTurn: false, source: "user" }],
@@ -72,16 +89,21 @@ describe("useWheelStep", () => {
     expect(onStep).toHaveBeenCalledWith(-1, { ownTurn: true, source: "user" });
   });
 
+  it("steps once over a bar that lies on the stage, and not over a list inside the bar", () => {
+    const onStep = vi.fn<WheelStepOptions["onStep"]>(() => true);
+    render(<Docked onStep={onStep} now={() => now} />);
+    expect(wheel(screen.getByRole("button"), 1000)).toBe(false);
+    expect(onStep).toHaveBeenCalledTimes(1);
+    expect(wheel(screen.getByTestId("bar"), 2000)).toBe(false);
+    expect(onStep).toHaveBeenCalledTimes(2);
+    expect(wheel(screen.getByTestId("list"), 3000)).toBe(true);
+    expect(onStep).toHaveBeenCalledTimes(2);
+  });
+
   it("leaves Ctrl+wheel and wheels inside data-gesture=ignore to the browser", () => {
     const onStep = setup();
     expect(wheel(screen.getByTestId("stage"), 1000, { ctrlKey: true })).toBe(true);
     expect(wheel(screen.getByTestId("card"), 2000)).toBe(true);
-    expect(onStep).not.toHaveBeenCalled();
-  });
-
-  it("does nothing when wheel stepping is off", () => {
-    const onStep = setup(false);
-    expect(wheel(screen.getByTestId("stage"), 1000)).toBe(true);
     expect(onStep).not.toHaveBeenCalled();
   });
 });

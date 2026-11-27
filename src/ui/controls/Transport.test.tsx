@@ -2,21 +2,45 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n/I18nProvider";
-import type { TransportProps } from "../viewer/types";
+import { SettingsProvider } from "../settings/SettingsProvider";
+import type { RoundSummary, TransportProps } from "../viewer/types";
 import { Transport } from "./Transport";
+
+const ROUNDS: RoundSummary[] = [
+  { index: 0, wind: 0, number: 3, honba: 0, outcome: null, deltas: [0, 0, 0, 0] },
+  { index: 1, wind: 0, number: 3, honba: 2, outcome: null, deltas: [0, 0, 0, 0] },
+];
 
 function props(patch: Partial<TransportProps> = {}): TransportProps {
   return {
-    roundName: "East 3",
+    arrangement: "wide",
     turn: 9,
-    limits: { gameStart: false, gameEnd: false, firstRound: false, lastRound: false },
+    limits: { gameStart: false, gameEnd: false, lastRound: false },
     playing: false,
     speed: 1,
-    breakpoint: "wide",
     onNav: vi.fn(() => true),
     onTogglePlay: vi.fn(),
     onSpeed: vi.fn(),
-    onRoundList: vi.fn(),
+    onShowResult: null,
+    scrubber: {
+      round: 0,
+      steps: 12,
+      step: 4,
+      describe: () => "A draws",
+      turnOf: () => 2,
+      onSeek: vi.fn(),
+    },
+    roundList: {
+      rounds: ROUNDS,
+      current: 0,
+      names: ["A", "B", "C", "D"],
+      pov: 0,
+      onRound: vi.fn(),
+      onFinal: vi.fn(),
+      open: false,
+      onOpenChange: vi.fn(),
+    },
+    rootRef: { current: null },
     ...patch,
   };
 }
@@ -25,7 +49,9 @@ function renderTransport(patch: Partial<TransportProps> = {}) {
   const all = props(patch);
   render(
     <I18nProvider>
-      <Transport {...all} />
+      <SettingsProvider>
+        <Transport {...all} />
+      </SettingsProvider>
     </I18nProvider>,
   );
   return all;
@@ -53,53 +79,96 @@ afterEach(() => {
 });
 
 describe("Transport", () => {
-  it("names every control in a labelled toolbar, with the shortcut in the tooltip", () => {
+  it("names every control in a labelled group, with the shortcut in the tooltip", () => {
     renderTransport();
-    expect(screen.getByRole("toolbar", { name: "Replay controls" })).toBeTruthy();
+    const group = screen.getByRole("group", { name: "Replay controls" });
+    expect(group.getAttribute("data-gesture")).toBe("ignore");
+    expect(group.getAttribute("data-arrangement")).toBe("wide");
     for (const name of [
       "Previous round",
-      "East 3. Open the round list",
+      "East 3, round list",
       "Next round",
       "Previous own turn",
       "Next own turn",
-      "Previous call, riichi or kita",
       "Previous step",
-      "Autoplay",
+      "Play",
       "Next step",
-      "Next call, riichi or kita",
       "Autoplay speed: 1×",
     ]) {
       expect(button(name)).toBeTruthy();
     }
+    expect(screen.getAllByRole("button")).toHaveLength(9);
     expect(screen.getByText("Turn 9")).toBeTruthy();
     expect(button("Previous own turn").title).toBe("Previous own turn (Shift+←)");
     expect(button("Next step").title).toBe("Next step (→)");
-    expect(button("Autoplay").title).toBe("Autoplay (Space)");
-    expect(button("Next call, riichi or kita").title).toBe("Next call, riichi or kita (.)");
+    expect(button("Play").title).toBe("Play (Space)");
+    expect(button("Next round").title).toBe("Next round (↓)");
+    expect(button("East 3, round list").title).toBe("Rounds (R)");
+    expect(button("Autoplay speed: 1×").title).toBe("Autoplay speed: 1× (+ / −)");
+  });
+
+  it("puts the controls in the order the eye meets them", () => {
+    renderTransport({ onShowResult: vi.fn() });
+    const group = screen.getByRole("group", { name: "Replay controls" });
+    const names = [...group.querySelectorAll("button, input")].map((control) =>
+      control.getAttribute("aria-label"),
+    );
+    expect(names).toEqual([
+      null,
+      "Step in this round",
+      "Previous round",
+      "East 3, round list",
+      "Next round",
+      "Previous own turn",
+      "Next own turn",
+      "Previous step",
+      "Play",
+      "Next step",
+      "Autoplay speed: 1×",
+    ]);
+    expect(group.querySelector("button")?.textContent).toBe("Show result");
+  });
+
+  it("adds the honba count to the round button only when there is one", () => {
+    /** What the button shows: the parts of its one face that is not hidden. */
+    const face = (round: HTMLElement) =>
+      [...(round.querySelector("span > span:not([aria-hidden]) > span")?.children ?? [])].map(
+        (part) => part.textContent,
+      );
+    renderTransport();
+    expect(face(button("East 3, round list"))).toEqual(["East 3"]);
+    cleanup();
+    renderTransport({ roundList: { ...props().roundList, current: 1 } });
+    expect(face(button("East 3 · 2 honba, round list"))).toEqual(["East 3", "2 honba"]);
+  });
+
+  it("holds every round's text of the game, hidden, so the round button keeps one width", () => {
+    renderTransport();
+    const hidden = [...button("East 3, round list").querySelectorAll('span[aria-hidden="true"]')];
+    expect(hidden.map((text) => text.textContent)).toEqual(["East 3", "East 32 honba"]);
   });
 
   it("sends each button's command as a fresh user input", () => {
     const { onNav } = renderTransport();
     fireEvent.click(button("Previous round"));
     fireEvent.click(button("Next round"));
-    fireEvent.click(button("Previous call, riichi or kita"));
     fireEvent.click(button("Next step"));
     fireEvent.click(button("Next own turn"));
     expect(vi.mocked(onNav).mock.calls).toEqual([
       [{ kind: "roundStartOrPrev" }, "user"],
       [{ kind: "nextRound" }, "user"],
-      [{ kind: "keyMoment", dir: -1 }, "user"],
       [{ kind: "step", dir: 1 }, "user"],
       [{ kind: "ownTurn", dir: 1 }, "user"],
     ]);
   });
 
   it("keeps the focus on a button at its limit and does nothing", () => {
-    const { onNav } = renderTransport({
-      limits: { gameStart: false, gameEnd: true, firstRound: false, lastRound: true },
+    const { onNav, onTogglePlay } = renderTransport({
+      limits: { gameStart: false, gameEnd: true, lastRound: true },
     });
     const next = button("Next step");
     expect(next.getAttribute("aria-disabled")).toBe("true");
+    expect(next.hasAttribute("disabled")).toBe(false);
     expect(button("Next round").getAttribute("aria-disabled")).toBe("true");
     expect(button("Previous step").getAttribute("aria-disabled")).toBe("false");
     act(() => next.focus());
@@ -107,14 +176,19 @@ describe("Transport", () => {
     fireEvent.click(button("Next round"));
     expect(onNav).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(next);
-    expect(button("Autoplay").getAttribute("aria-disabled")).toBe("true");
+    // Nothing is left to play at the game's end.
+    expect(button("Play").getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(button("Play"));
+    expect(onTogglePlay).not.toHaveBeenCalled();
   });
 
-  it("marks autoplay with aria-pressed and keeps its name", () => {
+  it("names the play button by what pressing it does, without a pressed state", () => {
     const { onTogglePlay } = renderTransport({ playing: true });
-    const play = button("Autoplay");
-    expect(play.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(play);
+    expect(screen.queryByRole("button", { name: "Play" })).toBeNull();
+    const pause = button("Pause");
+    expect(pause.hasAttribute("aria-pressed")).toBe(false);
+    expect(pause.title).toBe("Pause (Space)");
+    fireEvent.click(pause);
     expect(onTogglePlay).toHaveBeenCalledTimes(1);
   });
 
@@ -162,20 +236,31 @@ describe("Transport", () => {
     expect(onNav).toHaveBeenCalledWith({ kind: "step", dir: 1 }, "repeat");
   });
 
-  it("opens the round list and cycles the speed", () => {
-    const { onRoundList, onSpeed } = renderTransport({ speed: 4 });
-    fireEvent.click(button("East 3. Open the round list"));
-    expect(onRoundList).toHaveBeenCalledTimes(1);
+  it("cycles the speed", () => {
+    const { onSpeed } = renderTransport({ speed: 4 });
     fireEvent.click(button("Autoplay speed: 4×"));
     expect(onSpeed).toHaveBeenCalledWith(0.5);
   });
 
-  it("leaves the turn label, key moments and speed to the ⋯ menu on phones in portrait", () => {
-    renderTransport({ breakpoint: "phonePortrait" });
-    expect(screen.queryByText("Turn 9")).toBeNull();
-    expect(screen.queryByRole("button", { name: /call, riichi or kita/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Autoplay speed/ })).toBeNull();
-    expect(button("Next step")).toBeTruthy();
-    expect(button("Autoplay")).toBeTruthy();
+  it("shows Show result only while there is a hidden card to show", () => {
+    renderTransport();
+    expect(screen.queryByRole("button", { name: "Show result" })).toBeNull();
+    cleanup();
+    const onShowResult = vi.fn();
+    renderTransport({ onShowResult });
+    expect(button("Show result").title).toBe("Show result (End)");
+    fireEvent.click(button("Show result"));
+    expect(onShowResult).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes the step buttons large in the block under the table only", () => {
+    renderTransport({ arrangement: "stack" });
+    for (const name of ["Previous step", "Play", "Next step"]) {
+      expect(button(name).getAttribute("data-size")).toBe("lg");
+    }
+    expect(button("Next round").hasAttribute("data-size")).toBe(false);
+    cleanup();
+    renderTransport({ arrangement: "short" });
+    expect(button("Next step").hasAttribute("data-size")).toBe(false);
   });
 });

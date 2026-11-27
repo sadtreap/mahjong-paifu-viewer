@@ -1,29 +1,24 @@
 import { describe, expect, it } from "vitest";
 import type { Settings } from "../viewer/types";
-import { AUTOPLAY_SPEEDS, DEFAULT_SETTINGS, parseSettings, serializeSettings } from "./settings";
+import {
+  AUTOPLAY_SPEEDS,
+  blobKind,
+  DEFAULT_SETTINGS,
+  parseSettings,
+  serializeSettings,
+} from "./settings";
 
-const blob = (fields: Record<string, unknown>) => JSON.stringify({ version: 1, ...fields });
+const blob = (fields: Record<string, unknown>) => JSON.stringify({ version: 2, ...fields });
 
 describe("DEFAULT_SETTINGS", () => {
-  it("matches the spec's defaults, with the spoilers off", () => {
+  it("has the five settings with their defaults", () => {
     expect(DEFAULT_SETTINGS).toEqual({
-      version: 1,
+      version: 2,
       view: "3d",
       showAllHands: true,
-      dimTsumogiri: true,
-      captions: true,
-      motion: true,
       showWaits: true,
-      showNextDiscard: false,
-      theme: "system",
-      clickToStep: true,
-      wheelToStep: true,
       charKeys: true,
       autoplaySpeed: 1,
-      panelOpen: true,
-      movesOpen: false,
-      movesShowRest: false,
-      hintSeen: false,
     } satisfies Settings);
   });
 
@@ -39,9 +34,9 @@ describe("parseSettings", () => {
 
   it("returns a fresh object every time", () => {
     const first = parseSettings(null, null);
-    first.motion = false;
-    expect(parseSettings(null, null).motion).toBe(true);
-    expect(DEFAULT_SETTINGS.motion).toBe(true);
+    first.showWaits = false;
+    expect(parseSettings(null, null).showWaits).toBe(true);
+    expect(DEFAULT_SETTINGS.showWaits).toBe(true);
   });
 
   it.each(["", "{", "not json", "null", "42", '"settings"', "[]", "true"])(
@@ -52,16 +47,28 @@ describe("parseSettings", () => {
   );
 
   it.each([
-    ["a missing version", JSON.stringify({ motion: false })],
-    ["version 2", JSON.stringify({ version: 2, motion: false })],
-    ["version 0", JSON.stringify({ version: 0, motion: false })],
-    ['version "1"', JSON.stringify({ version: "1", motion: false })],
+    ["a missing version", JSON.stringify({ showWaits: false })],
+    ["version 3", JSON.stringify({ version: 3, showWaits: false })],
+    ["version 0", JSON.stringify({ version: 0, showWaits: false })],
+    ['version "2"', JSON.stringify({ version: "2", showWaits: false })],
   ])("ignores a blob with %s as a whole", (_case, raw) => {
     expect(parseSettings(raw, null)).toEqual(DEFAULT_SETTINGS);
   });
 
   it("reads every field of a valid blob", () => {
     const stored: Settings = {
+      version: 2,
+      view: "flat",
+      showAllHands: false,
+      showWaits: false,
+      charKeys: false,
+      autoplaySpeed: 4,
+    };
+    expect(parseSettings(JSON.stringify(stored), null)).toEqual(stored);
+  });
+
+  it("migrates a version 1 blob by keeping the five settings it shares", () => {
+    const version1 = {
       version: 1,
       view: "flat",
       showAllHands: false,
@@ -70,25 +77,32 @@ describe("parseSettings", () => {
       motion: false,
       showWaits: false,
       showNextDiscard: true,
-      theme: "dark",
+      theme: "light",
       clickToStep: false,
       wheelToStep: false,
       charKeys: false,
-      autoplaySpeed: 4,
+      autoplaySpeed: 2,
       panelOpen: false,
       movesOpen: true,
       movesShowRest: true,
       hintSeen: true,
     };
-    expect(parseSettings(JSON.stringify(stored), null)).toEqual(stored);
+    expect(parseSettings(JSON.stringify(version1), null)).toEqual({
+      version: 2,
+      view: "flat",
+      showAllHands: false,
+      showWaits: false,
+      charKeys: false,
+      autoplaySpeed: 2,
+    });
   });
 
   it("falls back field by field, keeping the valid fields", () => {
     const settings = parseSettings(
-      blob({ motion: false, captions: "false", view: "iso", theme: "light", autoplaySpeed: 3 }),
+      blob({ showWaits: false, charKeys: "false", view: "iso", autoplaySpeed: 3 }),
       null,
     );
-    expect(settings).toEqual({ ...DEFAULT_SETTINGS, motion: false, theme: "light" });
+    expect(settings).toEqual({ ...DEFAULT_SETTINGS, showWaits: false });
   });
 
   it.each([
@@ -100,9 +114,9 @@ describe("parseSettings", () => {
     ["null", null],
     ["an object", {}],
   ])("accepts only JSON booleans as booleans, not %s", (_case, value) => {
-    const settings = parseSettings(blob({ clickToStep: value, hintSeen: value }), null);
-    expect(settings.clickToStep).toBe(true);
-    expect(settings.hintSeen).toBe(false);
+    const settings = parseSettings(blob({ charKeys: value, showAllHands: value }), null);
+    expect(settings.charKeys).toBe(true);
+    expect(settings.showAllHands).toBe(true);
   });
 
   it.each([
@@ -119,8 +133,8 @@ describe("parseSettings", () => {
   });
 
   it("ignores unknown fields", () => {
-    const settings = parseSettings(blob({ language: "ko", pov: 2, motion: false }), null);
-    expect(settings).toEqual({ ...DEFAULT_SETTINGS, motion: false });
+    const settings = parseSettings(blob({ language: "ko", pov: 2, showWaits: false }), null);
+    expect(settings).toEqual({ ...DEFAULT_SETTINGS, showWaits: false });
     expect(settings).not.toHaveProperty("language");
   });
 
@@ -138,9 +152,9 @@ describe("parseSettings", () => {
 
     it("applies when the blob is broken or does not set the field", () => {
       expect(parseSettings("{", "false").showAllHands).toBe(false);
-      expect(parseSettings(blob({ motion: false }), "false")).toEqual({
+      expect(parseSettings(blob({ showWaits: false }), "false")).toEqual({
         ...DEFAULT_SETTINGS,
-        motion: false,
+        showWaits: false,
         showAllHands: false,
       });
     });
@@ -157,18 +171,16 @@ describe("serializeSettings", () => {
     const settings: Settings = {
       ...DEFAULT_SETTINGS,
       view: "flat",
-      theme: "light",
       autoplaySpeed: 0.5,
-      showNextDiscard: true,
-      movesShowRest: true,
-      hintSeen: true,
+      showAllHands: false,
+      charKeys: false,
     };
     expect(parseSettings(serializeSettings(settings), null)).toEqual(settings);
     expect(parseSettings(serializeSettings(DEFAULT_SETTINGS), null)).toEqual(DEFAULT_SETTINGS);
   });
 
-  it("writes version 1 and only the known fields", () => {
-    const extra = { ...DEFAULT_SETTINGS, pov: 2 } as Settings;
+  it("writes version 2 and only the known fields", () => {
+    const extra = { ...DEFAULT_SETTINGS, pov: 2, theme: "dark" } as Settings;
     const json: unknown = JSON.parse(serializeSettings(extra));
     expect(json).toEqual(DEFAULT_SETTINGS);
   });
@@ -179,4 +191,20 @@ describe("serializeSettings", () => {
     ) as unknown as Settings;
     expect(serializeSettings(shuffled)).toBe(serializeSettings(DEFAULT_SETTINGS));
   });
+});
+
+describe("blobKind", () => {
+  it("tells the current blob from an old one", () => {
+    expect(blobKind(null)).toBe("none");
+    expect(blobKind(serializeSettings(DEFAULT_SETTINGS))).toBe("current");
+    expect(blobKind(blob({ view: "flat", extra: 1 }))).toBe("current");
+    expect(blobKind(JSON.stringify({ version: 1, theme: "light" }))).toBe("old");
+  });
+
+  it.each(["", "{", "not json", "null", "[]", '{"version":3}', '{"version":"2"}', "{}"])(
+    "does not know %j",
+    (raw) => {
+      expect(blobKind(raw)).toBe("unknown");
+    },
+  );
 });

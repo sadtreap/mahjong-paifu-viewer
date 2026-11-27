@@ -6,7 +6,6 @@ const info = (kind: StepKind, tsumogiri = false): StepInfo => ({
   kind,
   seat: 0,
   tsumogiri,
-  doraReveal: false,
 });
 
 describe("autoplayDelay", () => {

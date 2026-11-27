@@ -18,10 +18,12 @@ describe("useViewerState", () => {
       moved = [
         result.current.navigate({ kind: "step", dir: 1 }, "repeat"),
         result.current.navigate({ kind: "step", dir: 1 }, "repeat"),
+        // A fresh press first brings up the result card that waits, then goes on.
+        result.current.navigate({ kind: "step", dir: 1 }, "user"),
         result.current.navigate({ kind: "step", dir: 1 }, "user"),
       ];
     });
-    expect(moved).toEqual([true, false, true]);
+    expect(moved).toEqual([true, false, false, true]);
     expect(result.current.state.position).toEqual({ round: 1, step: 0 });
   });
 

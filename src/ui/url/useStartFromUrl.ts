@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { LogSource } from "../logSource";
-import { type SampleId, sampleSource } from "../samples";
 import type { LoadStart } from "../useLogLoader";
 import type { LinkSource } from "../viewer/types";
-import { linkLogSource, parseViewerUrl } from "./urlState";
+import { linkLogSource, parseViewerUrl, type ViewerLink } from "./urlState";
 
 /** useLogLoader's `load`. */
 export type LinkLoad = (
@@ -12,29 +11,15 @@ export type LinkLoad = (
   origin: LinkSource | null,
 ) => unknown;
 
-export interface StartFromUrlOptions {
-  /**
-   * The sample to open when the address names no log (the table under the welcome card), or null
-   * to open nothing.
-   */
-  fallbackSample?: SampleId | null;
-}
-
-export interface StartFromUrl {
-  /** True when the address named no log, so the app greets the visitor with the welcome card. */
-  welcome: boolean;
-}
-
 /**
  * Opens the log the page's address names, once, on startup: `?sample=<id>` or `?tenhou=<log id>`
  * with 1-based `round`, `step` and `pov` (see urlState.ts). The position is clamped and the seat
- * checked by the viewer once the game is known. Without a source in the address it opens
- * `fallbackSample`, if any.
+ * checked by the viewer once the game is known. An address without a source opens nothing.
+ * Returns the link the address named, from the first render on (before the load starts), or null.
  */
-export function useStartFromUrl(load: LinkLoad, options: StartFromUrlOptions = {}): StartFromUrl {
+export function useStartFromUrl(load: LinkLoad): ViewerLink | null {
   const [link] = useState(() => parseViewerUrl(window.location.search));
   const started = useRef(false);
-  const fallback = options.fallbackSample ?? null;
 
   useEffect(() => {
     if (started.current) {
@@ -43,10 +28,8 @@ export function useStartFromUrl(load: LinkLoad, options: StartFromUrlOptions = {
     started.current = true;
     if (link) {
       void load(linkLogSource(link.source), link.start, link.source);
-    } else if (fallback !== null) {
-      void load(sampleSource(fallback), null, { kind: "sample", id: fallback });
     }
-  }, [link, load, fallback]);
+  }, [link, load]);
 
-  return { welcome: link === null };
+  return link;
 }

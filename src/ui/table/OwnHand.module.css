@@ -1,6 +1,12 @@
-/* Flat DOM at the frame's bottom, centred; tiles fit 96% of S (at most 1.3 units wide). */
+/*
+ * Flat DOM at the frame's bottom, centred. The tiles are --own-tile units wide, less when the row
+ * (--units tile widths, set inline) would pass --own-fit of S.
+ */
 .own {
-  --tile-w: min(calc(var(--u) * 1.3), calc(var(--S) * 0.96 / var(--units, 15)));
+  --tile-w: min(
+    calc(var(--u) * var(--own-tile)),
+    calc(var(--S) * var(--own-fit) / var(--units, 15))
+  );
   --dx: 0;
   --dy: 1;
 
@@ -35,29 +41,18 @@
   padding-left: calc(var(--tile-w) * 0.25);
 }
 
-/* Standing tiles: looking down on upright tiles, the lid shows above the face. */
+/* Standing tiles: looking down on upright tiles, the lid shows above the face (--own-lid). */
 .concealed .standing {
   box-shadow:
     0 0 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
     0 calc(var(--w) * -0.055) 0 var(--tile-lid),
-    0 calc(var(--w) * -0.15) 0 var(--tile-back-face),
-    0 calc(var(--w) * -0.15) 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
+    0 calc(var(--w) * var(--own-lid) * -1) 0 var(--tile-back-face),
+    0 calc(var(--w) * var(--own-lid) * -1) 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
     0 calc(var(--w) * 0.06) calc(var(--w) * 0.16) rgb(0 0 0 / 0.55);
-}
-
-/* The tile the point of view discards next (a review aid; off by default). */
-.concealed .next {
-  translate: 0 -16%;
-  outline: max(2px, calc(var(--w) * 0.06)) solid var(--next);
-  outline-offset: 2px;
 }
 
 @media (forced-colors: active) {
   .concealed .standing {
     outline: 1px solid CanvasText;
-  }
-
-  .concealed .next {
-    outline: 3px dashed Highlight;
   }
 }

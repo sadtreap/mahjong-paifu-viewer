@@ -1,0 +1,53 @@
+/* A container, so the list can count its columns and space them by the width it gets. */
+.details {
+  display: grid;
+  gap: 0.375rem;
+  align-content: start;
+  min-inline-size: 0;
+  font-size: var(--text-secondary);
+  container-type: inline-size;
+}
+
+/*
+ * Two columns, so six yaku take three lines. Each column is as wide as its longest yaku with its
+ * value, which keeps a name and its value close together; when the two do not fit side by side
+ * they share the width and the long names wrap. The columns stand further apart in a wider list.
+ */
+.yaku {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, auto));
+  justify-content: start;
+  gap: 0 clamp(1rem, 6cqi, 1.75rem);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  line-height: 1.25rem;
+}
+
+/* The value stays whole on the name's first line, at the column's end, so the values line up. */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 0.5rem;
+}
+
+.name {
+  overflow-wrap: anywhere;
+}
+
+.value {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+.pao {
+  margin: 0;
+}
+
+/* Too narrow for two columns of yaku (beside the scores in a small box): one column. */
+@container (max-width: 17rem) {
+  .yaku {
+    grid-template-columns: minmax(0, auto);
+  }
+}

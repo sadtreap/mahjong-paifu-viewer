@@ -7,8 +7,11 @@ import type { Position } from "./navigation";
 import { tenhouLinkLogId, tenhouLinkStart, tenhouLogDataUrl } from "./tenhouLink";
 import type { LinkSource, ViewerStart } from "./viewer/types";
 
+/** What a load in progress waits for: a file or text being read, or a download. */
+export type Loading = "read" | "download";
+
 export interface LoaderState {
-  loading: boolean;
+  loading: Loading | null;
   game: GameLog | null;
   /** Increments with every loaded game, so views can reset their state. */
   gameKey: number;
@@ -26,7 +29,7 @@ export interface LoaderState {
 }
 
 const INITIAL: LoaderState = {
-  loading: false,
+  loading: null,
   game: null,
   gameKey: 0,
   start: null,
@@ -51,11 +54,18 @@ function tenhouStart(text: string): ViewerStart | null {
 
 class FetchError extends Error {}
 
+/** How long a download may take before it counts as failed, so a server that never answers ends. */
+export const DOWNLOAD_TIMEOUT_MS = 20_000;
+
 /**
  * Reads a source into what loadLog takes. Files and URLs are read as bytes (they may be gzip). A
- * file larger than any log is refused before it is read (LogParseError "tooLarge").
+ * file larger than any log is refused before it is read (LogParseError "tooLarge"). A download
+ * stops when `controller` aborts, and aborts it when it runs out of time.
  */
-async function readSource(source: LogSource): Promise<string | ArrayBuffer> {
+async function readSource(
+  source: LogSource,
+  controller: AbortController,
+): Promise<string | ArrayBuffer> {
   switch (source.kind) {
     case "file":
       if (source.file.size > MAX_LOG_SIZE) {
@@ -64,29 +74,35 @@ async function readSource(source: LogSource): Promise<string | ArrayBuffer> {
       return source.file.arrayBuffer();
     case "text":
       return source.text;
-    case "url":
+    case "url": {
+      const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
       try {
-        const response = await fetch(source.url);
+        const response = await fetch(source.url, { signal: controller.signal });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status} for ${source.url}`);
         }
         return await response.arrayBuffer();
       } catch (error) {
         throw new FetchError("Could not download the log", { cause: error });
+      } finally {
+        clearTimeout(timer);
       }
+    }
   }
 }
 
 /**
  * Loads logs from files, text or URLs. Text that is only a Tenhou replay link or log id loads that
  * log from tenhou.net; its `tw` and `ts` say where to open it unless `start` does, and the log id
- * becomes the origin unless `origin` says otherwise. Only the latest request counts: a slow load
- * that finishes after a newer one is dropped. A failed load keeps the current game and reports the
- * error. `load` resolves to true when this request's game was loaded.
+ * becomes the origin unless `origin` says otherwise. Only the latest request counts: a newer one
+ * abandons the download of the one before, and a slow load that finishes after it is dropped. A
+ * failed load keeps the current game and reports the error; `cancel` drops the load in progress
+ * without one. `load` resolves to true when this request's game was loaded.
  */
 export function useLogLoader() {
   const [state, setState] = useState<LoaderState>(INITIAL);
   const latest = useRef(0);
+  const inFlight = useRef<AbortController | null>(null);
 
   const load = useCallback(
     async (
@@ -96,11 +112,15 @@ export function useLogLoader() {
     ): Promise<boolean> => {
       const request = ++latest.current;
       const isCurrent = () => request === latest.current;
-      setState((previous) => ({ ...previous, loading: true, error: null }));
+      inFlight.current?.abort();
+      const controller = new AbortController();
+      inFlight.current = controller;
       const tenhouId = source.kind === "text" ? tenhouLinkLogId(source.text) : null;
       const target: LogSource = tenhouId
         ? { kind: "url", url: tenhouLogDataUrl(tenhouId) }
         : source;
+      const loading: Loading = target.kind === "url" ? "download" : "read";
+      setState((previous) => ({ ...previous, loading, error: null }));
       const gameStart =
         toViewerStart(start) ??
         (source.kind === "text" && tenhouId ? tenhouStart(source.text) : null);
@@ -109,12 +129,12 @@ export function useLogLoader() {
 
       let input: string | ArrayBuffer;
       try {
-        input = await readSource(target);
+        input = await readSource(target, controller);
       } catch (error) {
         if (isCurrent()) {
           setState((previous) => ({
             ...previous,
-            loading: false,
+            loading: null,
             error: readError(error, tenhouId),
           }));
         }
@@ -127,7 +147,7 @@ export function useLogLoader() {
           return false;
         }
         setState((previous) => ({
-          loading: false,
+          loading: null,
           game,
           gameKey: previous.gameKey + 1,
           start: gameStart,
@@ -147,7 +167,7 @@ export function useLogLoader() {
         if (loadError.code === "unexpected") {
           console.error(error);
         }
-        setState((previous) => ({ ...previous, loading: false, error: loadError }));
+        setState((previous) => ({ ...previous, loading: null, error: loadError }));
         return false;
       }
     },
@@ -158,7 +178,14 @@ export function useLogLoader() {
     setState((previous) => ({ ...previous, error: null }));
   }, []);
 
-  return { ...state, load, dismissError };
+  const cancel = useCallback(() => {
+    latest.current += 1;
+    inFlight.current?.abort();
+    inFlight.current = null;
+    setState((previous) => ({ ...previous, loading: null }));
+  }, []);
+
+  return { ...state, load, dismissError, cancel };
 }
 
 /** The error for a source that could not be read or downloaded. */

@@ -1,0 +1,12 @@
+.select {
+  min-block-size: var(--control);
+  color: var(--color-fg);
+  font-size: var(--text-control);
+}
+
+/* A phone zooms into a field whose text is smaller than this, and stays zoomed after the choice. */
+@media (pointer: coarse) {
+  .select {
+    font-size: 1rem;
+  }
+}

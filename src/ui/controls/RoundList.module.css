@@ -1,0 +1,256 @@
+/*
+ * The round button and the round list. The button is two lines (round, then honba) where the
+ * transport is rows or a block, and one line ("East 2 · 1 honba") in the bar on the felt: the
+ * transport's root carries data-arrangement. In the bar the label holds the text of every round
+ * of the game in one grid cell, all but the current one unseen, so the button is as wide as the
+ * longest of them throughout the game.
+ */
+.button {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-inline: 0.5rem 0.25rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.label {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: start;
+}
+
+/* The text, on two lines (the round, then the honba), and the caret at the end. */
+.current {
+  display: flex;
+  grid-area: 1 / 1;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.text {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sizer {
+  display: none;
+}
+
+.name {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.honba {
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  white-space: nowrap;
+}
+
+/* The list opens upward from the button, so the caret points up. */
+.caret {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--color-muted);
+  rotate: 180deg;
+}
+
+/* A 320px phone: the round's name keeps every pixel. */
+@media (max-width: 359px) {
+  .button {
+    padding-inline: 0.375rem 0.125rem;
+  }
+
+  .current {
+    gap: 0;
+  }
+}
+
+/*
+ * In the bar the button is as wide as its longest text, the current one centred in it, and gives
+ * way only when the bar is full.
+ */
+[data-arrangement="wide"] .button {
+  flex: 0 1 auto;
+  min-width: 4rem;
+  padding-inline: 0.625rem 0.375rem;
+}
+
+[data-arrangement="wide"] .current,
+[data-arrangement="wide"] .sizer {
+  display: flex;
+  grid-area: 1 / 1;
+  justify-content: center;
+  overflow: hidden;
+}
+
+[data-arrangement="wide"] .text {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: baseline;
+}
+
+[data-arrangement="wide"] .sizer {
+  visibility: hidden;
+}
+
+/* In a full bar the honba count gives way before the round's name does. */
+[data-arrangement="wide"] .honba {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-secondary);
+  text-overflow: ellipsis;
+}
+
+[data-arrangement="wide"] .honba::before {
+  content: "·";
+  margin-inline: 0.375em;
+}
+
+/*
+ * A small window: the bar keeps room beside it for "Show result", so the honba count goes (the
+ * info chip shows it as well) and the padding tightens.
+ */
+@media (max-width: 899px) {
+  [data-arrangement="wide"] .button {
+    padding-inline: 0.5rem 0.375rem;
+  }
+
+  [data-arrangement="wide"] .honba {
+    display: none;
+  }
+}
+
+/* The side column's list opens to the left. */
+[data-arrangement="short"] .caret {
+  rotate: 90deg;
+}
+
+/* A narrow column: tighter padding and a smaller caret leave a round's name ("North 4") whole. */
+@container transport (max-width: 199px) {
+  .button {
+    padding-inline: 0.375rem 0.25rem;
+  }
+
+  .current {
+    gap: 0.125rem;
+  }
+
+  .caret {
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+  }
+}
+
+.list {
+  width: min(36rem, 100vw - 16px);
+  container-type: inline-size;
+}
+
+/* Whose changes the numbers in the rows are, over their column. */
+.list > .head {
+  flex: none;
+  margin: 0;
+  padding: 0.25rem 0.75rem 0;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  text-align: end;
+}
+
+/* A row: the round and the viewed player's change, with the outcome on a second line. */
+.list > .row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "round delta"
+    "outcome outcome";
+  gap: 0 0.75rem;
+  padding-block: 0.375rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+.round {
+  grid-area: round;
+  font-weight: 600;
+  text-align: start;
+}
+
+.outcome {
+  grid-area: outcome;
+  display: grid;
+  min-width: 0;
+  color: var(--color-muted);
+  font-size: var(--text-secondary);
+  text-align: start;
+}
+
+/*
+ * One win: long names give way (with an ellipsis, down to a few letters); short names, the words
+ * and the points never do.
+ */
+.win {
+  display: flex;
+  min-width: 0;
+}
+
+.words {
+  flex: none;
+  white-space: pre;
+}
+
+.who {
+  flex: 0 1 auto;
+  min-width: 3em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.who[data-short] {
+  flex: none;
+  min-width: 0;
+}
+
+.delta {
+  grid-area: delta;
+  text-align: end;
+}
+
+.delta[data-sign="gain"] {
+  color: var(--color-gain);
+}
+
+.delta[data-sign="loss"] {
+  color: var(--color-loss);
+}
+
+/* The last row stands apart from the rounds. */
+.list > .final {
+  margin-top: 2px;
+  border-top-color: var(--chrome-border);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  font-weight: 600;
+}
+
+/* A wide list has the outcome beside the round, on one line. */
+@container (min-width: 30rem) {
+  .list > .row {
+    grid-template-columns: 8.5rem minmax(0, 1fr) minmax(4rem, auto);
+    grid-template-areas: "round outcome delta";
+    align-items: center;
+    padding-block: 0.25rem;
+  }
+
+  .outcome {
+    color: inherit;
+  }
+}

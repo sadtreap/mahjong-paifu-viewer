@@ -23,9 +23,8 @@ function Stage(options: StageGestureOptions) {
 
 function setup(extra: Partial<StageGestureOptions> = {}) {
   const onStep = vi.fn<StageGestureOptions["onStep"]>(() => true);
-  const onHold = vi.fn();
-  render(<Stage enabled onStep={onStep} onHold={onHold} {...extra} />);
-  return { onStep: extra.onStep ? (extra.onStep as typeof onStep) : onStep, onHold };
+  render(<Stage onStep={onStep} {...extra} />);
+  return { onStep: extra.onStep ? (extra.onStep as typeof onStep) : onStep };
 }
 
 const felt = () => screen.getByTestId("felt");
@@ -104,19 +103,17 @@ describe("useStageGestures", () => {
   });
 
   it("repeats a hold at 350 ms, then on the schedule, and no click fires on release", () => {
-    const { onStep, onHold } = setup();
+    const { onStep } = setup();
     const hold = press(felt());
     vi.advanceTimersByTime(349);
     expect(onStep).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(onStep).toHaveBeenLastCalledWith(1, { ownTurn: false, source: "repeat" });
-    expect(onHold).toHaveBeenLastCalledWith(true);
     vi.advanceTimersByTime(1000);
     expect(onStep).toHaveBeenCalledTimes(11);
     vi.advanceTimersByTime(100);
     expect(onStep).toHaveBeenCalledTimes(13);
     hold.up();
-    expect(onHold).toHaveBeenLastCalledWith(false);
     vi.advanceTimersByTime(1000);
     expect(onStep).toHaveBeenCalledTimes(13);
     expect(onStep.mock.calls.every(([, o]) => o.source === "repeat")).toBe(true);
@@ -172,6 +169,19 @@ describe("useStageGestures", () => {
     expect(onStep.mock.calls.map(([dir]) => dir)).toEqual([1, -1, 1]);
   });
 
+  it("ignores a swipe that starts within 24 px of a side edge, but takes a tap there", () => {
+    const { onStep } = setup();
+    const fromLeft = press(felt(), { type: "touch", x: 10 });
+    fromLeft.move(80, 100);
+    fromLeft.up(80, 100);
+    const fromRight = press(felt(), { type: "touch", x: window.innerWidth - 10 });
+    fromRight.move(window.innerWidth - 90, 100);
+    fromRight.up(window.innerWidth - 90, 100);
+    expect(onStep).not.toHaveBeenCalled();
+    press(felt(), { type: "touch", x: 10 }).up(12, 100);
+    expect(onStep.mock.calls).toEqual<Call[]>([[1, { ownTurn: false, source: "user" }]]);
+  });
+
   it("does nothing on a vertical swipe or a pointer cancel (a page scroll)", () => {
     const { onStep } = setup();
     const vertical = press(felt(), { type: "touch" });
@@ -209,6 +219,40 @@ describe("useStageGestures", () => {
     expect(onStep.mock.calls).toEqual<Call[]>([[-1, { ownTurn: false, source: "user" }]]);
   });
 
+  it("keeps the click of a tap that stepped from pressing anything", () => {
+    const { onStep } = setup();
+    const control = screen.getByRole("button", { name: "control" });
+    const onClick = vi.fn();
+    control.addEventListener("click", onClick);
+    press(felt(), { type: "touch" }).up();
+    expect(onStep).toHaveBeenCalledTimes(1);
+    // A browser aims a tap's click when it sends it: here at a control the step put there.
+    expect(fireEvent.click(control, { detail: 1 })).toBe(false);
+    expect(onClick).not.toHaveBeenCalled();
+    // The next click belongs to a press of its own.
+    fireEvent.click(control, { detail: 1 });
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a click from the keyboard, the click after a new press and a mouse click through", () => {
+    setup();
+    const control = screen.getByRole("button", { name: "control" });
+    const onClick = vi.fn();
+    control.addEventListener("click", onClick);
+    press(felt(), { type: "touch" }).up();
+    // Enter or Space on the control: a click that no pointer made.
+    fireEvent.click(control, { detail: 0 });
+    expect(onClick).toHaveBeenCalledTimes(1);
+    // No click came for the tap; a new press ends the wait.
+    press(control, { type: "touch" }).up();
+    fireEvent.click(control, { detail: 1 });
+    expect(onClick).toHaveBeenCalledTimes(2);
+    // A mouse click goes to what was under the pointer all along.
+    press(felt()).up();
+    fireEvent.click(control, { detail: 1 });
+    expect(onClick).toHaveBeenCalledTimes(3);
+  });
+
   it("cancels the gesture when a second pointer comes down (a pinch)", () => {
     const { onStep } = setup();
     const first = press(felt(), { type: "touch" });
@@ -216,15 +260,5 @@ describe("useStageGestures", () => {
     first.up();
     vi.advanceTimersByTime(1000);
     expect(onStep).not.toHaveBeenCalled();
-  });
-
-  it("does nothing when click-to-step is off, and leaves the context menu alone", () => {
-    const { onStep } = setup({ enabled: false });
-    press(felt()).up();
-    const hold = press(felt());
-    vi.advanceTimersByTime(1000);
-    hold.up();
-    expect(onStep).not.toHaveBeenCalled();
-    expect(fireEvent.contextMenu(felt())).toBe(true);
   });
 });

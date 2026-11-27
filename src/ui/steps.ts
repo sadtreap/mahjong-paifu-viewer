@@ -51,7 +51,7 @@ export function highlightedDiscard(
   return index >= 0 ? { seat, index } : null;
 }
 
-/** One-line description of a step for the status line and screen readers. */
+/** One-line description of a step, for screen readers (the live region, the slider's value). */
 export function describeStep(
   m: Messages,
   round: Round,

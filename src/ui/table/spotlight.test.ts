@@ -32,21 +32,20 @@ describe("createSpotlight", () => {
   it("adds nothing until something is outlined", () => {
     const spotlight = createSpotlight(document);
     spotlight.clear();
-    spotlight.setSticky(null);
+    spotlight.hover(null);
     expect(styles()).toHaveLength(0);
   });
 
-  it("writes one rule, falls back to the sticky pick and clears", () => {
+  it("writes one rule for the hovered kind and empties it on clear", () => {
     const spotlight = createSpotlight(document);
     spotlight.hover(4);
     expect(styles()).toHaveLength(1);
     expect(styles()[0]?.textContent).toContain('[data-k="4"]');
-    spotlight.setSticky(30);
-    expect(spotlight.current()).toBe(4);
-    spotlight.clear();
+    spotlight.hover(30);
     expect(spotlight.current()).toBe(30);
     expect(styles()[0]?.textContent).toContain('[data-k="30"]');
-    spotlight.setSticky(null);
+    spotlight.clear();
+    expect(spotlight.current()).toBeNull();
     expect(styles()[0]?.textContent).toBe("");
     expect(styles()).toHaveLength(1);
   });

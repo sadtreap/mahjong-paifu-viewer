@@ -6,26 +6,24 @@ import {
   isBackPress,
   isStepButton,
   type PointerSample,
+  startsAtEdge,
   tapSlop,
 } from "./gestures";
 import { createRepeater, type Repeater } from "./repeat";
+import { swallowNextClick } from "./swallowClick";
 import { useAttach } from "./useAttach";
 
-/** Inside these, the table's gestures stop and the wheel scrolls natively (cards, menus, sheets). */
+/** Inside these, the table's gestures stop and the wheel scrolls natively (cards, menus). */
 export const GESTURE_IGNORE = '[data-gesture="ignore"]';
 /** A tap on these never steps (the control handles it); swipes still count. */
 export const INTERACTIVE = 'button, a, input, select, textarea, [role="slider"], [role="tab"]';
 
 export interface StageGestureOptions {
-  /** The clickToStep setting: gates click, tap, right-click, hold and swipe. */
-  enabled: boolean;
   /**
    * Takes one step. `source` is "user" for a click, tap or swipe and "repeat" for a hold.
    * Return false when nothing moved (a hard stop or the game's end): that ends a hold.
    */
   onStep(dir: Dir, options: { ownTurn: boolean; source: NavSource }): boolean;
-  /** A hold started or ended (to keep the status line quiet while it repeats, for example). */
-  onHold?(active: boolean): void;
 }
 
 interface Active {
@@ -56,10 +54,12 @@ function closestIn(target: EventTarget | null, selector: string): boolean {
 }
 
 /**
- * The table as a step button (SPEC §3.1-3.3), with native listeners on the stage: click or tap =
+ * The table as a step button, with native listeners on the stage: click or tap =
  * next, right-click or Ctrl+click = previous, Shift = by own turn, press and hold = repeat on the
  * hold schedule (forward, or backward with the right button), touch swipe left / right = next /
- * previous. The context menu is prevented on the stage (outside cards, links and fields).
+ * previous (not from a side edge of the screen, where a swipe is the system's Back gesture). The
+ * context menu is prevented on the stage (outside cards, links and fields), and a tap that
+ * stepped presses nothing else.
  */
 export function useStageGestures(
   ref: RefObject<HTMLElement | null>,
@@ -87,9 +87,6 @@ export function useStageGestures(
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", finish);
       window.removeEventListener("blur", finish);
-      if (gesture.held) {
-        latest.current.onHold?.(false);
-      }
     };
 
     const startHold = () => {
@@ -100,7 +97,6 @@ export function useStageGestures(
       gesture.timer = null;
       gesture.held = true;
       const dir: Dir = isBackPress(gesture.down) ? -1 : 1;
-      latest.current.onHold?.(true);
       gesture.repeater = createRepeater(() =>
         latest.current.onStep(dir, { ownTurn: false, source: "repeat" }),
       );
@@ -132,8 +128,12 @@ export function useStageGestures(
       const result = classifyGesture(gesture.down, sample(event), {
         held: gesture.held,
         moved: gesture.moved,
+        edge: startsAtEdge(gesture.down.x, window.innerWidth),
       });
       if (result.kind === "step" && (result.swipe || !gesture.interactive)) {
+        if (!result.swipe && gesture.down.pointerType !== "mouse") {
+          swallowNextClick();
+        }
         latest.current.onStep(result.dir, { ownTurn: result.ownTurn, source: "user" });
       }
     };
@@ -145,7 +145,6 @@ export function useStageGestures(
         return;
       }
       if (
-        !latest.current.enabled ||
         !event.isPrimary ||
         !isStepButton(event.button) ||
         closestIn(event.target, GESTURE_IGNORE)
@@ -173,10 +172,7 @@ export function useStageGestures(
     };
 
     const onContextMenu = (event: MouseEvent) => {
-      if (
-        latest.current.enabled &&
-        !closestIn(event.target, `${GESTURE_IGNORE}, a, input, select, textarea`)
-      ) {
+      if (!closestIn(event.target, `${GESTURE_IGNORE}, a, input, select, textarea`)) {
         event.preventDefault();
       }
     };

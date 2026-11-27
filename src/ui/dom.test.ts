@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { focusIsLost, isActivatable, isTextEntry, nextTabbable, usesArrowKeys } from "./dom";
+import { focusIsLost, isActivatable, isTextEntry, usesArrowKeys } from "./dom";
 import { dragHasLog, sourceFromDataTransfer } from "./logSource";
 
 function element(html: string): Element {
@@ -69,20 +69,6 @@ describe("isActivatable", () => {
 });
 
 describe("focus helpers", () => {
-  it("finds the next focusable control after an element, skipping its own controls", () => {
-    document.body.innerHTML = `
-      <button id="before"></button>
-      <div id="box"><button id="inside"></button></div>
-      <span tabindex="-1"></span>
-      <button id="off" disabled></button>
-      <input id="next" type="file">
-      <textarea id="later"></textarea>`;
-    const box = document.getElementById("box") as HTMLElement;
-    expect(nextTabbable(box)?.id).toBe("next");
-    expect(nextTabbable(document.getElementById("later") as HTMLElement)).toBeNull();
-    document.body.innerHTML = "";
-  });
-
   it("knows when the focus fell back to the page", () => {
     document.body.innerHTML = "<button></button>";
     const button = document.querySelector("button") as HTMLButtonElement;

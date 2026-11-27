@@ -6,10 +6,10 @@
  */
 import type { PlayerCount, Seat } from "../../core/model";
 import { SANMA_UNUSED_KINDS } from "../../core/players";
-import { doraFromIndicator, type KnownTile, type Tile, tileKind } from "../../core/tile";
+import { type Tile, tileKind } from "../../core/tile";
 import type { BoardState, DiscardView, SeatView } from "../../replay/types";
 
-export const KIND_COUNT = 34;
+const KIND_COUNT = 34;
 
 /** The 13 terminal and honour kinds of kokushi musou (thirteen orphans). */
 const YAOCHU_KINDS: readonly number[] = [0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33];
@@ -25,16 +25,6 @@ export function kindCounts(tiles: readonly Tile[]): number[] | null {
     counts[kind] = (counts[kind] ?? 0) + 1;
   }
   return counts;
-}
-
-/** The dora kinds the indicators point to (in three-player games 1m points to 9m). */
-export function doraKinds(
-  indicators: readonly KnownTile[],
-  playerCount: PlayerCount,
-): ReadonlySet<number> {
-  return new Set(
-    indicators.map((indicator) => tileKind(doraFromIndicator(indicator, playerCount))),
-  );
 }
 
 /** A seat's concealed tiles: the hand plus the drawn tile (never its kita or melds). */

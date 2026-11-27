@@ -14,8 +14,8 @@ import { formatViewerUrl, parseViewerUrl, sameLinkSource, viewerLink } from "./u
 export interface HistorySyncOptions {
   /**
    * Where the game came from. A sample or Tenhou log writes `?sample=` or `?tenhou=` with round,
-   * step and pov; null (a local file, pasted log data, or the sample under the welcome card)
-   * keeps the viewer's parameters out of the address.
+   * step and pov; null (a local file or pasted log data) keeps the viewer's parameters out of the
+   * address.
    */
   origin: LinkSource | null;
   position: Position;
@@ -33,10 +33,6 @@ export interface HistorySyncOptions {
 }
 
 export interface HistorySync {
-  /** The previous entry of this game (the back chip's target), or null when there is none. */
-  back: HistoryState | null;
-  /** Returns to the previous entry (Backspace, the back chip); does nothing without one. */
-  goBack(): void;
   /** The absolute link to the current position (Copy link), or null for a game no link reopens. */
   link(): string | null;
 }
@@ -59,13 +55,13 @@ function write(mode: "push" | "replace", state: HistoryState, url: string): void
 }
 
 /**
- * Keeps the browser history in step with the viewer (§3.7). Jumps and point-of-view changes push
- * an entry (a burst within a second is one entry); single steps, holds, wheel turns, scrubs and
- * autoplay update the current entry, debounced. Back and Forward (the browser's buttons, the mouse
- * back button, Backspace, Alt+←, the Android back gesture) restore a position of this game through
- * `onRestore`. The entries of this game are tracked in memory for the back chip; after a reload the
- * chip waits for the next jump. Entries of another game are left to the shell, which reloads a
- * sample or Tenhou log that Back or Forward returns to.
+ * Keeps the browser history in step with the viewer. Jumps and point-of-view changes push an entry
+ * (a burst within a second is one entry); single steps, holds, wheel turns, scrubs and autoplay
+ * update the current entry, debounced. Back and Forward (the browser's buttons, the mouse back
+ * button, Alt+←, the Android back gesture) restore a position of this game through `onRestore`.
+ * The entries of this game are tracked in memory, so an entry is restored with its latest position
+ * even while its debounced write is waiting. Entries of another game are left to the shell, which
+ * reloads a sample or Tenhou log that Back or Forward returns to.
  */
 export function useHistorySync({
   origin,
@@ -78,7 +74,6 @@ export function useHistorySync({
   const [sid] = useState(newSessionId);
   const stack = useRef<HistoryState[]>([]);
   const index = useRef(0);
-  const [back, setBack] = useState<HistoryState | null>(null);
   const lastJump = useRef(Number.NEGATIVE_INFINITY);
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialized = useRef(false);
@@ -97,10 +92,6 @@ export function useHistorySync({
     (p: Position, seat: Seat, n: number) => toHistoryState(p, seat, { sid, n }),
     [sid],
   );
-
-  const syncBack = useCallback(() => {
-    setBack(index.current > 0 ? (stack.current[index.current - 1] ?? null) : null);
-  }, []);
 
   /** Writes the current entry now if a debounced write is waiting. */
   const flush = useCallback(() => {
@@ -139,8 +130,7 @@ export function useHistorySync({
     stack.current = [state];
     index.current = 0;
     write(newEntry ? "push" : "replace", state, urlFor(state));
-    syncBack();
-  }, [entry, newEntry, urlFor, syncBack]);
+  }, [entry, newEntry, urlFor]);
 
   // Every later move.
   const { round, step } = position;
@@ -166,7 +156,6 @@ export function useHistorySync({
       const state = entry({ round, step }, pov, index.current);
       stack.current = [...stack.current.slice(0, index.current), state];
       write("push", state, urlFor(state));
-      syncBack();
       return;
     }
     stack.current[index.current] = entry({ round, step }, pov, index.current);
@@ -180,17 +169,7 @@ export function useHistorySync({
     } else {
       scheduleReplace();
     }
-  }, [moveKey, round, step, pov, entry, flush, scheduleReplace, syncBack, urlFor]);
-
-  // The origin changes when the welcome card goes (the sample becomes linkable): rewrite the address.
-  const originKey = origin === null ? "" : JSON.stringify(origin);
-  const lastOriginKey = useRef(originKey);
-  useEffect(() => {
-    if (lastOriginKey.current !== originKey) {
-      lastOriginKey.current = originKey;
-      scheduleReplace();
-    }
-  }, [originKey, scheduleReplace]);
+  }, [moveKey, round, step, pov, entry, flush, scheduleReplace, urlFor]);
 
   // Back and Forward.
   useEffect(() => {
@@ -220,12 +199,11 @@ export function useHistorySync({
         index.current = 0;
         write("replace", target, urlFor(target));
       }
-      syncBack();
       latest.current.onRestore({ round: target.round, step: target.step }, target.pov);
     };
     window.addEventListener("popstate", handlePop);
     return () => window.removeEventListener("popstate", handlePop);
-  }, [sid, entry, syncBack, urlFor]);
+  }, [sid, entry, urlFor]);
 
   // The mouse back and forward buttons navigate on release: write the waiting entry first. Also
   // write it before the page is hidden (a reload or a closed tab keeps the latest position).
@@ -250,17 +228,10 @@ export function useHistorySync({
     };
   }, [flush]);
 
-  const goBack = useCallback(() => {
-    if (index.current > 0) {
-      flush();
-      window.history.back();
-    }
-  }, [flush]);
-
   const link = useCallback(() => {
     const { origin: source, position: p, pov: seat } = latest.current;
     return viewerLink(window.location, source, p, seat);
   }, []);
 
-  return { back, goBack, link };
+  return { link };
 }

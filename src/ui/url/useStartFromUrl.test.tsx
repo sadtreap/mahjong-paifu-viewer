@@ -16,19 +16,23 @@ describe("useStartFromUrl", () => {
     window.history.replaceState(null, "", "/?sample=sanma&round=2&step=4&pov=3");
     const load = vi.fn();
     const { result } = renderHook(() => useStartFromUrl(load), { wrapper: StrictMode });
+    expect(result.current).toEqual({
+      source: { kind: "sample", id: "sanma" },
+      start: { round: 1, step: 3, pov: 2 },
+    });
     expect(load).toHaveBeenCalledTimes(1);
     expect(load).toHaveBeenCalledWith(
       { kind: "url", url: expect.stringMatching(/samples\/sanma\.json$/) },
       { round: 1, step: 3, pov: 2 },
       { kind: "sample", id: "sanma" },
     );
-    expect(result.current.welcome).toBe(false);
   });
 
   it("opens a Tenhou log as its id, so the loader downloads it like a pasted link", () => {
     window.history.replaceState(null, "", `/?tenhou=${ID}&pov=2`);
     const load = vi.fn();
-    renderHook(() => useStartFromUrl(load));
+    const { result } = renderHook(() => useStartFromUrl(load));
+    expect(result.current?.source).toEqual({ kind: "tenhou", logId: ID });
     expect(load).toHaveBeenCalledWith(
       { kind: "text", text: ID },
       { round: 0, step: 0, pov: 1 },
@@ -36,22 +40,24 @@ describe("useStartFromUrl", () => {
     );
   });
 
-  it("opens the fallback sample when the address names no log, and asks for the welcome card", () => {
+  it("opens nothing, and gives no link, when the address names no log", () => {
     window.history.replaceState(null, "", "/?sample=nope");
     const load = vi.fn();
-    const { result } = renderHook(() => useStartFromUrl(load, { fallbackSample: "tenhou-json" }));
-    expect(load).toHaveBeenCalledWith(
-      { kind: "url", url: expect.stringMatching(/samples\/ranked_game\.json$/) },
-      null,
-      { kind: "sample", id: "tenhou-json" },
-    );
-    expect(result.current.welcome).toBe(true);
+    expect(renderHook(() => useStartFromUrl(load)).result.current).toBeNull();
+    expect(load).not.toHaveBeenCalled();
+    cleanup();
+    window.history.replaceState(null, "", "/");
+    expect(renderHook(() => useStartFromUrl(load)).result.current).toBeNull();
+    expect(load).not.toHaveBeenCalled();
   });
 
-  it("opens nothing without a source or a fallback", () => {
+  it("still gives the address's link after the address has changed", () => {
+    window.history.replaceState(null, "", "/?sample=sanma");
     const load = vi.fn();
-    const { result } = renderHook(() => useStartFromUrl(load));
-    expect(load).not.toHaveBeenCalled();
-    expect(result.current.welcome).toBe(true);
+    const { result, rerender } = renderHook(() => useStartFromUrl(load));
+    window.history.replaceState(null, "", "/");
+    rerender();
+    expect(result.current?.source).toEqual({ kind: "sample", id: "sanma" });
+    expect(load).toHaveBeenCalledTimes(1);
   });
 });

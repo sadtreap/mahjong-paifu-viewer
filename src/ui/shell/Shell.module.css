@@ -1,43 +1,44 @@
-/* No game yet (the welcome sample is loading or could not load): the welcome card over an empty room. */
-.empty {
-  display: grid;
-  min-height: 100dvh;
-}
-
-.room {
-  position: relative;
-  min-height: 100dvh;
-  overflow: hidden;
-  background: radial-gradient(120% 95% at 50% 30%, var(--room-0), var(--room-1) 55%, var(--room-2));
-}
-
-@media (orientation: portrait) and (max-width: 599px) {
-  .room {
-    overflow: visible;
-  }
-}
-
-/* A load in progress while a game is shown (a dropped or pasted log, Back to another game). */
-.toast {
+/*
+ * A download in progress while a game is shown (a pasted link, Back to another game): a bar
+ * sweeping along the top edge of the page. That edge is the one strip the table never reaches;
+ * anywhere below it, the far hand can stand at the stage's top once the hands are walls or the
+ * table is flat, in every arrangement. The viewer's live region reads the words out.
+ */
+.download {
   position: fixed;
   z-index: 40;
-  left: 50%;
-  top: 12px;
-  translate: -50% 0;
-  margin: 0;
-  padding: 6px 14px;
-  border: 1px solid rgb(255 255 255 / 0.22);
-  border-radius: 999px;
-  background: var(--coach-bg);
-  color: var(--coach-fg);
-  font-size: 0.875rem;
-  font-weight: 600;
-  box-shadow: 0 6px 24px rgb(0 0 0 / 0.4);
+  inset: 0 0 auto;
+  overflow: hidden;
   pointer-events: none;
 }
 
+/* Drawn as a border, which the system keeps when it picks the colours. */
+.line {
+  display: block;
+  inline-size: 40%;
+  border-block-start: 3px solid var(--color-fg);
+  animation: sweep 1.2s ease-in-out infinite;
+}
+
+@keyframes sweep {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 250% 0;
+  }
+}
+
+/* Without motion the bar spans the edge and stands still. */
+@media (prefers-reduced-motion: reduce) {
+  .line {
+    inline-size: 100%;
+    animation: none;
+  }
+}
+
 @media (forced-colors: active) {
-  .toast {
-    border: 1px solid CanvasText;
+  .line {
+    border-color: CanvasText;
   }
 }

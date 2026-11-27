@@ -1,0 +1,323 @@
+/* The tags' box covers the frame and lets the pointer through: a click on a tag steps the table. */
+.tags {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/*
+ * A slot is the box a tag may use, an upright rectangle of the frame (geometry.ts tagPlace), from
+ * --y0 to --y1 of S above the plane's near edge. A slot on the felt runs from --x0 to --x1 of S
+ * from the frame's left edge. A slot beside the table hangs off the rail's outer edge (--rail)
+ * and reaches toward the stage's edge, at most --len of S; where that would leave less than a
+ * tag's usual width, it starts nearer the felt, but never nearer than --felt, the outermost point
+ * of that player's tiles. The tag sits in the slot's corner beside its own pond and against its
+ * own row (beside the table: against the table, at the slot's foot) and grows from there.
+ *
+ * The slot is a size container whose font size is the tags' text size: at least 12 px on phones
+ * and 13 px on larger stages, about 14 px on a laptop, at most 16 px. Every length and query
+ * below is in that em.
+ */
+.slot {
+  --flush: start;
+  --least: 12px;
+
+  position: absolute;
+  bottom: calc(var(--near) + var(--S) * var(--y0));
+  height: calc(var(--S) * (var(--y1) - var(--y0)));
+  display: flex;
+  align-items: flex-end;
+  container-type: size;
+  font-size: clamp(var(--least), calc(8px + var(--u) * 0.11), 16px);
+}
+
+@container stage (min-width: 900px) and (min-height: 560px) {
+  .slot {
+    --least: 13px;
+  }
+}
+
+.slot[data-place^="top"],
+.slot[data-place^="bottom"] {
+  left: calc(var(--S) * var(--x0));
+  width: calc(var(--S) * (var(--x1) - var(--x0)));
+}
+
+.slot[data-place^="top"] {
+  align-items: flex-start;
+}
+
+.slot[data-place$="-right"]:not([data-place="rim-right"]),
+.slot[data-place="rim-left"] {
+  --flush: end;
+
+  justify-content: flex-end;
+}
+
+/*
+ * Beside the table: --inner is how far the slot's inner edge lies from the frame's edge on that
+ * side, and --outer how far the stage's edge lies beyond it. The slot reaches from the one to the
+ * other, but no longer than a tag on the felt beside that row may be.
+ */
+.slot[data-place^="rim"] {
+  --outer: calc(var(--ox) - max(8px, env(safe-area-inset-right)));
+  --inner: max(
+    calc(var(--S) * var(--felt) - var(--S) + 4px),
+    min(calc(var(--S) * var(--rail) - var(--S) + 6px), calc(var(--outer) - 9em))
+  );
+
+  width: min(calc(var(--outer) - var(--inner)), calc(var(--S) * var(--len)));
+}
+
+.slot[data-place="rim-right"] {
+  left: calc(var(--S) + var(--inner));
+}
+
+.slot[data-place="rim-left"] {
+  --outer: calc(var(--ox) - max(8px, env(safe-area-inset-left)));
+  --inner: max(
+    calc(var(--S) * (1 - var(--felt)) - var(--S) + 4px),
+    min(calc(var(--S) * (1 - var(--rail)) - var(--S) + 6px), calc(var(--outer) - 9em))
+  );
+
+  right: calc(var(--S) + var(--inner));
+}
+
+/*
+ * The tag: its lines, flush with the side it hangs by, as wide as the longest and at most as wide
+ * as its slot. The first line names the player; the name is cut first, down to nothing, when the
+ * line is short. Under it the aid as a word, or the wait tiles where the slot has room for them.
+ */
+.tag {
+  --wait-w: max(16px, 1.35em);
+  /* The inside of the widest tag the slot holds, and of its first line after the wind. */
+  --inside: calc(100cqw - 0.8em - 2px);
+  --after-wind: calc(var(--inside) - 1.55em);
+
+  display: flex;
+  flex-direction: column;
+  align-items: var(--flush);
+  max-width: 100%;
+  max-height: 100%;
+  padding: 0.15em 0.4em;
+  overflow: hidden;
+  border: 1px solid var(--chrome-border);
+  border-radius: var(--radius-control);
+  background: var(--chrome-bg);
+  color: var(--color-fg);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/*
+ * The first line: who it is, and "Furiten" beside the name when the wait tiles are shown. Beside a
+ * word on one line, it is the line that gives way (its name, that is).
+ */
+.line {
+  display: flex;
+  flex: 0 1000000 auto;
+  align-items: center;
+  min-width: 1.1em;
+  max-width: 100%;
+}
+
+/*
+ * Who it is: the wind's letter and the name. The least it shrinks to is the wind's letter in its
+ * box. The shrink factor is this large so that the name takes all of a shortfall: the least share
+ * of it would make its neighbours a fraction of a pixel too narrow for their text, and put an
+ * ellipsis there.
+ */
+.who {
+  display: flex;
+  flex: 0 1000000 auto;
+  align-items: center;
+  min-width: 1.1em;
+}
+
+.wind {
+  flex: none;
+  min-width: 1em;
+  color: var(--color-muted);
+  font-weight: 700;
+  text-align: center;
+}
+
+/*
+ * Where the name would not fit after the wind, not even as its first letter and an ellipsis (--w,
+ * set inline, is about how wide the name is), it goes altogether.
+ */
+.name {
+  --room: calc(var(--inside) - 1.3em - min(var(--w), 1.6em));
+
+  min-width: 0;
+  max-width: clamp(0px, var(--room) * 1000, 999px);
+  margin-inline-start: clamp(0px, var(--room) * 1000, 0.3em);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+/*
+ * A word is shown whole or not at all: --w (set inline) is about how wide it is, and where the
+ * tag has less room than that for it, the word takes no room at all. On a line of its own it has
+ * the tag's inside; beside the wind, what is left after the wind.
+ */
+.word {
+  --room: var(--inside);
+  --gap: 0em;
+  --pad: 0em;
+
+  flex: none;
+  max-width: clamp(0px, (var(--room) - var(--w)) * 1000, 999px);
+  max-height: clamp(0px, (var(--room) - var(--w)) * 1000, 1.2em);
+  margin-inline-start: clamp(0px, (var(--room) - var(--w)) * 1000, var(--gap));
+  padding-inline: clamp(0px, (var(--room) - var(--w)) * 1000, var(--pad));
+  overflow: hidden;
+  font-weight: 600;
+}
+
+.beside {
+  --room: var(--after-wind);
+  --gap: 0.45em;
+
+  display: none;
+}
+
+.tenpai {
+  color: var(--aid-tenpai);
+}
+
+.furiten {
+  --pad: 0.35em;
+
+  border-radius: 0.25rem;
+  background: var(--badge-bg);
+  color: var(--badge-fg);
+  font-weight: 700;
+}
+
+.label,
+.more,
+.count {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The wait tiles on a line of their own, where the slot is large enough (see the queries). */
+.detail {
+  display: none;
+  align-items: center;
+  column-gap: 0.4em;
+  max-width: 100%;
+}
+
+.label,
+.count {
+  display: none;
+}
+
+.tiles {
+  --tile-w: var(--wait-w);
+
+  flex: none;
+  display: flex;
+  gap: 1px;
+  /* Room for the hairline around the tiles. */
+  padding: 1px;
+}
+
+/* Beats the table's drawn tile thickness ([data-thick] .tile): a hairline is enough here. */
+.tag .tile {
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35);
+}
+
+.more {
+  flex: none;
+}
+
+/*
+ * What a tag shows, by the size of its slot. A text line is 1.2 em; the tag's padding and border
+ * add 0.3 em and 2 px; a wait tile is max(16px, 1.35em) wide and 4/3 of that tall, with 2 px
+ * around. One pixel is kept spare.
+ *
+ * Too short for two lines: one line, the word of the aid beside the wind (the name gives way).
+ */
+@container (height < calc(2.7em + 3px)) {
+  .tag {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .tag > .word {
+    --room: var(--after-wind);
+    --gap: 0.45em;
+  }
+}
+
+/*
+ * On the felt, a slot long enough for a name and a word side by side puts them on one line, as
+ * long as no wait tiles take a line of their own (beside the table a tag keeps its lines).
+ */
+@container (min-width: 12em) {
+  .slot:not([data-place^="rim"]) > .tag:not(.waits) {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .slot:not([data-place^="rim"]) > .tag:not(.waits) > .word {
+    --room: var(--after-wind);
+    --gap: 0.45em;
+  }
+}
+
+/*
+ * Large enough for a line of text and a line of three wait tiles: the waits are shown as tiles,
+ * under the name. The word that stood in for them goes, and "Furiten" shows beside the name.
+ */
+@container (min-height: calc(1.5em + max(16px, 1.35em) * 4 / 3 + 5px)) and (
+  min-width: calc(3 * max(16px, 1.35em) + 2.4em + 8px)
+) {
+  .waits > .detail {
+    display: flex;
+  }
+
+  .waits .beside {
+    display: block;
+  }
+
+  .waits .brief {
+    display: none;
+  }
+}
+
+/* Long enough for the tiles left after three tiles and "+n", then for "Wait" before them too. */
+@container (min-width: calc(3 * max(16px, 1.35em) + 7em + 8px)) {
+  .count {
+    display: block;
+  }
+}
+
+@container (min-width: calc(3 * max(16px, 1.35em) + 10em + 8px)) {
+  .label {
+    display: block;
+  }
+}
+
+/* The smallest tables: the console has no room for the winds, so the dealer's is marked here. */
+@container stage (max-width: 310px) or (max-height: 290px) {
+  .dealer {
+    color: var(--dealer-mark);
+  }
+}
+
+@media (forced-colors: active) {
+  .tag {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+
+  .furiten {
+    border: 1px solid CanvasText;
+  }
+}

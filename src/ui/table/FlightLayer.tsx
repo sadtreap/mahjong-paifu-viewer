@@ -5,6 +5,7 @@ import { TileImage } from "../TileImage";
 import type { Side } from "../viewer/types";
 import styles from "./FlightLayer.module.css";
 import layers from "./layers.module.css";
+import type { FlightOffset } from "./motion";
 
 /** A flight ends by this time even if no animationend arrives (reduced motion, hidden tab). */
 export const FLIGHT_FALLBACK_MS = 700;
@@ -13,13 +14,10 @@ export interface FlightLayerProps {
   side: Side;
   tile: Tile;
   riichi: boolean;
-  /** Pond slot centre in the seat layer's units. */
-  x: number;
-  y: number;
-  /** Start offset from the slot and start scale (motion.ts flightOffset). */
-  fx: number;
-  fy: number;
-  fs: number;
+  /** The pond slot the tile lands on (geometry.ts pondSlot): its centre and the tile width. */
+  slot: { x: number; y: number; tile: number };
+  /** Where the flight starts (motion.ts flightOffset). */
+  from: FlightOffset;
   /** The proxy landed: show the real pond tile and unmount this layer. */
   onDone(): void;
 }
@@ -29,7 +27,7 @@ export interface FlightLayerProps {
  * real tile in place made everything painted after it one big overlap layer). It never takes hits
  * and is hidden from screen readers; the real pond tile underneath is the target.
  */
-export function FlightLayer({ side, tile, riichi, x, y, fx, fy, fs, onDone }: FlightLayerProps) {
+export function FlightLayer({ side, tile, riichi, slot, from, onDone }: FlightLayerProps) {
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
   const ends = useRef(0);
@@ -38,11 +36,13 @@ export function FlightLayer({ side, tile, riichi, x, y, fx, fy, fs, onDone }: Fl
     return () => window.clearTimeout(timer);
   }, []);
   const style = {
-    "--x": x.toFixed(3),
-    "--y": y.toFixed(3),
-    "--fx": fx.toFixed(3),
-    "--fy": fy.toFixed(3),
-    "--fs": fs.toFixed(3),
+    "--x": slot.x.toFixed(3),
+    "--y": slot.y.toFixed(3),
+    "--slot": slot.tile.toFixed(4),
+    "--fx": from.fx.toFixed(3),
+    "--fy": from.fy.toFixed(3),
+    "--fs": from.fs.toFixed(3),
+    "--fd": from.drop.toFixed(3),
   } as CSSProperties;
   return (
     <div

@@ -1,43 +1,17 @@
-import type { GameLog, PlayerCount, Round, RoundEvent } from "../../core/model";
+import type { GameLog, PlayerCount } from "../../core/model";
 import type { BoardState } from "../../replay/types";
 import type { TimelineCache } from "../timelineCache";
 import type { StepIndex, StepInfo, StepKind } from "./types";
 
-const DEAL: StepInfo = Object.freeze({
-  kind: "deal",
-  seat: null,
-  tsumogiri: false,
-  doraReveal: false,
-});
+const DEAL: StepInfo = Object.freeze({ kind: "deal", seat: null, tsumogiri: false });
 
-/** Events that fold into the step before them (see buildTimeline), besides the extra rons. */
-function folds(event: RoundEvent | undefined): boolean {
-  return event?.type === "dora" || event?.type === "riichiAccepted" || event?.type === "win";
-}
-
-/** Whether the step applied a dora reveal folded after its main event. */
-function revealsDora(round: Round, state: BoardState): boolean {
-  const main = state.lastEvent;
-  for (let index = state.eventIndex; index >= 0; index--) {
-    const event = round.events[index];
-    if (event === main || !folds(event)) {
-      return false;
-    }
-    if (event?.type === "dora") {
-      return true;
-    }
-  }
-  return false;
-}
-
-/** What a replay step is about: its kind, its seat, and whether it was a tsumogiri or showed a new dora. */
-export function stepInfo(round: Round, state: BoardState): StepInfo {
+/** What a replay step is about: its kind, its seat, and whether it was a tsumogiri. */
+export function stepInfo(state: BoardState): StepInfo {
   const event = state.lastEvent;
   if (event === null) {
     return DEAL;
   }
   const seat = state.activeSeat;
-  const doraReveal = revealsDora(round, state);
   let kind: StepKind;
   let tsumogiri = false;
   switch (event.type) {
@@ -60,12 +34,12 @@ export function stepInfo(round: Round, state: BoardState): StepInfo {
       break;
     case "dora":
       // A dora with no step before it (only the deal) is a step of its own.
-      return { kind: "deal", seat: null, tsumogiri: false, doraReveal: true };
+      return DEAL;
     case "riichiAccepted":
       kind = "deal";
       break;
   }
-  return { kind, seat, tsumogiri, doraReveal };
+  return { kind, seat, tsumogiri };
 }
 
 /**
@@ -78,8 +52,7 @@ export function createStepIndex(game: GameLog, timelines: TimelineCache): StepIn
     let list = rounds.get(index);
     if (!list) {
       const timeline = timelines.get(index);
-      const round = game.rounds[index];
-      list = timeline.ok && round ? timeline.steps.map((state) => stepInfo(round, state)) : [DEAL];
+      list = timeline.ok ? timeline.steps.map((state) => stepInfo(state)) : [DEAL];
       rounds.set(index, list);
     }
     return list;
@@ -105,13 +78,15 @@ function discardCount(state: BoardState | undefined): number {
 }
 
 /**
- * The turn shown for a step: 1 + floor(discards made earlier in the round / playerCount). The
- * step's own discard is not "earlier", so a discard belongs to the turn of its draw.
+ * The turn shown for a step, the table's go-around count: 1 + floor(discards made earlier in the
+ * round / playerCount). The step's own discard is not "earlier", so a discard belongs to the turn
+ * of its draw. The result step keeps the turn the round ended in (the step before it).
  */
 export function turnNumber(
   states: readonly BoardState[],
   step: number,
   playerCount: PlayerCount,
 ): number {
-  return 1 + Math.floor(discardCount(states[step - 1]) / playerCount);
+  const at = (states[step]?.results.length ?? 0) > 0 ? step - 1 : step;
+  return 1 + Math.floor(discardCount(states[at - 1]) / playerCount);
 }

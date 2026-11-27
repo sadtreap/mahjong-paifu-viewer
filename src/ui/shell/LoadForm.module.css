@@ -1,0 +1,104 @@
+/* A size container, so the paste row can stack by the form's own width (card or dialog). */
+.form {
+  container-type: inline-size;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.entry {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.paste {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+}
+
+/* One line tall: a pasted log keeps its line breaks, and only its first line shows. */
+.box {
+  block-size: var(--control);
+  min-inline-size: 0;
+  padding: 0 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-control);
+  line-height: calc(var(--control) - 2px);
+  white-space: pre;
+  overflow: hidden;
+  resize: none;
+}
+
+.box::placeholder {
+  color: var(--color-muted);
+  font-size: var(--text-control);
+  opacity: 1;
+}
+
+.note {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+}
+
+/* The file button and the samples share a line where both fit, else each takes its own. */
+.more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+}
+
+.file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+
+.samples {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.drop,
+.label {
+  color: var(--color-muted);
+  font-size: var(--text-secondary);
+}
+
+/* Too narrow for the box and its button side by side: the button goes under the box. */
+@container (max-width: 18.5rem) {
+  .paste {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The narrowest phones: the rows sit closer, so the form with an error still fits the screen. */
+@media (max-width: 22.4rem) {
+  .form {
+    gap: 0.5rem;
+  }
+
+  .more {
+    row-gap: 0.5rem;
+  }
+}
+
+@media (pointer: coarse) {
+  /* A phone zooms into a field whose text is smaller than this. */
+  .box {
+    font-size: 1rem;
+  }
+
+  /* Nothing can be dragged onto the page with a finger. */
+  .drop {
+    display: none;
+  }
+}

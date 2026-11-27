@@ -1,7 +1,7 @@
 import type { Seat } from "../../core/model";
 import { AUTOPLAY_SPEEDS } from "../settings/settings";
 import { type KeyMatch, SHORTCUTS } from "./shortcuts";
-import type { AutoplaySpeed, NavCommand, NavSource } from "./types";
+import type { AutoplaySpeed, NavCommand } from "./types";
 
 /** What a key press asks the viewer to do. */
 export type KeyCommand =
@@ -11,10 +11,11 @@ export type KeyCommand =
   | { type: "togglePlay" }
   | { type: "speed"; delta: 1 | -1 }
   | { type: "toggleHands" }
+  | { type: "toggleWaits" }
+  | { type: "toggleScoreDiff" }
   | { type: "toggleView" }
-  | { type: "rounds" }
+  | { type: "roundList" }
   | { type: "help" }
-  | { type: "back" }
   | { type: "escape" };
 
 export type KeyEventLike = Pick<
@@ -41,8 +42,8 @@ function matches(match: KeyMatch, event: KeyEventLike): boolean {
 
 /**
  * The viewer command for a key press, or null. Presses with Ctrl, Cmd or Alt held are never ours
- * (Alt+← stays the browser's Back). With `charKeys` off (WCAG 2.1.4) only the arrows, Home, End,
- * Backspace and Esc remain. Digits match by `code`, so they work on any layout and with Shift;
+ * (Alt+← stays the browser's Back). With `charKeys` off (WCAG 2.1.4) only the arrows, Home, End
+ * and Esc remain. Digits match by `code`, so they work on any layout and with Shift;
  * letters and punctuation fall back to `code` when an IME types something else (Hangul, kana).
  */
 export function keyCommand(event: KeyEventLike, options: { charKeys: boolean }): KeyCommand | null {
@@ -62,39 +63,6 @@ export function keyCommand(event: KeyEventLike, options: { charKeys: boolean }):
   return null;
 }
 
-/** Where a navigation came from. Each input maps to a nav source, which decides the hard stops. */
-export type InputKind =
-  | "click"
-  | "tap"
-  | "swipe"
-  | "hold"
-  | "key"
-  | "keyRepeat"
-  | "wheel"
-  | "wheelBurst"
-  | "button"
-  | "buttonHold"
-  | "menu"
-  | "autoplay";
-
-/**
- * Fresh single inputs are "user" (they cross round ends); held, auto-repeated and burst inputs are
- * "repeat" (they stop at a round's last step and at step 0); autoplay is its own source.
- */
-export function navSource(kind: InputKind): NavSource {
-  switch (kind) {
-    case "hold":
-    case "keyRepeat":
-    case "wheelBurst":
-    case "buttonHold":
-      return "repeat";
-    case "autoplay":
-      return "autoplay";
-    default:
-      return "user";
-  }
-}
-
 /** The next autoplay speed up or down (+ / −), stopping at 0.5× and 4×. */
 export function stepSpeed(speed: AutoplaySpeed, delta: 1 | -1): AutoplaySpeed {
   const index = AUTOPLAY_SPEEDS.indexOf(speed);
@@ -109,42 +77,22 @@ export function cycleSpeed(speed: AutoplaySpeed): AutoplaySpeed {
 }
 
 export interface EscapeContext {
-  menuOpen: boolean;
-  sheetOpen: boolean;
-  coach: boolean;
-  /** The result card is showing (at a result step and not hidden). */
+  /** A popover is open and the key did not reach it (the focus is somewhere else). */
+  popoverOpen: boolean;
+  /** The result card is up, or waiting to come up (at a result step and not hidden). */
   resultShown: boolean;
-  picked: boolean;
   playing: boolean;
 }
 
-export type EscapeAction =
-  | "closeMenu"
-  | "closeSheet"
-  | "dismissCoach"
-  | "hideResult"
-  | "clearPick"
-  | "pause";
+export type EscapeAction = "closePopover" | "hideResult" | "pause";
 
-/**
- * What Esc does, in order: close the ⋯ menu or the sheet; otherwise dismiss the coach mark;
- * otherwise hide the result card; otherwise clear a sticky tile pick; otherwise pause autoplay.
- */
+/** What Esc does, the topmost thing first: close a popover, hide the result card, pause autoplay. */
 export function escapeAction(context: EscapeContext): EscapeAction | null {
-  if (context.menuOpen) {
-    return "closeMenu";
-  }
-  if (context.sheetOpen) {
-    return "closeSheet";
-  }
-  if (context.coach) {
-    return "dismissCoach";
+  if (context.popoverOpen) {
+    return "closePopover";
   }
   if (context.resultShown) {
     return "hideResult";
-  }
-  if (context.picked) {
-    return "clearPick";
   }
   return context.playing ? "pause" : null;
 }

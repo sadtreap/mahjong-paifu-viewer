@@ -26,7 +26,7 @@ export interface TileImageProps {
   className?: string;
   /** Extra inline style on the image, merged after the tile body background. */
   style?: CSSProperties;
-  /** A pond tile's `seat:index`, written as `data-d` for the pond tooltip and Alt+click. */
+  /** A pond tile's `seat:index`, written as `data-d` (Alt+click on a discard reads it). */
   discardRef?: string;
   /**
    * The tile's place among lying tiles that touch, as [column, row] in the seat's own layout. On

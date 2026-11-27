@@ -1,4 +1,3 @@
-import type { PlayerCount } from "../core/model";
 import type { LogSource } from "./logSource";
 
 /** Sample logs bundled in `public/samples` (see the README there for sources and licenses). */
@@ -10,15 +9,6 @@ const SAMPLE_FILES: Record<SampleId, string> = {
   "tenhou-json": "ranked_game.json",
   sanma: "sanma.json",
 };
-
-/** How many play in each sample, for the sample buttons' labels. */
-export const SAMPLE_PLAYER_COUNTS: Record<SampleId, PlayerCount> = {
-  "tenhou-json": 4,
-  sanma: 3,
-};
-
-/** The four-player sample, which opens under the welcome card on a first visit. */
-export const WELCOME_SAMPLE: SampleId = "tenhou-json";
 
 export function isSampleId(value: string): value is SampleId {
   return (SAMPLE_IDS as readonly string[]).includes(value);

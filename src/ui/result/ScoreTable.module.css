@@ -1,0 +1,140 @@
+.scores {
+  display: grid;
+  gap: 0.25rem;
+  align-content: start;
+  min-inline-size: 0;
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--text-secondary);
+  font-weight: 600;
+}
+
+/*
+ * The table fills its box and the names take the room the other columns leave. Where the box
+ * should instead be as wide as the table needs, the card sets --scores-width and
+ * --scores-name-width to auto and --scores-name-max to the longest name it allows.
+ */
+.table {
+  /* The room between two columns. */
+  --gap: 0.625rem;
+  /* How many wait tiles go on one line before they wrap. */
+  --waits-per-line: 4;
+
+  inline-size: var(--scores-width, 100%);
+  border-collapse: collapse;
+  font-size: var(--text-control);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.375rem;
+}
+
+.name,
+.place,
+.tenpai,
+.score,
+.change {
+  padding: 0;
+}
+
+/*
+ * The name is cut short first. The other columns get the width of their content, which therefore
+ * never wraps by itself: the numbers stay whole, and the waits have a width of their own.
+ */
+.name {
+  inline-size: var(--scores-name-width, 100%);
+  max-inline-size: var(--scores-name-max, 0);
+  overflow: hidden;
+  font-weight: normal;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.place {
+  padding-inline-end: var(--gap);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.tenpai,
+.score,
+.change {
+  padding-inline-start: var(--gap);
+  white-space: nowrap;
+}
+
+.score,
+.change {
+  text-align: end;
+}
+
+/* As tall as a line of wait tiles in every row, so tenpai and noten rows keep one rhythm. */
+.hand {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-block-size: 1.75rem;
+}
+
+.isTenpai {
+  font-weight: 600;
+}
+
+.noten {
+  color: var(--color-muted);
+}
+
+.waits {
+  --tile-w: max(1.125rem, calc(var(--result-tile, 1.5rem) * 0.7));
+
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem 0;
+  inline-size: calc(var(--tile-w) * min(var(--n), var(--waits-per-line)));
+  padding-block: 0.125rem;
+}
+
+.gain {
+  color: var(--color-gain);
+  font-weight: 600;
+}
+
+.loss {
+  color: var(--color-loss);
+}
+
+.first .name,
+.first .score {
+  font-weight: 600;
+}
+
+/*
+ * A phone's card has no room for every column in full, and the names must not be the ones to pay:
+ * the columns stand closer, and wait tiles stand alone, since they say "tenpai" by themselves.
+ * The standings have one column more (the place), so they do this in a wider card already, put
+ * fewer wait tiles on a line and, on the narrowest phones, close up once more.
+ */
+@container result (max-width: 26rem) {
+  .table {
+    --gap: 0.5rem;
+  }
+
+  .ranked {
+    --waits-per-line: 3;
+  }
+
+  .ranked .isTenpai:not(:only-child) {
+    display: none;
+  }
+}
+
+@container result (max-width: 23rem) {
+  .ranked {
+    --gap: 0.375rem;
+  }
+
+  .isTenpai:not(:only-child) {
+    display: none;
+  }
+}

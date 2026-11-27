@@ -18,8 +18,6 @@ export interface PressRepeatOptions {
   onStep(source: Exclude<NavSource, "autoplay">): boolean;
   /** aria-disabled: presses do nothing (the button keeps the focus). */
   disabled?: boolean;
-  /** A hold started or ended. */
-  onHold?(active: boolean): void;
 }
 
 export interface PressRepeatHandlers {
@@ -73,7 +71,6 @@ export function usePressRepeat(options: PressRepeatOptions): PressRepeatHandlers
       if (current.held) {
         current.held = false;
         current.swallowClick = swallow;
-        latest.current.onHold?.(false);
         if (swallow) {
           // The click that ends a hold comes in the same input task as the pointerup; a long
           // touch press may end without one, and the next click must not be lost.
@@ -94,7 +91,6 @@ export function usePressRepeat(options: PressRepeatOptions): PressRepeatHandlers
         current.timer = setTimeout(() => {
           current.timer = null;
           current.held = true;
-          latest.current.onHold?.(true);
           current.repeater = createRepeater(() => latest.current.onStep("repeat"));
           current.repeater.start();
         }, holdDelay(event.pointerType));

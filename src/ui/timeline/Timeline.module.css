@@ -1,8 +1,0 @@
-.bands {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}

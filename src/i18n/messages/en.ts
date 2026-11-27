@@ -1,15 +1,8 @@
-import type {
-  GameRules,
-  LimitName,
-  LogFormat,
-  PlayerCount,
-  RyukyokuReason,
-} from "../../core/model";
+import type { LimitName, RyukyokuReason } from "../../core/model";
 import type { Suit } from "../../core/tile";
 import type { YakuKey } from "../../core/yaku";
 import type { LogErrorCode } from "../../formats/errors";
 import type { SampleId } from "../../ui/samples";
-import type { Theme } from "../../ui/viewer/types";
 
 /** Errors the UI reports besides the loader's own codes. */
 export type UiErrorCode =
@@ -18,29 +11,16 @@ export type UiErrorCode =
   | "fetchFailed"
   /** The log of a pasted Tenhou link could not be downloaded from tenhou.net. */
   | "tenhouFetchFailed"
+  /** A Mahjong Soul link: its log cannot be downloaded and has to be converted first. */
+  | "mahjongSoul"
   | "unexpected";
 
 /** Kinds of call named in step descriptions. */
 export type CallKind = "chi" | "pon" | "daiminkan" | "ankan" | "kakan";
 
-/** A key (or gesture) and what it does, shown as **key** + action in the first-use hint. */
-export type HintPair = readonly [key: string, action: string];
-
 const WINDS = ["East", "South", "West", "North"];
 
-/** Tenhou ranks by dan index (PlayerInfo.danIndex): 新人, 9-1 kyu, 1-10 dan, 天鳳位. */
-function dan(index: number): string {
-  if (index <= 0) {
-    return "Novice";
-  }
-  if (index < 10) {
-    return `${10 - index} kyu`;
-  }
-  return index < 20 ? `${index - 9} dan` : "Tenhoui";
-}
 const SUITS: Record<Suit, string> = { m: "Man", p: "Pin", s: "Sou" };
-
-const WINDS_SHORT = ["E", "S", "W", "N"];
 
 /** "a", "a and b", "a, b and c". */
 function andList(items: readonly string[]): string {
@@ -54,13 +34,6 @@ function andList(items: readonly string[]): string {
 function count(n: number, singular: string, plural: string): string {
   return `${n} ${n === 1 ? singular : plural}`;
 }
-
-/** Notes after a label: "" or ", a, b". */
-function more(items: readonly string[]): string {
-  return items.length === 0 ? "" : `, ${items.join(", ")}`;
-}
-
-const hintPairs = (...pairs: HintPair[]): readonly HintPair[] => pairs;
 
 function ordinal(n: number): string {
   const tens = n % 100;
@@ -78,161 +51,78 @@ function ordinal(n: number): string {
 export const en = {
   app: {
     title: "Mahjong Paifu Viewer",
-    newLog: "Open another log",
-    settings: "Settings",
-    help: "Keyboard, mouse and touch help",
-    more: "More",
-    copyLink: "Copy link to this moment",
-    linkCopied: "Link copied",
-    linkCopyFailed: "The link could not be copied",
-    linkUnavailable: "Links work only for the sample logs and Tenhou logs",
+    tagline: "Replay Tenhou and mjai game logs; your files stay in your browser.",
   },
   tools: {
     label: "Viewer tools",
-    view3d: "3D table",
-    panel: "Review panel",
     withKey: (label: string, key: string) => `${label} (${key})`,
+    hands: "Hands",
     pov: "Point of view",
-    povButton: (name: string) => `Point of view: ${name}`,
-    povMenu: "View from",
-    povItem: (name: string, wind: string, dealer: boolean) =>
-      `${name}, ${wind}${dealer ? ", dealer" : ""}`,
+    povButton: (wind: string, name: string) => `Point of view: ${wind}, ${name}`,
+    /** A row of the point-of-view menu; `diff` is the signed difference from the viewed player. */
+    povItem: (wind: string, name: string, score: string, diff: string | null) =>
+      `${wind}, ${name}, ${score}${diff === null ? "" : ` (${diff})`}`,
   },
   settings: {
     language: "Language",
     heading: "Settings",
     close: "Close",
     reset: "Reset to defaults",
-    display: "Display",
-    review: "Review aids",
-    controls: "Controls",
-    view: "Table view",
-    view3d: "3D (tilted)",
-    viewFlat: "Flat (top-down)",
-    dimTsumogiri: "Dim tiles discarded right after drawing",
-    captions: "Show call captions (Pon, Riichi, Ron…)",
-    motion: "Animate tiles (discards, riichi, the round-end reveal)",
-    theme: "Theme",
-    themes: {
-      system: "Same as the system",
-      light: "Light",
-      dark: "Dark",
-    } satisfies Record<Theme, string>,
-    clickToStep: "Click or tap the table to step (right-click or swipe right goes back)",
-    wheelToStep: "Mouse wheel steps through the game",
-    charKeys: "Single-key shortcuts (letters, digits, punctuation and Space)",
-    autoplaySpeed: "Autoplay speed",
-    showWaits: "Show waits, tenpai and furiten on the player plates",
-    showNextDiscard:
-      "Mark the tile the point-of-view player discards next (gives the next move away)",
-    movesShowRest: "List the rest of the round under Moves (gives the round away)",
-    charKeysOff: "Single-key shortcuts are turned off in the settings; the dimmed keys do nothing.",
-  },
-  welcome: {
-    lede: "Replay Tenhou and mjai game logs. Click the table to step through a game. Your files never leave this browser.",
-    drop: "Drop a log file here, or paste a Tenhou link or log text anywhere",
-    openFile: "Open a file…",
-    paste: "Paste a link or log",
-    pasteHeading: "Paste a Tenhou link or log data",
-    samples: "Samples:",
-    sample4: "4-player",
-    sample3: "3-player",
-    explore: "Explore the sample",
+    view: "Table",
+    view3d: "3D",
+    viewFlat: "Flat",
+    showWaits: "Show waits and shanten",
+    charKeys: "Single-key shortcuts",
+    charKeysHint: "Letters, digits, punctuation and Space",
+    charKeysOff: "Single-key shortcuts are off in the settings, so the dimmed keys do nothing.",
   },
   open: {
-    heading: "Open a game log",
-    hint: "You can also drop a log file anywhere on the page, or press Ctrl+V (⌘V on a Mac) to paste a Tenhou link or log text.",
+    heading: "Open a log",
     close: "Close",
   },
-  hint: {
-    mouse: hintPairs(
-      ["Click the table", "next"],
-      ["Right-click", "back"],
-      ["Hold", "fast-forward"],
-      ["Wheel", "step"],
-      ["Shift", "your turns"],
-    ),
-    touch: hintPairs(["Tap", "next"], ["Swipe →", "back"], ["Hold", "fast-forward"]),
-    short: "Tap the table: next · swipe →: back · hold: fast-forward",
-    legend: "step · click the table",
-    dismiss: "Got it",
-  },
   load: {
-    pasteLabel: "Paste the log data or a Tenhou link",
-    pastePlaceholder: "tenhou.net/6 JSON, mjai JSONL, mjlog XML or a Tenhou replay link",
-    loadButton: "Load",
-    formatsHeading: "Supported formats",
-    formats: [
-      "Tenhou replay links and log ids, e.g. https://tenhou.net/0/?log=… (the viewer downloads the log from tenhou.net)",
-      "tenhou.net/6 JSON, or a tenhou.net/6 link that contains #json=",
-      "mjai JSONL (one event per line)",
-      "Tenhou mjlog XML (.xml or .mjlog, gzip-compressed or not)",
-    ],
-    playerCounts: "Three- and four-player games are supported.",
-    privacy:
-      "Logs are read in your browser and never uploaded. Pasting a Tenhou link downloads that log from tenhou.net.",
+    pasteLabel: "Link or log to open",
+    pastePlaceholder: "Tenhou link, log ID or log text",
+    openButton: "Open",
+    // No-break spaces keep each format's name on one line.
+    formats: "Reads tenhou.net/6 JSON, mjai JSONL and Tenhou mjlog XML.",
+    chooseFile: "Choose a file",
+    dropHint: "or drop one anywhere on the page",
+    samplesLabel: "Samples",
     samples: {
-      "tenhou-json": "Short game (tenhou.net/6 JSON)",
-      sanma: "Three-player game (tenhou.net/6 JSON)",
+      "tenhou-json": "4-player",
+      sanma: "3-player",
     } satisfies Record<SampleId, string>,
-    loading: "Loading the log…",
-    dropOverlay: "Drop the log file to open it",
+    downloading: "Downloading the log…",
+    cancel: "Cancel",
+    dropOverlay: "Drop the log to open it",
   },
   errors: {
-    title: "Could not open the log",
-    dismiss: "Dismiss",
     codes: {
-      empty: "There is nothing to load. The file or the pasted text is empty.",
-      unrecognized:
-        "This is not a log format the viewer knows. Use tenhou.net/6 JSON, mjai JSONL or Tenhou mjlog XML.",
+      empty: "The file or the pasted text is empty.",
+      unrecognized: "This is not a game log the viewer can read.",
       urlOnly:
-        "This is a link to a log, not the log itself. The viewer downloads logs only from Tenhou links, so save or copy the log data instead:",
-      decompress: "The compressed file could not be unpacked. It may be damaged or incomplete.",
-      invalid:
-        "The format was recognized, but the log is damaged or incomplete, so it could not be read.",
-      unsupportedPlayers:
-        "Only three- and four-player games are supported, and this log does not say clearly which it is.",
+        "Only Tenhou links can be downloaded; for another site, open or paste the log data itself.",
+      decompress: "The compressed file is damaged or incomplete.",
+      invalid: "The log is damaged or incomplete.",
+      unsupportedPlayers: "Only three- and four-player games can be opened.",
       readFailed: "The file could not be read.",
-      fetchFailed: "The log could not be downloaded. Check your connection and try again.",
+      fetchFailed: "The log could not be downloaded; check your connection.",
       tenhouFetchFailed:
-        "The log for this Tenhou link could not be downloaded from tenhou.net. Check the link and your connection, then try again.",
-      tooLarge: "This is too large to be a game log, so it was not opened.",
-      unexpected: "Something went wrong while loading the log.",
+        "The log could not be downloaded from tenhou.net; check the link and your connection.",
+      mahjongSoul:
+        "Mahjong Soul links cannot be opened; convert the log to tenhou.net/6 JSON with tensoul first.",
+      tooLarge: "This is too large to be a game log.",
+      unexpected: "Something went wrong while opening the log.",
     } satisfies Record<UiErrorCode, string>,
-    linkHelp: [
-      "Tenhou: open tenhou.net/0/log/?<log id>, where the log id is the part of the replay link after log= up to the next & (e.g. 2000010100gm-0089-0000-0123abcd). Save the page with Ctrl+S (⌘S on a Mac) and drop the file here, or select all of it, copy it and paste it here.",
-      "Mahjong Soul: the viewer cannot download Mahjong Soul logs. Convert the log to tenhou.net/6 JSON with a tool such as tensoul, then open or paste the result.",
-      "tenhou.net/6: a link that contains #json= already includes the log and can be pasted as it is.",
-      "mjai: open the .json or .jsonl file that the AI or the server saved.",
-    ],
-    tenhouSaveHelp:
-      "To open it by hand, open the log data below in a new tab, save the page with Ctrl+S (⌘S on a Mac) and drop the file here, or select all of it, copy it and paste it here.",
-    logDataLink: "Log data (opens in a new tab):",
+    logDataLink: "Log data on tenhou.net",
+    tensoulLink: "tensoul on GitHub",
+    newTab: "(opens in a new tab)",
     replayFailed:
       "This round could not be replayed. The log may be damaged or use a rule this viewer does not support.",
   },
   viewer: {
-    formats: {
-      "tenhou-json": "tenhou.net/6 JSON",
-      mjlog: "Tenhou mjlog XML",
-      mjai: "mjai JSONL",
-    } satisfies Record<LogFormat, string>,
-    length: { east: "East-only game", south: "East-South game" },
-    rooms: {
-      general: "General room",
-      upper: "Upper room",
-      special: "Special room",
-      phoenix: "Phoenix room",
-    } satisfies Record<NonNullable<GameRules["room"]>, string>,
-    openTanyao: "Open tanyao",
-    noOpenTanyao: "No open tanyao",
-    redFives: "Red fives",
-    noRedFives: "No red fives",
-    fast: "Fast",
-    dan,
-    rating: (rating: number) => `R${rating}`,
     unnamed: (seat: number) => `Player ${seat + 1}`,
-    players: { 3: "Three-player", 4: "Four-player" } satisfies Record<PlayerCount, string>,
     showAllHands: "Show all hands",
     prevStep: "Previous step",
     nextStep: "Next step",
@@ -250,13 +140,9 @@ export const en = {
     calledDiscard: (tile: string) => `${tile}, called`,
     lastDiscard: (tile: string) => `${tile}, last discard`,
     meld: (kind: string, tiles: string) => `${kind}: ${tiles}`,
-    honba: "Honba",
-    riichiSticks: "Riichi sticks",
     dora: "Dora indicators",
     wall: (count: number) => `${count} tiles left`,
     wallShort: (count: number) => `${count} left`,
-    riichi: "Riichi",
-    dealer: "Dealer",
     windsShort: ["E", "S", "W", "N"],
   },
   calls: {
@@ -270,8 +156,6 @@ export const en = {
     winds: WINDS,
     name: (wind: number, number: number, honba: number) =>
       `${WINDS[wind] ?? ""} ${number}${honba > 0 ? `, ${honba} honba` : ""}`,
-    short: (wind: number, number: number, honba: number) =>
-      `${WINDS_SHORT[wind] ?? ""}${number}${honba > 0 ? `-${honba}` : ""}`,
   },
   event: {
     deal: (round: string) => `${round}: starting hands dealt`,
@@ -308,19 +192,20 @@ export const en = {
     unknownYaku: "Unknown yaku",
     winningHand: "Winning hand",
     winningTile: "Winning tile",
-    uraIndicators: "Ura dora indicators",
+    kita: (n: number) => `Kita: ${count(n, "North tile", "North tiles")} set aside`,
+    dora: "Dora",
+    doraIndicators: "Dora indicators",
+    ura: "Ura Dora",
+    uraIndicators: "Ura Dora indicators",
     pao: (player: string) => `Liability (pao): ${player}`,
     deltas: "Point changes",
     player: "Player",
     change: "Change",
     tenpai: "Tenpai",
     noten: "Noten",
-    hide: "Hide",
+    waits: (tiles: readonly string[]) => `Waits: ${andList(tiles)}`,
+    showTable: "Show table",
     nextRound: "Next round",
-    beforeAfter: (before: string, after: string) => `${before} → ${after}`,
-    riichiLine: (turn: number) => `Riichi turn ${turn}`,
-    otherRiichi: (name: string, turn: number) => `${name}: riichi turn ${turn}`,
-    waited: "waited",
     tenpaiSeats: (names: readonly string[]) =>
       names.length === 0 ? "nobody tenpai" : `tenpai: ${andList(names)}`,
   },
@@ -338,22 +223,18 @@ export const en = {
     heading: "Final standings",
     place: (place: number) => ordinal(place),
     points: "Points",
+    rank: "Rank",
   },
   table: {
-    viewFrom: (name: string) => `View from ${name}`,
-    openRoundList: (round: string) => `${round}. Open the round list`,
     kita: (name: string, n: number) =>
       `${name}'s kita: ${count(n, "North tile", "North tiles")} set aside`,
     kitaCount: (n: number) => `×${n}`,
-    kitaPlate: (n: number) => `North ×${n}`,
-    /** The plate's kita count on phones (kitaPlate is the screen-reader text there). */
-    kitaPlateShort: (n: number) => `N×${n}`,
-    /** How many honba or riichi sticks, after the stick drawn in the HUD. */
-    stickCount: (n: number) => `×${n}`,
-    showResult: "Show result",
+    /** The console's button: the other players' scores as differences from the viewed player's. */
+    scoreDiff: "Show score differences",
+    /** A seat tag's hidden text: what the console shows about the player. */
+    seatFacts: (wind: string, points: string, dealer: boolean, riichi: boolean) =>
+      `${wind}, ${points} points${dealer ? ", dealer" : ""}${riichi ? ", riichi" : ""}`,
     wallHand: (name: string, n: number) => `${name}'s hand, ${count(n, "tile", "tiles")} face down`,
-    nextDiscard: "(discarded next)",
-    waits: "Waits",
     waitsShort: "Wait",
     left: (n: number) => `${n} left`,
     furiten: "Furiten",
@@ -372,40 +253,25 @@ export const en = {
     ron: "Ron",
     tsumo: "Tsumo",
   },
-  ptip: {
-    /** "\u00a0·": a wrapped line never starts with the separator (it stays with the word before). */
-    head: (name: string, n: number, turn: number) =>
-      `${name}\u00a0· ${ordinal(n)} discard\u00a0· turn ${turn}`,
-    /** The head without the turn, when the tooltip does not fit a small console. */
-    headShort: (name: string, n: number) => `${name}\u00a0· ${ordinal(n)} discard`,
-    tsumogiri: "tsumogiri",
-    fromHand: "from hand",
-    riichiTile: "riichi tile",
-    afterRiichi: "after riichi",
-    called: "called",
-    go: "Alt+click or the pin on the timeline: go there",
-    /** The facts line: tsumogiri or from hand, riichi tile, after riichi, called. */
-    facts: (items: readonly string[]) => items.join("\u00a0· "),
-  },
   menu: {
-    speed: "Speed",
-    settingsLanguage: "Settings and language",
+    label: "Menu",
+    open: "Open another log",
+    copyLink: "Copy link to this moment",
+    settings: "Settings",
+    controls: "Controls",
   },
   transport: {
     label: "Replay controls",
+    showResult: "Show result",
+    /** The round button's name: the round it shows, and what it opens. */
+    roundList: (round: string) => `${round}, round list`,
     prevTurn: "Previous own turn",
     nextTurn: "Next own turn",
-    prevMoment: "Previous call, riichi or kita",
-    nextMoment: "Next call, riichi or kita",
-    autoplay: "Autoplay",
+    turn: (n: number) => `Turn ${n}`,
+    play: "Play",
+    pause: "Pause",
     speed: (x: number) => `Autoplay speed: ${x}×`,
     speedValue: (x: number) => `${x}×`,
-    turn: (n: number) => `Turn ${n}`,
-    turnPrefix: (n: number) => `Turn ${n} · `,
-    counter: (step: number, total: number) => `Step ${step} / ${total}`,
-    backLabel: (round: string, turn: number) => `${round} · turn ${turn}`,
-    back: (label: string) => `Back to ${label}`,
-    backTitle: "Back to where you were (Backspace)",
     resultPrefix: "Result · ",
   },
   help: {
@@ -415,99 +281,66 @@ export const en = {
     mouse: "Mouse",
     touch: "Touch",
     step: "Next / previous step",
-    ownTurn: "Next / previous own turn (draws and calls of the point of view)",
-    moment: "Next / previous call, riichi, kan or kita",
+    ownTurn: "Next / previous own turn",
     nextRound: "Next round",
-    roundStart: "Start of this round, then the previous round",
+    roundStart: "Round start, then the previous round",
     roundEnds: "Round start / round result",
-    back: "Back to where you jumped from",
     autoplay: "Autoplay on / off",
     speed: "Autoplay faster / slower",
-    seat: "View from seat 1–4 (1–3 in three-player games)",
+    seat: "View from seat 1–4",
     cycleSeat: "View from the next / previous player",
     hands: "Show / hide all hands",
+    waits: "Waits and shanten",
+    scoreDiff: "Score differences",
     view: "3D / flat table",
-    rounds: "Round list",
+    roundList: "Round list",
     helpKey: "This help",
     escape: "Close menus, hide the round result, stop autoplay",
     click: "Click the table: next step",
-    rightClick: "Right-click (or Ctrl+click): previous step",
-    shiftClick: "Shift+click / Shift+right-click: next / previous own turn",
+    rightClick: "Right-click: previous step",
+    wheel: "Wheel: next / previous step",
+    shift: "With Shift held: by own turn",
     hold: "Press and hold: fast-forward or rewind",
-    wheel: "Mouse wheel over the table or the controls below it: step; with Shift: own turn",
     hover: "Point at a tile: highlight every copy of it",
     altClick: "Alt+click a discard: go to that moment",
-    backButton: "Mouse back button: back to where you jumped from",
-    pov: "Players list or the toolbar's seat menu: view from that player's seat",
-    timeline: "Click or drag the timeline to jump",
+    console: "Click the centre panel: score differences",
     tap: "Tap the table: next step",
     swipe: "Swipe left / right: next / previous step",
     longPress: "Touch and hold: fast-forward",
-    note: "Text fields, select boxes, the timeline slider and tabs keep their own keys. Holding, key repeat, fast wheel turns and autoplay stop at each round result; press again to go on.",
+    tapConsole: "Tap the centre panel: score differences",
+    off: "(disabled)",
   },
   timeline: {
     stepSlider: "Step in this round",
     stepValue: (step: number, total: number, turn: number, text: string) =>
       `Step ${step} of ${total}, turn ${turn}: ${text}`,
-    roundTip: (round: string, result: string) => `${round} · ${result}`,
-    kitaMark: "N",
-    pinLabel: (name: string, n: number) => `Go to ${name}'s ${ordinal(n)} discard`,
   },
-  panel: {
-    label: "Game review",
-    hide: "Hide review panel",
-    source: (format: string, date: string | null) => (date ? `${format} · ${date}` : format),
-    players: "Players",
-    unseen: (name: string) => `Unseen from ${name}`,
-    unseenTotal: (n: number) => count(n, "tile", "tiles"),
-    unseenCell: (tile: string, n: number, dora: boolean) =>
-      `${tile}: ${n} unseen${dora ? ", dora" : ""}`,
-    rounds: "Rounds",
-    round: "Round",
-    final: "Final",
-    legendWon: "won",
-    legendDealtIn: "dealt in",
-    legendTenpai: "tenpai",
-    legendRiichi: "riichi",
-    outcome: { ron: "Ron", tsumo: "Tsumo", draw: "Draw" },
-    goToRound: (round: string) => `Go to ${round}`,
-    cellLabel: (
-      round: string,
-      name: string,
-      delta: string,
-      facts: readonly string[],
-      target: string,
-    ) => `${round}, ${name}: ${delta}${more(facts)}. ${target}`,
-    facts: {
-      ronWin: "won by ron",
-      tsumoWin: "won by tsumo",
-      dealtIn: "dealt in",
-      tenpai: "tenpai",
-      riichi: "riichi",
-    },
-    targets: {
-      dealIn: "Go to the discard that dealt in",
-      win: "Go to the win",
-      riichi: "Go to the riichi",
-      start: "Go to the round start",
-    },
-    moves: "Moves in this round",
-    movesFilter: (tile: string, n: number) => `${tile} (${n})`,
-    movesShowRest: "Show the rest of this round",
-    movesHidden: (n: number) => `${count(n, "later move", "later moves")} hidden`,
-    turnShort: (n: number) => `T${n}`,
-    note: {
-      draw: "draws",
-      discard: "discard",
-      tsumo: "tsumo",
-      ron: "ron",
-      drawEnd: "draw",
-    },
-    moveRow: (turn: number, name: string | null, tile: string | null, notes: readonly string[]) => {
-      const head = name === null ? `Turn ${turn}` : `Turn ${turn}, ${name}`;
-      const body = tile === null ? notes : [tile, ...notes];
-      return body.length === 0 ? head : `${head}: ${body.join(", ")}`;
-    },
+  info: {
+    dora: "Dora",
+    honba: (n: number) => `${n} honba`,
+    deposits: (n: number) => count(n, "deposit", "deposits"),
+  },
+  rounds: {
+    label: "Rounds",
+    ron: (winner: string, from: string) => `${winner} ron off ${from}`,
+    tsumo: (winner: string) => `${winner} tsumo`,
+    draw: "Draw",
+    final: "Final standings",
+    /** Over the column of the viewed player's point changes. */
+    changeFor: (name: string) => `Change for ${name}`,
+  },
+  toast: {
+    linkCopied: "Link copied",
+    linkCopyFailed: "The link could not be copied",
+    waitsOn: "Waits and shanten on",
+    waitsOff: "Waits and shanten off",
+    /** Read out (not shown) when a key changes what the table shows. */
+    handsShown: "All hands shown",
+    handsHidden: "Other players' hands hidden",
+    scoreDiffOn: "Score differences on",
+    scoreDiffOff: "Score differences off",
+    view3d: "3D table",
+    viewFlat: "Flat table",
   },
   tiles: {
     number: (value: number, suit: Suit, red: boolean) =>

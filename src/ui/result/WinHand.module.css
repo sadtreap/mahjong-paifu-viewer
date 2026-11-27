@@ -1,0 +1,55 @@
+.root {
+  display: grid;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+/*
+ * The concealed tiles and the winning tile stay on one line; the kita and each call follow, and
+ * move to the next line whole. The calls stand about twice as far off as the winning tile does, so
+ * that tile reads as part of the hand and not as one more set. The gaps are those of handUnits.ts.
+ */
+.hand {
+  --tile-w: var(--result-tile, 1.5rem);
+
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.25rem calc(var(--tile-w) * 0.3);
+}
+
+.concealed,
+.set {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+}
+
+/* The wider space before the calls is a margin, so a call that starts a line is not indented. */
+.concealed:not(:last-child) {
+  margin-inline-end: calc(var(--tile-w) * 0.45);
+}
+
+.winning {
+  margin-inline-start: calc(var(--tile-w) * 0.35);
+}
+
+.indicatorLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+}
+
+.indicators {
+  --tile-w: max(1.125rem, calc(var(--result-tile, 1.5rem) * 0.7));
+
+  display: flex;
+  align-items: center;
+}
+
+.label {
+  margin-inline-end: 0.375rem;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+}

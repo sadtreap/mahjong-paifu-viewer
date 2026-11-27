@@ -4,19 +4,20 @@
  * pointer-events: none so a layer does not cover the ones under it; their content takes hits.
  *
  * Standing walls (WallLayer.module.css) work in each layer's own units: the eye stands on the felt
- * at (--exu, --eyu), kc high (see .frame). A 3D point (x, y, h) is drawn on the felt where the
- * eye's ray through it lands: x' = ex + t (x - ex), y' = ey + t (y - ey), t = kc / (kc - h).
+ * at (--exu, --eyu), --kc high. A 3D point (x, y, h) is drawn on the felt where the eye's ray
+ * through it lands: x' = ex + t (x - ex), y' = ey + t (y - ey), t = kc / (kc - h).
+ *
+ * Set inline per seat (geometry.ts): --hs, the seat's tile scale; --row0, where its hand row and
+ * its wall start along the edge; --L, the wall's length in tiles.
  */
 .layer {
-  /* Seat tile scale (fitScale of the hand row); set inline per seat. */
   --hs: 1;
-  /* Where the seat's hand row (and its wall) starts along the edge: geometry.ts OPP_ROW_START. */
-  --row0: 0.4;
+  --row0: 0;
   --wu: var(--hs);
   --htu: calc(var(--hs) * 4 / 3);
-  --thu: calc(var(--hs) * 0.7);
+  --thu: calc(var(--hs) * var(--wall-depth));
   /* The wall's inner face line and the start of its run, in units. */
-  --pyu: calc(19.55 - var(--thu));
+  --pyu: calc(20 - var(--row-gap) - var(--thu));
   --pxu: var(--row0);
   --t: calc(var(--kc) / (var(--kc) - var(--htu)));
   --ex: calc(var(--exu) * var(--u));
@@ -44,9 +45,7 @@
   --eyu: calc(20 + var(--ke));
 }
 
-/* The right row starts a tile later: the near-right corner is the own hand's (its melds). */
 .right {
-  --row0: 1.4;
   --exu: calc(-1 * var(--ke));
   --eyu: 10;
   --dx: -1;
@@ -79,12 +78,12 @@
 /*
  * The far seat's standing wall, laid out in plane coordinates in an unrotated layer appended after
  * the four seat layers: content of the 180°-rotated layer that rises past the far edge put that
- * whole layer into its own composited layer (measured). --L (the wall's length) is set inline.
+ * whole layer into its own composited layer.
  */
 .wtop {
   --exu: 10;
   --eyu: calc(20 + var(--ke));
-  --pyu: calc(0.45 + var(--thu));
+  --pyu: calc(var(--row-gap) + var(--thu));
   --pxu: calc(20 - var(--row0) - var(--L) * var(--wu));
 }
 

@@ -1,10 +1,11 @@
 import { useI18n } from "../../i18n/context";
-import { cx } from "../cx";
 import { Icon, type IconName } from "../Icon";
 import { usePressRepeat } from "../input/usePressRepeat";
 import { cycleSpeed } from "../viewer/commands";
 import { shortcutKey } from "../viewer/shortcuts";
 import type { NavCommand, NavSource, TransportProps } from "../viewer/types";
+import { RoundList } from "./RoundList";
+import { Scrubber } from "./Scrubber";
 import styles from "./Transport.module.css";
 
 type Source = Exclude<NavSource, "autoplay">;
@@ -13,9 +14,11 @@ interface NavButtonProps {
   icon: IconName;
   label: string;
   command: NavCommand;
+  /** At a limit: shown disabled, still focusable. */
   disabled: boolean;
-  /** The grid-area class of the phone layouts. */
-  area: string | undefined;
+  /** Drawn as a button of its own; otherwise bare until hovered or focused. */
+  outlined?: boolean;
+  size?: "lg";
   onNav(command: NavCommand, source: Source): boolean;
 }
 
@@ -26,29 +29,40 @@ function useTitle(label: string, command: NavCommand): string {
   return key ? m.tools.withKey(label, key) : label;
 }
 
-/** A transport button that steps once per click and repeats while held. */
-function RepeatButton({ icon, label, command, disabled, area, onNav }: NavButtonProps) {
+/** A step or own-turn button: one move per click, and it repeats while held. */
+function RepeatButton({
+  icon,
+  label,
+  command,
+  disabled,
+  outlined = false,
+  size,
+  onNav,
+}: NavButtonProps) {
   const handlers = usePressRepeat({ disabled, onStep: (source) => onNav(command, source) });
   return (
     <button
       type="button"
-      className={cx(styles.icon, area)}
+      data-variant={outlined ? undefined : "ghost"}
+      data-icon=""
+      data-size={size}
       aria-label={label}
       title={useTitle(label, command)}
       aria-disabled={disabled}
       {...handlers}
     >
-      <Icon name={icon} className={styles.glyph} />
+      <Icon name={icon} />
     </button>
   );
 }
 
-/** A transport button for jumps (rounds, key moments): one press, one jump. */
-function JumpButton({ icon, label, command, disabled, area, onNav }: NavButtonProps) {
+/** A round button: one press, one jump. */
+function JumpButton({ icon, label, command, disabled, onNav }: NavButtonProps) {
   return (
     <button
       type="button"
-      className={cx(styles.icon, area)}
+      data-variant="ghost"
+      data-icon=""
       aria-label={label}
       title={useTitle(label, command)}
       aria-disabled={disabled}
@@ -58,153 +72,163 @@ function JumpButton({ icon, label, command, disabled, area, onNav }: NavButtonPr
         }
       }}
     >
-      <Icon name={icon} className={styles.glyph} />
+      <Icon name={icon} />
     </button>
   );
 }
 
 /**
- * The replay controls (SPEC §4.1): rounds and own turns on the first row, key moments, steps,
- * autoplay and its speed on the second. Buttons at a limit are aria-disabled (they keep the
- * focus); step and own-turn buttons repeat while held. On phones in portrait the turn label, the
- * key moments and the speed move to the ⋯ menu.
+ * The replay controls. Three groups whose centre names what their arrows move by: the round (the
+ * round button, which opens the round list), the turn ("Turn 8", moving by the viewed player's own
+ * turns) and the step (Play or Pause). Then the speed, and before them all the scrubber and, while
+ * the round's result card is hidden, "Show result".
+ *
+ * One element in three shapes, by `arrangement`: a bar on the felt, rows in the side column, or
+ * the block under the table (where the step buttons are large). Buttons at a limit are
+ * aria-disabled, so they keep the focus. Nothing in it moves when "Show result" comes and goes or
+ * the round's name changes length (see the stylesheet).
  */
 export function Transport({
-  roundName,
+  arrangement,
   turn,
   limits,
   playing,
   speed,
-  breakpoint,
   onNav,
   onTogglePlay,
   onSpeed,
-  onRoundList,
+  onShowResult,
+  scrubber,
+  roundList,
+  rootRef,
 }: TransportProps) {
   const { m } = useI18n();
-  const compact = breakpoint === "phonePortrait";
-  const speedKeys = `${shortcutKey({ type: "speed", delta: 1 }) ?? "+"} / ${shortcutKey({ type: "speed", delta: -1 }) ?? "−"}`;
+  const size = arrangement === "stack" ? "lg" : undefined;
+  // In the bar every control is bare; on their own, the ones pressed most get an outline.
+  const bare = arrangement === "wide";
+  const playLabel = playing ? m.transport.pause : m.transport.play;
   const playKey = shortcutKey({ type: "togglePlay" });
-  const roundsKey = shortcutKey({ type: "rounds" });
+  // The key for the round's result shows a hidden card again.
+  const showKey = shortcutKey({ type: "nav", command: { kind: "roundEnd" } });
   const playDisabled = limits.gameEnd && !playing;
+  const speedKeys = `${shortcutKey({ type: "speed", delta: 1 }) ?? "+"} / ${shortcutKey({ type: "speed", delta: -1 }) ?? "−"}`;
+  const separator = <span className={styles.separator} aria-hidden="true" />;
 
   return (
-    <div className={styles.nav} role="toolbar" aria-label={m.transport.label}>
-      <div className={styles.row}>
-        <JumpButton
-          icon="prevRound"
-          label={m.viewer.prevRound}
-          command={{ kind: "roundStartOrPrev" }}
-          disabled={limits.gameStart}
-          area={styles.pr}
-          onNav={onNav}
-        />
-        <button
-          type="button"
-          className={cx(styles.round, styles.rl)}
-          aria-label={m.table.openRoundList(roundName)}
-          title={roundsKey ? m.tools.withKey(m.help.rounds, roundsKey) : m.help.rounds}
-          onClick={onRoundList}
-        >
-          <span className={styles.roundName}>{roundName}</span>
-          <Icon name="caret" className={styles.caret} />
-        </button>
-        <JumpButton
-          icon="nextRound"
-          label={m.viewer.nextRound}
-          command={{ kind: "nextRound" }}
-          disabled={limits.lastRound}
-          area={styles.nr}
-          onNav={onNav}
-        />
-        <span className={styles.gap} aria-hidden="true" />
-        <RepeatButton
-          icon="prevTurn"
-          label={m.transport.prevTurn}
-          command={{ kind: "ownTurn", dir: -1 }}
-          disabled={limits.gameStart}
-          area={styles.pt}
-          onNav={onNav}
-        />
-        {compact ? null : (
-          <span className={cx(styles.turn, styles.tl)}>{m.transport.turn(turn)}</span>
-        )}
-        <RepeatButton
-          icon="nextTurn"
-          label={m.transport.nextTurn}
-          command={{ kind: "ownTurn", dir: 1 }}
-          disabled={limits.gameEnd}
-          area={styles.nt}
-          onNav={onNav}
-        />
-      </div>
-      <div className={styles.row}>
-        {compact ? null : (
-          <JumpButton
-            icon="prevKey"
-            label={m.transport.prevMoment}
-            command={{ kind: "keyMoment", dir: -1 }}
-            disabled={limits.gameStart}
-            area={styles.pk}
-            onNav={onNav}
-          />
-        )}
-        <RepeatButton
-          icon="prevStep"
-          label={m.viewer.prevStep}
-          command={{ kind: "step", dir: -1 }}
-          disabled={limits.gameStart}
-          area={styles.ps}
-          onNav={onNav}
-        />
-        <button
-          type="button"
-          className={cx(styles.play, styles.pl)}
-          aria-label={m.transport.autoplay}
-          aria-pressed={playing}
-          aria-disabled={playDisabled}
-          title={playKey ? m.tools.withKey(m.transport.autoplay, playKey) : m.transport.autoplay}
-          onClick={() => {
-            if (!playDisabled) {
-              onTogglePlay();
-            }
-          }}
-        >
-          <Icon name={playing ? "pause" : "play"} className={styles.playGlyph} />
-          <span className={styles.playLabel}>{m.transport.autoplay}</span>
-        </button>
-        <RepeatButton
-          icon="nextStep"
-          label={m.viewer.nextStep}
-          command={{ kind: "step", dir: 1 }}
-          disabled={limits.gameEnd}
-          area={styles.ns}
-          onNav={onNav}
-        />
-        {compact ? null : (
-          <JumpButton
-            icon="nextKey"
-            label={m.transport.nextMoment}
-            command={{ kind: "keyMoment", dir: 1 }}
-            disabled={limits.gameEnd}
-            area={styles.nk}
-            onNav={onNav}
-          />
-        )}
-        {compact ? null : (
-          <>
-            <span className={styles.gap} aria-hidden="true" />
+    // biome-ignore lint/a11y/useSemanticElements: a group of controls, not a form fieldset.
+    <div
+      ref={rootRef}
+      className={styles.transport}
+      role="group"
+      aria-label={m.transport.label}
+      data-arrangement={arrangement}
+      data-gesture="ignore"
+      data-open={roundList.open ? "" : undefined}
+    >
+      <div className={styles.top}>
+        {onShowResult && (
+          <span className={styles.show}>
             <button
               type="button"
-              className={cx(styles.speed, styles.sp)}
-              aria-label={m.transport.speed(speed)}
-              title={m.tools.withKey(m.settings.autoplaySpeed, speedKeys)}
-              onClick={() => onSpeed(cycleSpeed(speed))}
+              data-variant={bare ? "ghost" : undefined}
+              title={showKey ? m.tools.withKey(m.transport.showResult, showKey) : undefined}
+              onClick={onShowResult}
             >
-              {m.transport.speedValue(speed)}
+              {m.transport.showResult}
             </button>
-          </>
+          </span>
         )}
+        <div className={styles.scrub}>
+          <Scrubber {...scrubber} />
+        </div>
+      </div>
+      <div className={styles.jumps}>
+        <div className={styles.group}>
+          <JumpButton
+            icon="prevRound"
+            label={m.viewer.prevRound}
+            command={{ kind: "roundStartOrPrev" }}
+            disabled={limits.gameStart}
+            onNav={onNav}
+          />
+          <RoundList {...roundList} bare={bare} />
+          <JumpButton
+            icon="nextRound"
+            label={m.viewer.nextRound}
+            command={{ kind: "nextRound" }}
+            disabled={limits.lastRound}
+            onNav={onNav}
+          />
+        </div>
+        {separator}
+        <div className={styles.group}>
+          <RepeatButton
+            icon="prevTurn"
+            label={m.transport.prevTurn}
+            command={{ kind: "ownTurn", dir: -1 }}
+            disabled={limits.gameStart}
+            onNav={onNav}
+          />
+          <span className={styles.turn}>{m.transport.turn(turn)}</span>
+          <RepeatButton
+            icon="nextTurn"
+            label={m.transport.nextTurn}
+            command={{ kind: "ownTurn", dir: 1 }}
+            disabled={limits.gameEnd}
+            onNav={onNav}
+          />
+        </div>
+      </div>
+      <div className={styles.steps}>
+        {separator}
+        <div className={styles.group}>
+          <RepeatButton
+            icon="prevStep"
+            label={m.viewer.prevStep}
+            command={{ kind: "step", dir: -1 }}
+            disabled={limits.gameStart}
+            outlined={!bare}
+            size={size}
+            onNav={onNav}
+          />
+          <button
+            type="button"
+            data-variant="primary"
+            data-icon=""
+            data-size={size}
+            aria-label={playLabel}
+            title={playKey ? m.tools.withKey(playLabel, playKey) : playLabel}
+            aria-disabled={playDisabled}
+            onClick={() => {
+              if (!playDisabled) {
+                onTogglePlay();
+              }
+            }}
+          >
+            <Icon name={playing ? "pause" : "play"} />
+          </button>
+          <RepeatButton
+            icon="nextStep"
+            label={m.viewer.nextStep}
+            command={{ kind: "step", dir: 1 }}
+            disabled={limits.gameEnd}
+            outlined={!bare}
+            size={size}
+            onNav={onNav}
+          />
+        </div>
+        {separator}
+        <button
+          type="button"
+          data-variant={bare ? "ghost" : undefined}
+          data-size={size}
+          className={styles.speed}
+          aria-label={m.transport.speed(speed)}
+          title={m.tools.withKey(m.transport.speed(speed), speedKeys)}
+          onClick={() => onSpeed(cycleSpeed(speed))}
+        >
+          {m.transport.speedValue(speed)}
+        </button>
       </div>
     </div>
   );

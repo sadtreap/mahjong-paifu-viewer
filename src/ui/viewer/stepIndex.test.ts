@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { Seat } from "../../core/model";
 import { buildTimeline } from "../../replay/timeline";
-import { makeGame, makeRound, sampleRound, sampleSanmaRound } from "../../test/round-builder";
+import {
+  draw,
+  makeGame,
+  makeRound,
+  sampleRound,
+  sampleSanmaRound,
+  tsumogiri,
+  win,
+} from "../../test/round-builder";
 import { createTimelineCache } from "../timelineCache";
 import {
   doubleRonRound,
@@ -14,7 +22,7 @@ import { createStepIndex, stepInfo, turnNumber } from "./stepIndex";
 import type { StepInfo, StepKind } from "./types";
 
 const kinds = (round: ReturnType<typeof sampleRound>, playerCount: 3 | 4 = 4) =>
-  buildTimeline(round, playerCount).map((state) => stepInfo(round, state));
+  buildTimeline(round, playerCount).map((state) => stepInfo(state));
 
 describe("stepInfo", () => {
   it("names every step of a four-player round", () => {
@@ -50,16 +58,15 @@ describe("stepInfo", () => {
     expect(infos.map((info) => [info.kind, info.seat])).toEqual(expected);
   });
 
-  it("marks tsumogiri and the steps a dora reveal folded into", () => {
+  it("marks tsumogiri", () => {
     const infos = kinds(sampleRound());
     expect(infos[10]?.tsumogiri).toBe(true);
     expect(infos[2]?.tsumogiri).toBe(false);
-    expect(infos.flatMap((info, step) => (info.doraReveal ? [step] : []))).toEqual([13, 17, 19]);
   });
 
   it("folds the riichi acceptance into the riichi step", () => {
     const info = kinds(sampleRound())[8] as StepInfo;
-    expect(info).toEqual({ kind: "riichi", seat: 0, tsumogiri: false, doraReveal: false });
+    expect(info).toEqual({ kind: "riichi", seat: 0, tsumogiri: false });
   });
 
   it("makes a double ron one result step", () => {
@@ -77,16 +84,16 @@ describe("stepInfo", () => {
       [6, 1],
       [22, 1],
     ]);
-    expect(infos[18]).toEqual({ kind: "ankan", seat: 0, tsumogiri: false, doraReveal: true });
+    expect(infos[18]).toEqual({ kind: "ankan", seat: 0, tsumogiri: false });
     expect(infos[SANMA_STEPS - 1]?.kind).toBe("result");
   });
 
   it("treats a dora with no step before it as part of the deal", () => {
     const round = makeRound({ events: [{ type: "dora", indicator: "5m" }] });
     const infos = kinds(round);
-    expect(infos.map((info) => [info.kind, info.doraReveal])).toEqual([
-      ["deal", false],
-      ["deal", true],
+    expect(infos).toEqual([
+      { kind: "deal", seat: null, tsumogiri: false },
+      { kind: "deal", seat: null, tsumogiri: false },
     ]);
   });
 });
@@ -105,12 +112,7 @@ describe("createStepIndex", () => {
   it("reads a failed round, and positions out of range, as a deal", () => {
     const ix = stepIndexOf(fourPlayerGame(), [1]);
     expect(ix.stepCount(1)).toBe(1);
-    expect(ix.info(1, 0)).toEqual({
-      kind: "deal",
-      seat: null,
-      tsumogiri: false,
-      doraReveal: false,
-    });
+    expect(ix.info(1, 0)).toEqual({ kind: "deal", seat: null, tsumogiri: false });
     expect(ix.info(0, 99).kind).toBe("deal");
     expect(ix.info(9, 0).kind).toBe("deal");
   });
@@ -141,6 +143,21 @@ describe("turnNumber", () => {
     // Five discards (steps 2, 4, 6, 8, 10) before step 11.
     expect(turnNumber(states, 11, 4)).toBe(2);
     expect(turnNumber(states, 99, 4)).toBe(1);
+  });
+
+  it("keeps the round's last turn on the result step", () => {
+    // One go-around of draws and discards, then a ron on the fourth discard (step 8).
+    const round = makeRound({
+      events: [
+        ...([0, 1, 2, 3] as const).flatMap((seat) => [draw(seat, "4z"), tsumogiri(seat, "4z")]),
+        win(0, 3, [8000, 0, 0, -8000]),
+      ],
+    });
+    const states = buildTimeline(round, 4);
+    expect(states).toHaveLength(10);
+    expect(turnNumber(states, 8, 4)).toBe(1);
+    // Four discards lie before the result, yet turn 2 never began.
+    expect(turnNumber(states, 9, 4)).toBe(1);
   });
 
   it("divides by three in a three-player game", () => {

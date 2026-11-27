@@ -29,7 +29,7 @@
 }
 
 .highlighted {
-  outline: max(2px, calc(var(--w) * 0.08)) solid var(--color-highlight);
+  outline: max(2px, calc(var(--w) * 0.08)) solid var(--highlight);
   outline-offset: max(1px, calc(var(--w) * 0.04));
 }
 
@@ -50,12 +50,13 @@
 }
 
 /*
- * 3D table (data-thick on the stage): lying tiles show their thickness toward the camera, as a
- * face-coloured edge, a back-coloured edge and a soft drop shadow. Each seat layer sets the
- * direction (--dx, --dy); the defaults are the bottom seat's.
+ * The table (data-thick on the stage): lying tiles show their thickness toward the camera, as a
+ * face-coloured edge, a back-coloured edge and a soft drop shadow. The stage gives the thickness
+ * in tile widths (--tile-thick); each seat layer sets the direction (--dx, --dy), and the defaults
+ * are the bottom seat's.
  */
 [data-thick] .tile {
-  --d: calc(var(--w) * 0.16);
+  --d: calc(var(--w) * var(--tile-thick));
 
   box-shadow:
     0 0 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
@@ -78,7 +79,7 @@
 /* A sideways tile draws its thickness on the unrotated wrapper, so it falls toward the camera. */
 [data-thick] .sideways {
   --w: var(--tile-w, 2rem);
-  --d: calc(var(--w) * 0.16);
+  --d: calc(var(--w) * var(--tile-thick));
 
   border-radius: 10% / 13.3%;
   box-shadow:

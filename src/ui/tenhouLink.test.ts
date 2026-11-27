@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { findTenhouLogId, tenhouLinkLogId, tenhouLinkStart, tenhouLogDataUrl } from "./tenhouLink";
+import {
+  findTenhouLogId,
+  tenhouLinkLogId,
+  tenhouLinkStart,
+  tenhouLogDataUrl,
+  tenhouReplayUrl,
+} from "./tenhouLink";
 
 const ID = "2000010100gm-0089-0000-0123abcd";
 
@@ -73,5 +79,19 @@ describe("tenhouLinkStart", () => {
     expect(tenhouLinkStart(ID)).toEqual({ pov: null, round: null });
     expect(tenhouLinkStart(`{"ref":"${ID}","tw":2}`)).toEqual({ pov: null, round: null });
     expect(tenhouLinkStart("https://example.com/?tw=2&ts=1")).toEqual({ pov: null, round: null });
+  });
+});
+
+describe("tenhouReplayUrl", () => {
+  it("links to the log, opening where the start says", () => {
+    expect(tenhouReplayUrl(ID, { pov: null, round: null })).toBe(`https://tenhou.net/0/?log=${ID}`);
+    expect(tenhouReplayUrl(ID, { pov: 2, round: 0 })).toBe(`https://tenhou.net/0/?log=${ID}&tw=2`);
+    expect(tenhouReplayUrl(ID, { pov: 0, round: -1 })).toBe(`https://tenhou.net/0/?log=${ID}&tw=0`);
+  });
+
+  it("reads back as the same log and start", () => {
+    const link = tenhouReplayUrl(ID, { pov: 3, round: 5 });
+    expect(tenhouLinkLogId(link)).toBe(ID);
+    expect(tenhouLinkStart(link)).toEqual({ pov: 3, round: 5 });
   });
 });

@@ -46,11 +46,10 @@ export function isGameStart(position: Position): boolean {
 export function navLimits(
   position: Position,
   bounds: Bounds,
-): { gameStart: boolean; gameEnd: boolean; firstRound: boolean; lastRound: boolean } {
+): { gameStart: boolean; gameEnd: boolean; lastRound: boolean } {
   return {
     gameStart: isGameStart(position),
     gameEnd: isGameEnd(position, bounds),
-    firstRound: position.round <= 0,
     lastRound: position.round >= bounds.roundCount - 1,
   };
 }
@@ -109,16 +108,6 @@ export const ownTurn =
       info.kind === "pon" ||
       info.kind === "daiminkan");
 
-/** A key moment: a riichi discard, a call, a kan or a kita (a dora reveal folds into its step). */
-export const keyMoment = (info: StepInfo): boolean =>
-  info.kind === "riichi" ||
-  info.kind === "chi" ||
-  info.kind === "pon" ||
-  info.kind === "daiminkan" ||
-  info.kind === "ankan" ||
-  info.kind === "kakan" ||
-  info.kind === "kita";
-
 /** From a round's last step a fresh forward input goes on to the next round's start. */
 function crossForward(position: Position, ix: StepIndex, repeat: boolean): Position | null {
   return !repeat && position.round < ix.roundCount - 1
@@ -141,7 +130,7 @@ function crossBackward(position: Position, ix: StepIndex, repeat: boolean): Posi
  * Hard stops: a repeated input (`repeat`: hold, key auto-repeat, a wheel burst, autoplay) never
  * moves forward from a round's last step nor backward from step 0. A fresh input crosses: next
  * from a round's last step is the next round's step 0, previous from step 0 is the previous
- * round's last step. Own-turn and key-moment jumps stop at step 0 and at the round's last step.
+ * round's last step. Own-turn jumps stop at step 0 and at the round's last step.
  * The game's ends never wrap around.
  */
 export function resolveNav(
@@ -164,9 +153,8 @@ export function resolveNav(
         return atEnd ? crossForward(p, ix, repeat) : { round: p.round, step: p.step + 1 };
       }
       return p.step > 0 ? { round: p.round, step: p.step - 1 } : crossBackward(p, ix, repeat);
-    case "ownTurn":
-    case "keyMoment": {
-      const match = command.kind === "ownTurn" ? ownTurn(options.pov) : keyMoment;
+    case "ownTurn": {
+      const match = ownTurn(options.pov);
       if (command.dir > 0) {
         return nextWhere(p, ix, match) ?? crossForward(p, ix, repeat);
       }

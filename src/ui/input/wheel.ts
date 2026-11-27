@@ -28,7 +28,7 @@ export const INITIAL_WHEEL_STATE: WheelState = Object.freeze({
 export const WHEEL = { thresholdPx: 50, idleMs: 200, minStepMs: 33, repeatMs: 350 } as const;
 
 /**
- * One wheel event (SPEC §3.2, amendment 8). `handled` means the event is ours (the caller
+ * One wheel event. `handled` means the event is ours (the caller
  * prevents the page scroll); `step` is the step to take, at most one per event.
  * - Ctrl or Cmd: never ours (browser zoom). No vertical delta without Shift: not ours.
  * - Down is forward. Shift: by own turn, reading deltaX when deltaY is 0.

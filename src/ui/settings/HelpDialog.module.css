@@ -1,95 +1,120 @@
-.dialog {
-  width: min(52rem, calc(100vw - 24px));
-}
-
+/*
+ * The keys on the left, the mouse and touch lists on the right. The lists take the width of their
+ * longest line and the keys all the rest, so a key's description stays on one line where it can.
+ */
 .columns {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  gap: 18px 24px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
+  gap: 1rem 1.5rem;
+}
+
+/* The two lists lead and the keys follow. */
+.touchFirst {
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
 }
 
 .side {
   display: grid;
   align-content: start;
-  gap: 18px;
+  gap: 1rem;
 }
 
 .section {
   display: grid;
   align-content: start;
-  gap: 8px;
+  gap: 0.375rem;
 }
 
 .heading {
   margin: 0;
   color: var(--color-muted);
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: var(--text-caption);
+  font-weight: 600;
 }
 
 .keys {
-  width: 100%;
+  inline-size: 100%;
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: var(--text-secondary);
 }
 
 .keys th,
 .keys td {
-  padding: 4px 0;
-  border-bottom: 1px solid var(--color-border);
+  padding: 0.1875rem 0;
+  border-block-end: 1px solid var(--chrome-border);
   vertical-align: top;
   text-align: start;
 }
 
+.keys tr:last-child > * {
+  border-block-end: 0;
+}
+
 .keys th {
-  padding-right: 12px;
+  padding-inline-end: 0.75rem;
   font-weight: 400;
-  white-space: nowrap;
+}
+
+/* A row's key combinations, side by side. */
+.combos {
+  display: flex;
+  gap: 0.25rem 0.375rem;
 }
 
 .combo {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  margin-right: 6px;
+  gap: 0.125rem;
+  white-space: nowrap;
 }
 
-.disabled {
+/*
+ * A key that is switched off: dimmed, and its cap is only a dashed outline, so it is marked by
+ * more than its colour and its letter stays readable.
+ */
+.off,
+.off kbd {
   color: var(--color-muted);
 }
 
-.disabled kbd {
-  opacity: 0.6;
+.off kbd {
+  border: 1px dashed currentcolor;
+  background: none;
 }
 
-.off {
+/* Why some keys are dimmed, right above them. */
+.note {
   margin: 0;
   color: var(--color-muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-secondary);
 }
 
 .list {
   display: grid;
-  gap: 4px;
+  gap: 0.25rem;
   margin: 0;
-  padding-left: 1.1rem;
-  font-size: 0.875rem;
+  padding-inline-start: 1.1rem;
+  font-size: var(--text-secondary);
 }
 
-.note {
-  margin: 16px 0 0;
-  color: var(--color-muted);
-  font-size: 0.8125rem;
-}
-
-@media (max-width: 40rem) {
+/*
+ * One column where two would squeeze the keys. A narrow table breaks a row's keys between their
+ * combinations, never inside one, so the descriptions keep most of the width.
+ */
+@media (max-width: 48rem) {
   .columns {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .keys th {
-    white-space: normal;
+  .combos {
+    flex-wrap: wrap;
+  }
+}
+
+/* The system picks the text colour, so its own colour for what is switched off says "dimmed". */
+@media (forced-colors: active) {
+  .off,
+  .off kbd {
+    color: GrayText;
   }
 }

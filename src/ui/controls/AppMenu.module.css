@@ -1,0 +1,14 @@
+.menu {
+  width: max-content;
+  min-width: 12rem;
+  max-width: calc(100vw - 16px);
+}
+
+/* Icon and label a little apart, as in a list. */
+.menu > button {
+  gap: 0.625rem;
+}
+
+.menu > button > svg {
+  color: var(--color-muted);
+}

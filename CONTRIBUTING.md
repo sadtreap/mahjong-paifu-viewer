@@ -29,7 +29,7 @@ Biome enforces formatting and lint rules (`biome.json`); run `pnpm lint:fix` to 
 - 2-space indentation, double quotes, semicolons, trailing commas, 100-column lines, LF line endings.
 - Prefer named exports. Default exports are only for files a tool requires them in (e.g. `vite.config.ts`).
 - Component styles live next to the component as `Component.module.css`.
-- Persist browser state only through `src/storage.ts`, which namespaces localStorage keys (all project sites on `sadtreap.github.io` share one origin). User preferences go in the one versioned settings blob of `src/ui/settings/settings.ts`.
+- Persist browser state only through `src/storage.ts`, which namespaces localStorage keys (all project sites on `sadtreap.github.io` share one origin). User preferences go in the one versioned settings blob of `src/ui/settings/settings.ts`: version 2 holds `view` (`"3d"` or `"flat"`), `showAllHands`, `showWaits`, `charKeys` and `autoplaySpeed`. A version 1 blob is read for those fields and rewritten as version 2; a new field means a new version and a migration there.
 - Code comments, docs and commit messages are written in English.
 
 ## Internationalization
@@ -42,18 +42,26 @@ Every user-visible string goes through `src/i18n`. Never hard-code UI text in co
 
 Strings that need values are functions, e.g. `` round: (n: number) => `Round ${n}` ``.
 
-Text the parsers take from a log (player names, unknown yaku, rule text they cannot read) is shown as it is. Anything the app itself knows, such as Tenhou's rooms and ranks, comes from structured model fields and is localized.
+Text the parsers take from a log (player names, unknown yaku) is shown as it is. Anything the app itself knows, such as yaku, limit hands and the reasons for a draw, comes from structured model fields and is localized. Korean and Japanese use the usual mahjong terms of each language.
+
+## Layout and look
+
+- The viewer has three arrangements of the same elements: `wide` (desktops and tablets in landscape: the table fills the window, the toolbar and the info chip float over its top corners and the transport bar lies on the felt), `short` (a phone on its side: a column on the right) and `stack` (portrait screens and squarish windows: a top bar, the table, the controls under it). Their media queries live in `src/ui/arrangement.ts`, `useArrangement()` reads them, and every stylesheet that depends on them repeats the strings verbatim (`src/ui/theme.test.ts` checks it). The document order is the same in all three and is the focus order; never reorder with CSS `order`.
+- The table's numbers (cameras, console, ponds, hand rows, rails, the places of the seat tags) live only in `src/ui/table/geometry.ts`. The stage writes them as inline custom properties and the table's stylesheets only read `var()`, so the code that needs them too (the discard flight, the captions, the seat tags, the height of the table in the stack arrangement) and the CSS cannot disagree.
+- Colours, sizes and motion are custom properties in `src/index.css`, in three labelled blocks: base, chrome (the floating surfaces, the controls and the viewer's page sizes such as `--top-bar`) and table. There is one dark theme. Colours are written `#rrggbb` or `rgb(r g b / a)`; add a token only when something uses it, and delete it with its last use.
+- Buttons get their look from the one `button` rule in `src/index.css` and its attributes: `data-variant="primary"` or `"ghost"`, `data-size="lg"`, `data-icon`, and the states `aria-pressed`, `aria-expanded` and `aria-disabled`. A component gives a button its place and size, never its border or colours.
+- Checks in a real browser rely on a few hooks in the DOM: `[data-stage]` on the stage, `[data-side="bottom|right|top|left"]` on the seat layers, `img[data-d="seat:index"]` on pond tiles, `[data-own-hand]` on the viewed player's hand, and `data-gesture="ignore"` on the chrome over the stage. Keep them.
 
 ## Accessibility
 
-- Text needs a contrast of 4.5:1 in both themes; `src/ui/theme.test.ts` checks the color tokens in `src/index.css`.
-- Anything drawn only with backgrounds (sticks, highlights) needs a `@media (forced-colors: active)` rule, or it disappears in Windows High Contrast mode.
-- A button that can reach its limit when pressed (Last step) uses `aria-disabled`, not `disabled`, so it keeps the focus.
+- Text needs a contrast of 4.5:1 on every surface it sits on, including the translucent chrome over each tone of the felt; `src/ui/theme.test.ts` checks the color tokens in `src/index.css`. Focus rings and other marks need 3:1.
+- Anything drawn only with backgrounds (the scrubber, the turn bar, sticks, highlights, a pressed toggle, tile backs) needs a `@media (forced-colors: active)` rule, or it disappears in Windows High Contrast mode.
+- A button that can reach its limit when pressed (Next step at the end of the game) uses `aria-disabled`, not `disabled`, so it keeps the focus.
 - When a view or message replaces the control that had the focus, move the focus on purpose (see `src/ui/shell/Shell.tsx`, `src/ui/Viewer.tsx` and `src/ui/ErrorMessage.tsx`).
-- Announce each change once: the dock's status line (`src/ui/controls/StatusLine.tsx`) is the only live region of the viewer, and it stays quiet during autoplay, holds, wheel bursts and scrubs.
-- Keep clicks on the table for stepping: nothing on the felt is a button (the plates are display only), and hover aids never take the pointer. Anything clickable over the stage (cards, menus, sheets) carries `data-gesture="ignore"`.
+- Announce each change once: `src/ui/controls/LiveStatus.tsx`, which is not shown on screen, is the only live region of the viewer. It reads the current step (never a draw the viewer cannot see) and stays quiet during autoplay, holds, wheel bursts and scrubs. Messages such as "Link copied" show as a toast that is `aria-hidden`, and LiveStatus reads them; so does a notice the shell passes in (a download over the game).
+- Keep clicks on the table for stepping. The centre console is the one button on the felt: a tap on it toggles the score differences, while a swipe that starts on it and the wheel still step. Hover aids never take the pointer. Chrome over the stage (the toolbar, the info chip, the transport bar, popovers and the result card's layer) carries `data-gesture="ignore"`.
 - Every mouse or touch action needs a keyboard or button equivalent. The keyboard map lives in one table, `src/ui/viewer/shortcuts.ts`, which both the key handler and the help dialog read.
-- Check layout changes in a browser at 320 px, a phone in landscape and desktop width; the tests run in happy-dom, which does not lay out CSS. The page layouts are the breakpoints of `src/ui/breakpoints.ts`, repeated verbatim in `src/ui/Viewer.module.css` (`theme.test.ts` checks it).
+- Check layout changes in a browser in all three arrangements, at 320 px wide, on a phone in landscape and at desktop width; the tests run in happy-dom, which does not lay out CSS.
 
 ## Tests
 
@@ -71,7 +79,7 @@ Tests are colocated with the code as `*.test.ts(x)` and run with `pnpm test`. Pa
   - `TENHOU_JSON_SANMA_CORPUS_DIR`: Tenhou's own tenhou.net/6 exports of three-player games.
 
   For example, `MJLOG_CORPUS_DIR=~/tenhou-logs pnpm test src/formats`. Each mjlog game is compared with Tenhou's own scores and hands, replayed with `checkGame`, and must come back unchanged from `toMjlogXml`, tag for tag. It must also give the same game written as tenhou.net/6 JSON and as mjai. The tenhou.net/6 exports must come back entry for entry from `toTenhouJson`.
-- The sample logs offered on the welcome card and in the Open dialog live in `public/samples` (listed in `src/ui/samples.ts`) and follow the same rules.
+- The sample logs offered on the landing card and in the Open dialog live in `public/samples` (listed in `src/ui/samples.ts`) and follow the same rules.
 
 ## Commit messages
 

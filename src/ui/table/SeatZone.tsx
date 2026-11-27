@@ -1,10 +1,10 @@
 import { type CSSProperties, memo } from "react";
-import { useI18n } from "../../i18n/context";
+import type { DiscardView, MeldView, SeatView } from "../../replay/types";
 import { cx } from "../cx";
 import { HandRow } from "../HandRow";
 import { Pond } from "../Pond";
 import type { SeatZoneProps } from "../viewer/types";
-import { type OppRowLayout, oppRowLayout, seatViewEqual, wallLength } from "./geometry";
+import { OPP_ROW_START, type OppRowLayout, oppRowLayout, pondScale, wallLength } from "./geometry";
 import layers from "./layers.module.css";
 import styles from "./SeatZone.module.css";
 import { WallParts } from "./WallLayer";
@@ -15,13 +15,6 @@ export interface SeatZoneOwnProps extends SeatZoneProps {
    * while the face-up hand fades in.
    */
   revealing?: boolean;
-}
-
-/** "23400" → ["234", "00"]: the console edge prints the hundreds smaller. */
-export function edgeScore(score: number): [string, string] {
-  return score % 100 === 0 && Math.abs(score) >= 100
-    ? [String(score / 100), "00"]
-    : [String(score), ""];
 }
 
 /**
@@ -37,61 +30,88 @@ export function seatRow(
   return side === "bottom" ? { start: 0, hs: 1, gap: 0 } : oppRowLayout(view, seat, side, walled);
 }
 
+function meldEqual(a: MeldView, b: MeldView): boolean {
+  return (
+    a.type === b.type &&
+    a.from === b.from &&
+    a.calledTile === b.calledTile &&
+    a.addedTile === b.addedTile &&
+    a.tiles.length === b.tiles.length &&
+    a.tiles.every((tile, i) => tile === b.tiles[i])
+  );
+}
+
+function discardEqual(a: DiscardView, b: DiscardView): boolean {
+  return (
+    a.tile === b.tile &&
+    a.tsumogiri === b.tsumogiri &&
+    a.riichi === b.riichi &&
+    a.called === b.called
+  );
+}
+
+function listEqual<T>(a: readonly T[], b: readonly T[], eq: (x: T, y: T) => boolean): boolean {
+  return a === b || (a.length === b.length && a.every((x, i) => eq(x, b[i] as T)));
+}
+
+const same = <T,>(x: T, y: T) => x === y;
+
+/**
+ * Whether two snapshots of a seat draw the same: hand, melds and discards element by element, the
+ * drawn tile, the kita count and riichi (the score is drawn on the console). The seat zones are
+ * memoised per step by it.
+ */
+export function seatViewEqual(a: SeatView, b: SeatView): boolean {
+  return (
+    a === b ||
+    (a.drawn === b.drawn &&
+      a.riichi === b.riichi &&
+      a.kita.length === b.kita.length &&
+      listEqual(a.hand, b.hand, same) &&
+      listEqual(a.melds, b.melds, meldEqual) &&
+      listEqual(a.discards, b.discards, discardEqual))
+  );
+}
+
 function SeatZoneImpl({
   side,
   seat,
   view,
   name,
-  wind,
-  dealer,
-  active,
   revealed,
   isPov,
   walled,
   highlightIndex,
-  dimTsumogiri,
   flightIndex,
   revealing = false,
 }: SeatZoneOwnProps) {
-  const { m } = useI18n();
   const layerClass = cx(layers.layer, layers[side]);
   if (seat === null || view === null) {
     return (
       <div className={layerClass} data-side={side}>
-        <div className={styles.emptyChair} aria-hidden="true" />
+        <div className={styles.emptySeat} aria-hidden="true" />
       </div>
     );
   }
   const row = seatRow(view, seat, side, walled);
   const hs = row.hs;
-  const length = wallLength(view);
-  const [hundreds, zeros] = edgeScore(view.score);
   const sideWall = side === "right" || side === "left" ? side : null;
+  const layerStyle = {
+    "--hs": String(hs),
+    "--L": String(wallLength(view)),
+    "--row0": String(side === "bottom" ? 0 : OPP_ROW_START[side]),
+  } as CSSProperties;
   return (
-    <div
-      className={layerClass}
-      data-side={side}
-      style={{ "--hs": String(hs), "--L": String(length) } as CSSProperties}
-    >
-      <div className={cx(styles.edge, side === "top" && styles.upright)} aria-hidden="true">
-        {wind !== null && (
-          <span className={cx(styles.wind, dealer && styles.dealer)}>
-            {m.board.windsShort[wind]}
-          </span>
-        )}
-        <span className={styles.score}>
-          {hundreds}
-          {zeros !== "" && <small>{zeros}</small>}
-        </span>
-      </div>
-      {active && <div className={styles.turnBar} />}
-      {view.riichi && <span className={styles.stick} role="img" aria-label={m.board.riichi} />}
-      <div className={styles.pond}>
+    <div className={layerClass} data-side={side} style={layerStyle}>
+      {view.riichi && <span className={styles.stick} aria-hidden="true" />}
+      <div
+        className={styles.pond}
+        style={{ "--ps": pondScale(view.discards).toFixed(4) } as CSSProperties}
+      >
         <Pond
           discards={view.discards}
           name={name}
           lastIndex={highlightIndex}
-          dimTsumogiri={dimTsumogiri}
           seat={seat}
           hiddenIndex={flightIndex}
           hiddenClassName={styles.landing}
@@ -106,7 +126,6 @@ function SeatZoneImpl({
             revealed={revealed}
             spacer={walled}
             spacerGap={row.gap / hs}
-            showKita
             concealedClassName={revealing ? styles.revealIn : undefined}
           />
         </div>
@@ -139,14 +158,10 @@ function propsEqual(a: SeatZoneOwnProps, b: SeatZoneOwnProps): boolean {
     a.side === b.side &&
     a.seat === b.seat &&
     a.name === b.name &&
-    a.wind === b.wind &&
-    a.dealer === b.dealer &&
-    a.active === b.active &&
     a.revealed === b.revealed &&
     a.isPov === b.isPov &&
     a.walled === b.walled &&
     a.highlightIndex === b.highlightIndex &&
-    a.dimTsumogiri === b.dimTsumogiri &&
     a.flightIndex === b.flightIndex &&
     a.revealing === b.revealing &&
     (a.view === b.view || (a.view !== null && b.view !== null && seatViewEqual(a.view, b.view)))
@@ -154,9 +169,9 @@ function propsEqual(a: SeatZoneOwnProps, b: SeatZoneOwnProps): boolean {
 }
 
 /**
- * One seat's layer in the plane: the console edge (wind and score), the turn bar, the riichi
- * stick, the pond, and for opponents the hand row (face up, lying backs in flat mode, or a spacer
- * under a standing side wall), kita and melds. A null seat is the sanma empty chair: only a dashed
- * outline. Memoised per step by seatViewEqual.
+ * One seat's layer in the plane: the riichi stick by the console, the pond, and for opponents the
+ * hand row (face up, lying backs in flat mode, or a spacer under a standing side wall), kita and
+ * melds. A null seat is the empty seat of a three-player game: only a dashed outline. Memoised per
+ * step by seatViewEqual.
  */
 export const SeatZone = memo(SeatZoneImpl, propsEqual);
