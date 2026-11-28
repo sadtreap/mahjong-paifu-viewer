@@ -1,108 +1,63 @@
 /*
- * Seat layer contents, in bottom-seat coordinates (units u = S / 20). The places come from
- * geometry.ts as custom properties: the pond (--pond-x, --pond-y, --pond-tile and the seat's own
- * --ps when a long pond shrinks its tiles), and the hand row (--row0 to --row-end, --row-gap from
- * the edge), a pinwheel in which each row holds the corner on its owner's left.
+ * Seat layer contents, in bottom-seat coordinates (units u, a tile's width). The places come from
+ * geometry.ts as custom properties: the pond (--pond-x, --pond-y, and the seat's own --ps when a
+ * long pond shrinks its tiles), and the hand row (--hand-start to --hand-end, --hand-edge from
+ * the table's edge, and the seat's own --hs when many calls make the row too long).
  */
 .pond {
-  --tile-w: calc(var(--u) * var(--pond-tile) * var(--ps, 1));
+  --tile-w: calc(var(--u) * var(--ps, 1));
 
   position: absolute;
   left: calc(var(--u) * var(--pond-x));
   top: calc(var(--u) * var(--pond-y));
 }
 
-/*
- * The far seat's pond is nearer the camera than its hand row, whose drawn thickness falls toward
- * the pond (--dy: -1 in that layer) and ends where the pond's last row begins: the pond paints
- * over that thickness instead of under it (in document order the row came later).
- */
-[data-side="top"] > .pond {
-  z-index: 1;
-}
-
-/* A discard whose flight proxy is still in the air (FlightLayer). */
+/* The discard just made settles into its place. */
 .landing {
-  opacity: 0;
+  animation: land 160ms var(--ease) both;
 }
 
-.pond :has(> .landing) {
-  box-shadow: none;
+@keyframes land {
+  from {
+    opacity: 0;
+    scale: 1.2;
+  }
 }
 
 /*
- * The riichi stick: along the console's edge on the seat's side, half on the rim and half in the
- * gap between the console and the seat's pond.
+ * The riichi stick: in the gap between the console and the seat's pond, along the console's edge.
+ * It is white on a pale mat, so its outline is the one that has to stand out (a field's border).
  */
 .stick {
-  --edge: calc(var(--console-from) + var(--console-size));
+  --edge: calc((var(--units) + var(--console-size)) / 2);
 
   position: absolute;
-  left: calc(var(--u) * (var(--console-from) + 0.8));
-  top: calc(var(--u) * (var(--edge) - 0.05));
-  width: calc(var(--u) * (var(--console-size) - 1.6));
-  height: calc(var(--u) * (var(--pond-y) - var(--edge)));
+  left: calc(var(--u) * (var(--pond-x) + 1));
+  top: calc(var(--u) * (var(--edge) + 0.06));
+  width: calc(var(--u) * (var(--console-size) - 2));
+  height: calc(var(--u) * (var(--stick-gap) - 0.12));
   border-radius: 99px;
   background:
-    var(--stick) radial-gradient(circle, var(--stick-dot) 0 30%, transparent 36%) center / 7% 100%
-    no-repeat;
-  box-shadow: 0 calc(var(--u) * 0.03) calc(var(--u) * 0.05) rgb(0 0 0 / 0.5);
+    radial-gradient(circle, var(--stick-dot) 0 30%, transparent 36%) center / 7% 100% no-repeat,
+    var(--stick);
+  box-shadow: inset 0 0 0 1px var(--color-border);
   pointer-events: none;
 }
 
-/*
- * The far seat's first pond row shows its drawn thickness toward the camera, across that same gap:
- * the stick lies in front of those tiles, so it is painted over the pond.
- */
-[data-side="top"] > .stick {
-  z-index: 2;
-}
-
-.opp {
+.hand {
   --tile-w: calc(var(--u) * var(--hs, 1));
 
   position: absolute;
-  left: calc(var(--u) * var(--row0));
-  bottom: calc(var(--u) * var(--row-gap));
-  width: calc(var(--u) * (var(--row-end) - var(--row0)));
+  left: calc(var(--u) * var(--hand-start));
+  bottom: calc(var(--u) * var(--hand-edge));
+  width: calc(var(--u) * (var(--hand-end) - var(--hand-start)));
   display: flex;
   align-items: flex-end;
 }
 
-/*
- * The round-end reveal: the face-up hand slides in from the seat's own edge as the wall fades out
- * (sliding toward the table's centre would cross the next seat's row in the corner).
- */
-.revealIn {
-  animation: reveal-in 220ms 140ms ease-out both;
-}
-
-@keyframes reveal-in {
-  from {
-    opacity: 0;
-    translate: 0 calc(var(--u) * 0.35);
-  }
-}
-
-/* The empty seat of a three-player game: a dashed outline where its pond would be. */
-.emptySeat {
-  position: absolute;
-  left: calc(var(--u) * (var(--console-from) + 1));
-  top: calc(var(--u) * (var(--pond-y) + 2.5));
-  width: calc(var(--u) * (var(--console-size) - 2));
-  height: calc(var(--u) * 1.4);
-  border: calc(var(--u) * 0.06) dashed rgb(255 255 255 / 0.16);
-  border-radius: calc(var(--u) * 0.3);
-  pointer-events: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .revealIn {
-    animation: none;
-  }
-
   .landing {
-    opacity: 1;
+    animation: none;
   }
 }
 
@@ -110,9 +65,5 @@
   .stick {
     forced-color-adjust: none;
     outline: 2px solid Highlight;
-  }
-
-  .emptySeat {
-    border-color: GrayText;
   }
 }

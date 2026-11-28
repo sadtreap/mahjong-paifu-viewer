@@ -1,4 +1,4 @@
-/* The dark room without a table: exactly one screen, so the page never scrolls. */
+/* The page without a table: exactly one screen, so the page never scrolls. */
 .room {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -6,7 +6,7 @@
   block-size: 100dvh;
   padding: 8px;
   overflow: hidden;
-  background: radial-gradient(120% 95% at 50% 30%, var(--room-0), var(--room-1) 55%, var(--room-2));
+  background: var(--color-bg);
 }
 
 /* Scrolls inside itself when the window is shorter than its content. */
@@ -18,11 +18,10 @@
   padding: 1.5rem;
   overflow: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--chrome-border);
+  border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-card);
-  background: var(--chrome-bg-solid);
+  background: var(--color-panel);
   color: var(--color-fg);
-  box-shadow: var(--chrome-shadow);
 }
 
 /* It takes the focus only when the control that had it goes away, as a place to start from. */
@@ -42,7 +41,9 @@
   min-inline-size: 0;
   margin: 0;
   font-size: 1.25rem;
+  font-weight: 600;
   line-height: 1.3;
+  letter-spacing: -0.01em;
   text-wrap: balance;
 }
 

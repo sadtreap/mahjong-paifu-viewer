@@ -52,7 +52,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [settings]);
 
   const update = useCallback((patch: Partial<Settings>) => {
-    setSettings((previous) => ({ ...previous, ...patch, version: 2 }));
+    setSettings((previous) => ({ ...previous, ...patch, version: DEFAULT_SETTINGS.version }));
   }, []);
 
   const reset = useCallback(() => setSettings({ ...DEFAULT_SETTINGS }), []);

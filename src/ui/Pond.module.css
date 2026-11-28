@@ -1,8 +1,6 @@
 .pond {
   display: flex;
   flex-direction: column;
-  /* Keeps the tiles' paint order (TileImage depth) inside the pond. */
-  isolation: isolate;
 }
 
 .row {

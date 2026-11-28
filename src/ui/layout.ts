@@ -126,16 +126,6 @@ export function handRowWidth(
   return width;
 }
 
-/**
- * Width of the point of view's own hand in tile widths (the flat row under the table): the same
- * parts as handRowWidth, with the drawn tile's slot always counted (the row keeps it empty between
- * turns, so the centred row and its tile size change only on calls, never on a draw or a discard).
- * The own hand's tile size is min(1.3 u, 0.96 S / ownRowUnits).
- */
-export function ownRowUnits(view: SeatView, owner: Seat): number {
-  return handRowWidth(view, owner) + (view.drawn === null ? 1 + DRAWN_GAP : 0);
-}
-
 /** Scale that fits a hand row into the available width (never enlarges). */
 export function fitScale(width: number, available: number): number {
   return width <= available ? 1 : available / width;

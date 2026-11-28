@@ -17,7 +17,7 @@ const TSUMOGIRI_MS = 550;
 
 /**
  * How long autoplay waits on a step before the next one: the 1× delay divided by the speed, or
- * "stop" at a result (autoplay pauses there with the card open).
+ * "stop" at a result (autoplay pauses there, with the result in the panel).
  */
 export function autoplayDelay(info: StepInfo, speed: AutoplaySpeed): number | "stop" {
   if (info.kind === "result") {

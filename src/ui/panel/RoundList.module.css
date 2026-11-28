@@ -1,0 +1,121 @@
+/*
+ * The list keeps at least its heading and a row in view and scrolls inside when the panel has no
+ * room for every round; the heading stays at its top.
+ */
+.rounds {
+  display: grid;
+  align-content: start;
+  min-block-size: 5.5rem;
+  padding: 0 0.75rem 0.5rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.head {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-block-size: 2.5rem;
+  padding-inline: 0.5rem;
+  background: var(--color-panel);
+}
+
+.heading {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1rem;
+}
+
+.whose {
+  min-inline-size: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  line-height: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A row: the round, how it ended (cut short first) and the viewed player's change. */
+.row {
+  display: grid;
+  grid-template-columns: minmax(5.75rem, auto) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0 0.625rem;
+  inline-size: 100%;
+  min-block-size: 2.5rem;
+  padding: 0.5rem;
+  font-weight: 400;
+  text-align: start;
+}
+
+.round {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.row[aria-current="true"] .round {
+  font-weight: 600;
+}
+
+.outcome {
+  display: grid;
+  min-inline-size: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+}
+
+/*
+ * One win on one line: long names give way (with an ellipsis, down to a few letters); short
+ * names, the words and the points never do.
+ */
+.win {
+  display: flex;
+  min-inline-size: 0;
+}
+
+.words {
+  flex: none;
+  white-space: pre;
+}
+
+.who {
+  flex: 0 1 auto;
+  min-inline-size: 3em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.who[data-short] {
+  flex: none;
+  min-inline-size: 0;
+}
+
+.delta {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.delta[data-sign="gain"] {
+  color: var(--color-gain);
+  font-weight: 600;
+}
+
+.delta[data-sign="loss"] {
+  color: var(--color-loss);
+}
+
+.final {
+  justify-content: flex-start;
+  inline-size: 100%;
+  min-block-size: 2.5rem;
+  padding: 0.5rem;
+  font-weight: 500;
+}

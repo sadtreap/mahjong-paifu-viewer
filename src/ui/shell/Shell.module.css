@@ -1,8 +1,7 @@
 /*
  * A download in progress while a game is shown (a pasted link, Back to another game): a bar
- * sweeping along the top edge of the page. That edge is the one strip the table never reaches;
- * anywhere below it, the far hand can stand at the stage's top once the hands are walls or the
- * table is flat, in every arrangement. The viewer's live region reads the words out.
+ * sweeping along the top edge of the page, the one strip nothing else uses. The viewer's live
+ * region reads the words out.
  */
 .download {
   position: fixed;

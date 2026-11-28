@@ -3,7 +3,7 @@ import type { GameLog, Quad, Round, Seat } from "../../../core/model";
 import { SEATS } from "../../../core/model";
 import type { BoardState } from "../../../replay/types";
 import type { SeatAid, Spotlight, TableStageProps } from "../../viewer/types";
-import { seatTagsFor } from "../seatTagInfo";
+import { seatInfoFor } from "../seatInfo";
 
 export const noSpotlight: Spotlight = { hover() {}, clear() {} };
 
@@ -16,7 +16,11 @@ export interface StagePropsInput {
   aid?: (seat: Seat) => SeatAid | null;
 }
 
-/** TableStage props for a table state, with no-op callbacks (override what a test checks). */
+/**
+ * TableStage props for a table state: every hand face up, nothing moving, no captions and no-op
+ * callbacks (override what a test checks). The seats are those of `pov`, so pass the point of view
+ * here and not only as an override.
+ */
 export function stageProps(
   { game, round, state, names, pov = 0, aid = () => null }: StagePropsInput,
   overrides: Partial<TableStageProps> = {},
@@ -28,10 +32,7 @@ export function stageProps(
     names,
     pov,
     revealed: new Set(SEATS),
-    view: "3d",
-    arrangement: "wide",
-    walls: false,
-    tags: seatTagsFor({
+    seats: seatInfoFor({
       playerCount: game.playerCount,
       dealer: round.dealer,
       seats: state.seats,
@@ -40,7 +41,7 @@ export function stageProps(
       aid,
     }),
     captions: [],
-    motion: { flight: null, reveal: [] },
+    motion: { landing: null },
     spotlight: noSpotlight,
     onPondJump() {},
     stageRef: createRef<HTMLElement>(),

@@ -22,22 +22,21 @@
   bottom: calc(var(--tile-w) * 1.1);
   min-width: calc(var(--size) * 1.9);
   padding: 0 calc(var(--size) * 0.35);
-  border: 1px solid var(--chrome-border);
   border-radius: 99px;
-  background: var(--chrome-bg-solid);
-  color: var(--color-fg);
+  background: var(--color-fg);
+  color: var(--color-panel);
   font-size: var(--size);
   font-weight: 700;
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
   text-align: center;
   white-space: nowrap;
-  rotate: var(--kita-rot, 0deg);
+  rotate: var(--upright, 0deg);
   pointer-events: none;
 }
 
 @media (forced-colors: active) {
   .count {
-    border-color: CanvasText;
+    border: 1px solid CanvasText;
   }
 }

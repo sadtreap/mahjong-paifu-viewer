@@ -1,0 +1,160 @@
+.players {
+  display: grid;
+  padding: 0 0.75rem 0.5rem;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-block-size: 2.5rem;
+  padding-inline: 0.5rem;
+}
+
+.heading {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1rem;
+}
+
+.hands {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-block-size: var(--control);
+  font-size: var(--text-secondary);
+  cursor: pointer;
+}
+
+.hands > input {
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+/*
+ * A row: the wind, the name (which gives way first), the round's change and the score on one
+ * line; what the hand is doing goes under the name, on a line of its own, when there is any.
+ */
+.row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.125rem 0.625rem;
+  inline-size: 100%;
+  min-block-size: 2.5rem;
+  padding: 0.375rem 0.5rem;
+  font-weight: 400;
+  text-align: start;
+}
+
+.wind {
+  display: grid;
+  place-items: center;
+  inline-size: 1.375rem;
+  block-size: 1.375rem;
+  border-radius: 0.3125rem;
+  color: var(--color-muted);
+  font-size: var(--text-secondary);
+  font-weight: 600;
+}
+
+.wind[data-dealer] {
+  background: var(--color-fg);
+  color: var(--color-panel);
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+.name {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row[aria-pressed="true"] .name {
+  font-weight: 600;
+}
+
+/* The mark of the viewed player: a word in a hairline box, so it is not said by the fill alone. */
+.viewed {
+  flex: none;
+  padding: 0 0.3125rem;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 0.25rem;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  line-height: 1rem;
+}
+
+.change,
+.score {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.score {
+  grid-column: 4;
+  min-inline-size: 3.25rem;
+  text-align: end;
+}
+
+.change[data-sign="gain"] {
+  color: var(--color-gain);
+  font-weight: 600;
+}
+
+.change[data-sign="loss"] {
+  color: var(--color-loss);
+}
+
+.note {
+  display: flex;
+  grid-column: 2 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.125rem 0.375rem;
+  color: var(--color-muted);
+  font-size: var(--text-secondary);
+  font-weight: 400;
+}
+
+.strong {
+  color: var(--color-fg);
+  font-weight: 600;
+}
+
+.tiles {
+  --tile-w: 1.125rem;
+
+  display: inline-flex;
+}
+
+.furiten {
+  padding: 0 0.3125rem;
+  border-radius: 0.25rem;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+
+@media (forced-colors: active) {
+  .wind[data-dealer],
+  .furiten {
+    border: 1px solid CanvasText;
+  }
+}

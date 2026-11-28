@@ -1,109 +1,40 @@
 /*
- * The page: the table's stage and the chrome around it, in three arrangements of the same
- * elements. The media queries are arrangement.ts's strings, verbatim; what matches neither is the
- * base, "stack".
+ * The page: the table's stage, the transport under it and the panel, in two arrangements of the
+ * same elements in the same order.
  *
- *   stack  a top bar (info chip, toolbar), the stage, the block of controls
- *   short  the stage, and a side column: toolbar, info chip and, at its bottom, the controls
- *   wide   nothing but the stage: the info chip and the toolbar float over its top corners and
- *          the transport sits in the table's dock slot
+ *   stack  (the base: portrait screens and squarish windows) the stage, the transport, the panel,
+ *          one under the other; the stage and the transport fill the first screen and the page
+ *          scrolls on to the panel
+ *   side   (landscape) the stage with the transport under it, and the panel beside them, one
+ *          screen tall: the page never scrolls, the panel does when it has to
  *
- * The app is one screen tall and never scrolls; below a minimum size it keeps that size and the
- * page scrolls instead. The stage is a size container, so every track down to it is definite.
- *
- * Two properties are declared here for the table: --dock-h, the height of the bar in its dock
- * slot (the table keeps a band of felt that tall free of tiles), and --overlay-rise, how far the
- * stage's overlay slot rises above the stage: over the top bar where there is one, so the result
- * card can cover it. In the wide arrangement --dock-h counts in --scrub-rise (index.css), the
- * scrubber's strip above the bar.
- *
- * The other way round, the table tells this page how far its hand rows reach in the stage's top
- * corners (the --corner-* properties on .viewer, geometry.ts cornerVars): --corner is the room
- * that leaves the info chip and the toolbar where they float over the table. In the stack
- * arrangement the viewer also sets --table-h, the most height the table can use at the page's
- * width, from which the toast tells how much room the table leaves above itself.
- *
- * The page is a stacking context of its own, and everything that overlaps has its own layer in
- * it, so the order is the same in every browser: the top bar, then the stage (with the table and
- * the result card's layer inside it), then the chrome floating over the stage (info chip, then
- * toolbar), then the toast. The popovers are on the page body, above all of it.
+ * The stage is a size container, so its box is definite in both: a share of the screen in the
+ * stack, the cell the grid gives it beside the panel.
  */
 .viewer {
-  --dock-h: 0px;
-  --overlay-rise: var(--top-bar);
-  /*
-   * The toolbar with icons only: two square buttons, the point-of-view button (seat wind and
-   * caret) and the gaps (Toolbar.module.css; its container queries repeat these widths).
-   */
-  --tools-row: calc(2 * var(--control) + 3.125rem + 4px);
-
   position: relative;
   isolation: isolate;
   display: grid;
-  /* The info chip takes the room it needs, the toolbar the rest: at least its icons' row. */
-  grid-template-columns: minmax(0, auto) minmax(calc(var(--tools-row) + 4px), 1fr);
-  /*
-   * The stage takes all the height between the top bar and the controls. The table stands on the
-   * controls until it has a little room to spare above itself; on a taller stage it moves toward
-   * the middle, with its felt carried on under the own hand down to the controls (geometry.ts
-   * Camera.keep).
-   */
-  grid-template-rows: var(--top-bar) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    "info tools"
-    "stage stage"
-    "controls controls";
-  height: 100dvh;
+    "board"
+    "controls"
+    "panel";
   min-width: 320px;
-  min-height: 440px;
-  overflow: clip;
-  background: var(--chrome-bg-solid);
+  min-height: 100dvh;
+  background: var(--color-bg);
   color: var(--color-fg);
 }
 
-.info {
-  grid-area: info;
-  z-index: 0;
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  padding-inline: max(10px, env(safe-area-inset-left)) 8px;
-}
-
-/* The toolbar's room, a container the toolbar asks how much it may show. */
-.tools {
-  grid-area: tools;
-  z-index: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  min-width: 0;
-  padding-inline-end: max(4px, env(safe-area-inset-right));
-  container: tools / inline-size;
-}
-
-.viewer > [data-stage],
-.failed {
-  grid-area: stage;
-  z-index: 1;
-}
-
 /*
- * A focus ring in the top bar is never left under the result card, which may cover the bar: the
- * toolbar comes up to the floating toolbar's layer.
+ * As tall as the screen leaves above the transport (two lines of it on a phone), and never taller
+ * than it is wide: the table is a square.
  */
-.tools:has(:focus-visible) {
-  z-index: 3;
-}
-
-/*
- * What spans both columns of the top bar takes its width from them and never widens the info
- * chip's column.
- */
-.controls,
-.toast,
-.failed {
-  contain: inline-size;
+.board {
+  grid-area: board;
+  position: relative;
+  min-width: 0;
+  height: clamp(17.5rem, 100dvh - 6.5rem, 100vw);
 }
 
 .controls {
@@ -111,52 +42,40 @@
   display: flex;
   justify-content: center;
   min-width: 0;
-  padding: 8px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom))
-    max(8px, env(safe-area-inset-left));
-  border-top: 1px solid var(--chrome-border);
+  padding: 0.125rem max(0.75rem, env(safe-area-inset-right)) 0.625rem
+    max(0.75rem, env(safe-area-inset-left));
 }
 
-/* On a tablet the controls keep a hand's width. */
+/* On a wide screen the transport keeps to the table's width. */
 .controls > * {
   flex: 1 1 auto;
-  max-width: 560px;
+  max-width: 52rem;
 }
 
-/*
- * The toast: at the top centre of the stage, over the table and everything on it. The box fills
- * the stage, a container whose height says how much room the table leaves above itself (the
- * stage less --table-h). Where that is less than the toast needs, the toast rises by the
- * difference, over the top bar rather than over the far player's tiles.
- */
-.toast {
-  grid-area: stage;
-  z-index: 4;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
+.panel {
+  grid-area: panel;
+  display: grid;
   min-width: 0;
-  min-height: 0;
-  padding: 12px 8px 0;
-  container-type: size;
-  pointer-events: none;
+  border-block-start: 1px solid var(--color-line-strong);
 }
 
-/* It needs its padding, a line and a gap; it rises at most to 5px from the top bar's top. */
-.toast > * {
-  translate: 0 clamp(-7px - var(--top-bar), 100cqh - var(--table-h, 0px) - 50px, 0px);
+/* The toast: at the top centre of the stage, over the table. */
+.toast {
+  position: absolute;
+  z-index: 4;
+  inset: 0.75rem 0.5rem auto;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
 }
 
 /* A round that could not be replayed: the message takes the stage's place. */
 .failed {
-  position: relative;
   display: grid;
   place-items: center;
   width: 100%;
   height: 100%;
-  min-width: 0;
-  min-height: 0;
-  padding: 16px;
-  background: var(--room-1);
+  padding: 1rem;
 }
 
 .failed > p {
@@ -165,154 +84,52 @@
   padding: 1rem;
   border: 1px solid var(--color-danger);
   border-radius: var(--radius-control);
+  background: var(--color-danger-bg);
 }
 
 .failed:focus {
   outline: none;
 }
 
-.failedDock {
-  position: absolute;
-  right: 8px;
-  bottom: 24px;
-  left: 8px;
-  display: flex;
-  justify-content: center;
-}
-
-@media (min-aspect-ratio: 8 / 5) and (max-height: 480px) {
+@media (min-aspect-ratio: 4 / 3) and (min-width: 640px) {
   .viewer {
-    --overlay-rise: 0px;
-    /* Controls are 40px here, for fingers and pointers alike: the column has to fit 300px. */
-    --control: 2.5rem;
-
-    grid-template-columns: minmax(0, 1fr) var(--side-column);
     /*
-     * The toolbar, the info chip, room to spare, the controls. Where the column is too short (the
-     * controls with Show result in a 300px window) the info chip gives way first, never a control.
+     * The panel takes what the table cannot use: the table is as tall as the screen less the
+     * transport, and as wide as that at most. Between 300 and 360 px.
      */
-    grid-template-rows: auto minmax(0, auto) minmax(0, 1fr) auto;
+    --panel-w: clamp(18.75rem, 100vw - 100dvh + 4.75rem, 22.5rem);
+    /* The round list fills the panel's spare height (Panel.module.css). */
+    --panel-fill: 1 1 0;
+
+    grid-template-columns: minmax(0, 1fr) var(--panel-w);
+    grid-template-rows: minmax(0, 1fr) auto;
     grid-template-areas:
-      "stage tools"
-      "stage info"
-      "stage ."
-      "stage controls";
-    min-width: 560px;
-    min-height: 300px;
+      "board panel"
+      "controls panel";
+    height: 100dvh;
+    min-height: 18.75rem;
+    overflow: clip;
   }
 
-  /* The column's edge. */
-  .viewer::before {
-    content: "";
-    grid-area: 1 / 2 / -1 / -1;
-    border-left: 1px solid var(--chrome-border);
-  }
-
-  .info {
-    align-items: flex-start;
-    overflow: hidden;
-    padding: 6px max(8px, env(safe-area-inset-right)) 0 9px;
-  }
-
-  .tools {
-    justify-content: flex-start;
-    padding: 6px max(4px, env(safe-area-inset-right)) 0 5px;
+  .board {
+    height: auto;
+    min-height: 0;
   }
 
   .controls {
-    padding: 0 max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) 7px;
-    border-top: 0;
+    padding-inline-end: 0.75rem;
   }
 
-  /*
-   * The toast takes the column's spare room, just above the controls, off the table; in a column
-   * with no room to spare it lies over the info chip.
-   */
-  .toast {
-    grid-area: 2 / 2 / 4 / 3;
-    align-items: flex-end;
-    padding: 0 max(6px, env(safe-area-inset-right)) 8px 7px;
-    container-type: normal;
+  /* The panel's own column: it scrolls when a low screen is too short for it. */
+  .panel {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-block-start: 0;
+    border-inline-start: 1px solid var(--color-line-strong);
   }
 
-  .toast > * {
-    translate: none;
-  }
-}
-
-@media (min-aspect-ratio: 13 / 10) and (min-height: 481px) {
-  .viewer {
-    /* The bar (a control, its padding and border) and the scrubber's strip above it. */
-    --dock-h: calc(var(--control) + 8px + var(--scrub-rise));
-    --overlay-rise: 0px;
-    /* How far the floating chrome keeps from the stage's edges. */
-    --edge: 12px;
-    /* The floating toolbar's height and its row's width: its buttons, padding and border. */
-    --tools-h: calc(var(--control) + 8px);
-    --tools-row: calc(2 * var(--control) + 3.125rem + 12px);
-    /*
-     * The largest the table can be (the stage is the whole viewport here), and the room from that
-     * edge to its nearest tile in a top corner, less a margin: the table's centre line, less the
-     * reach of its hand rows.
-     */
-    --table-max: min(100vw - var(--corner-gx), (100dvh - var(--corner-gy)) / var(--corner-hf));
-    --corner: calc(50vw - var(--edge) - 16px - var(--corner-reach) * var(--table-max));
-
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
-    grid-template-areas: "stage";
-    min-width: 560px;
-    min-height: 300px;
-  }
-
-  .info,
-  .tools {
-    position: absolute;
-    top: var(--edge);
-    padding: 0;
-  }
-
-  .info {
-    z-index: 2;
-    left: max(var(--edge), env(safe-area-inset-left));
-    max-width: var(--corner);
-  }
-
-  /*
-   * The box is the corner's room, a container the toolbar asks how much it may show; only the
-   * toolbar in it takes presses. It stays in reach over the result card, which keeps below it.
-   */
-  .tools {
-    z-index: 3;
-    right: max(var(--edge), env(safe-area-inset-right));
-    align-items: flex-start;
-    width: var(--corner);
-    pointer-events: none;
-  }
-
-  .tools > * {
-    pointer-events: auto;
-  }
-
-  /*
-   * While the card is up the toolbar has room for a row of its buttons whatever the corner leaves
-   * (in a narrow corner they would stand in a column, down over the card): the card is what is
-   * read then, not the tiles in the corner. The info chip makes way for the card, which shows the
-   * dora itself.
-   */
-  .viewer:has(> [data-stage][data-overlay]) .tools {
-    width: max(var(--corner), var(--tools-row));
-  }
-
-  .viewer:has(> [data-stage][data-overlay]) .info {
-    visibility: hidden;
-  }
-}
-
-/* A small window: the floating chrome keeps closer to the corners, away from the tiles. */
-@media (min-aspect-ratio: 13 / 10) and (min-height: 481px) and (max-width: 899px) {
-  .viewer {
-    --edge: 6px;
+  .panel > * {
+    min-height: 100%;
   }
 }
 

@@ -13,8 +13,8 @@ export interface WheelStepOptions {
 
 /**
  * True when the wheel turned over something inside `host` that scrolls by itself: a part marked
- * `[data-gesture="ignore"]` (a card over the table). `host` itself may carry the mark (the
- * transport does, for the table's sake) and still steps.
+ * `[data-gesture="ignore"]` (something laid over the table). `host` itself may carry the mark and
+ * still steps.
  */
 function overIgnoredPart(target: EventTarget | null, host: HTMLElement): boolean {
   if (!(target instanceof Element)) {
@@ -25,7 +25,7 @@ function overIgnoredPart(target: EventTarget | null, host: HTMLElement): boolean
 }
 
 /**
- * Wheel stepping over the given elements (the stage and the transport), sharing one accumulator.
+ * Wheel stepping over the given elements (the stage), sharing one accumulator.
  * Non-passive listeners, so a handled event stops the page from scrolling; Ctrl/Cmd+wheel and the
  * parts of an element marked `[data-gesture="ignore"]` are left to the browser.
  */

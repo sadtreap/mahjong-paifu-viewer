@@ -1,13 +1,11 @@
 /*
  * A slim track with a round thumb, filling the box its parent gives it (the box is the area to
  * aim at). --fill (0..1, set inline) is the played share of the round; the thumb's centre runs
- * from half a thumb in to half a thumb from the end, and the played part ends under it. A parent
- * may set --scrub-track and --scrub-thumb, and --scrub-above to keep the track that far below the
- * box's top (it is centred in what remains).
+ * from half a thumb in to half a thumb from the end, and the played part ends under it.
  */
 .scrubber {
-  --thumb: var(--scrub-thumb, 16px);
-  --track: var(--scrub-track, 4px);
+  --thumb: 14px;
+  --track: 4px;
   --played: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--fill, 0));
 
   display: block;
@@ -15,7 +13,7 @@
   min-width: 0;
   height: 100%;
   margin: 0;
-  padding: var(--scrub-above, 0) 0 0;
+  padding: 0;
   border: 0;
   background: transparent;
   cursor: pointer;
@@ -74,7 +72,7 @@
 /* A finger needs a larger thumb. */
 @media (pointer: coarse) {
   .scrubber {
-    --thumb: var(--scrub-thumb, 20px);
+    --thumb: 20px;
   }
 }
 

@@ -16,10 +16,12 @@ describe("useViewerState", () => {
     let moved: boolean[] = [];
     act(() => {
       moved = [
+        // The hold reaches the round's result and stops there.
         result.current.navigate({ kind: "step", dir: 1 }, "repeat"),
         result.current.navigate({ kind: "step", dir: 1 }, "repeat"),
-        // A fresh press first brings up the result card that waits, then goes on.
-        result.current.navigate({ kind: "step", dir: 1 }, "user"),
+        // End at the result goes nowhere either.
+        result.current.navigate({ kind: "roundEnd" }, "user"),
+        // A fresh press goes on to the next round at once.
         result.current.navigate({ kind: "step", dir: 1 }, "user"),
       ];
     });

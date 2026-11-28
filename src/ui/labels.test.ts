@@ -12,6 +12,7 @@ import {
   roundLabel,
   standings,
   tileLabel,
+  winValue,
   winValueLabel,
   yakuLabel,
   yakuValueLabel,
@@ -172,6 +173,78 @@ describe("results", () => {
     expect(
       winValueLabel(en, "en", win({ yaku: [{ key: "kokushiMusou13", han: 26, yakuman: true }] })),
     ).toBe("2× Yakuman · 12,000 points");
+  });
+
+  it("gives a win's value in two parts: how the hand counts, and its points", () => {
+    expect(winValue(en, "en", win({}))).toEqual({
+      count: "6 han · Haneman",
+      points: "12,000 points",
+    });
+    expect(winValue(en, "en", win({ han: 2, fu: 40, limit: undefined, points: 2600 }))).toEqual({
+      count: "2 han · 40 fu",
+      points: "2,600 points",
+    });
+    // A limit hand is named instead of its fu, and a fu of zero is no fu.
+    expect(winValue(en, "en", win({ han: 5, fu: 30, limit: "mangan" })).count).toBe(
+      "5 han · Mangan",
+    );
+    expect(winValue(en, "en", win({ han: 1, fu: 0, limit: undefined })).count).toBe("1 han");
+  });
+
+  it("counts yakuman instead of han, adding up every yakuman of the hand", () => {
+    const single = win({ limit: "yakuman", yaku: [{ key: "daisangen", han: 13, yakuman: true }] });
+    expect(winValue(en, "en", single).count).toBe("Yakuman");
+    const double = win({ yaku: [{ key: "kokushiMusou13", han: 26, yakuman: true }] });
+    expect(winValue(en, "en", double).count).toBe("2× Yakuman");
+    const two = win({
+      limit: "yakuman",
+      points: 64000,
+      yaku: [
+        { key: "daisangen", han: 13, yakuman: true },
+        { key: "tsuuiisou", han: 13, yakuman: true },
+      ],
+    });
+    expect(winValue(en, "en", two)).toEqual({ count: "2× Yakuman", points: "64,000 points" });
+    // Dora beside a yakuman does not count.
+    const withDora = win({
+      yaku: [
+        { key: "suuankou", han: 13, yakuman: true },
+        { key: "dora", han: 2 },
+      ],
+    });
+    expect(winValue(en, "en", withDora).count).toBe("Yakuman");
+  });
+
+  it("leaves out the part of a win's value the log does not have", () => {
+    const bare = { han: undefined, fu: undefined, limit: undefined, points: undefined };
+    expect(winValue(en, "en", win(bare))).toEqual({ count: "", points: null });
+    expect(winValue(en, "en", win({ ...bare, points: 1000 }))).toEqual({
+      count: "",
+      points: "1,000 points",
+    });
+    expect(winValue(en, "en", win({ points: undefined }))).toEqual({
+      count: "6 han · Haneman",
+      points: null,
+    });
+    // The one-line label joins what there is.
+    expect(winValueLabel(en, "en", win(bare))).toBe("");
+    expect(winValueLabel(en, "en", win({ ...bare, points: 1000 }))).toBe("1,000 points");
+    expect(winValueLabel(en, "en", win({ points: undefined }))).toBe("6 han · Haneman");
+  });
+
+  it("words a win's value in Korean and Japanese", () => {
+    const plain = win({ han: 2, fu: 40, limit: undefined, points: 2600 });
+    const yakuman = win({
+      points: 64000,
+      yaku: [{ key: "suuankouTanki", han: 26, yakuman: true }],
+    });
+    expect(winValue(ko, "ko", win({}))).toEqual({ count: "6판 · 하네만", points: "12,000점" });
+    expect(winValue(ko, "ko", plain)).toEqual({ count: "2판 · 40부", points: "2,600점" });
+    expect(winValue(ko, "ko", yakuman)).toEqual({ count: "2배 역만", points: "64,000점" });
+    expect(winValue(ja, "ja", win({}))).toEqual({ count: "6飜 · 跳満", points: "12,000点" });
+    expect(winValue(ja, "ja", plain)).toEqual({ count: "2飜 · 40符", points: "2,600点" });
+    expect(winValue(ja, "ja", yakuman)).toEqual({ count: "2倍役満", points: "64,000点" });
+    expect(winValueLabel(ja, "ja", plain)).toBe("2飜 · 40符 · 2,600点");
   });
 
   it("summarizes wins and draws in one line", () => {

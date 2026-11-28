@@ -15,7 +15,7 @@ export interface LandingProps extends LoadFormProps {
 }
 
 /**
- * The page before a game is on the table: one card on the dark room with the app's name, what it
+ * The page before a game is on the table: one card on the plain page with the app's name, what it
  * is, the load form and the language picker. While the log the address names is on its way, the
  * card shows the download status and Cancel instead.
  */

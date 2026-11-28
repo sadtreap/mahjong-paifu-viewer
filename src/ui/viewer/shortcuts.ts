@@ -143,8 +143,6 @@ export const SHORTCUTS: readonly ShortcutRow[] = [
   row("scoreDiff", true, [
     { display: "D", match: letter("d"), command: { type: "toggleScoreDiff" } },
   ]),
-  row("view", true, [{ display: "C", match: letter("c"), command: { type: "toggleView" } }]),
-  row("roundList", true, [{ display: "R", match: letter("r"), command: { type: "roundList" } }]),
   row("helpKey", true, [{ display: "?", match: { key: ["?"] }, command: { type: "help" } }]),
   row("escape", false, [
     { display: "Esc", match: { key: ["Escape", "Esc"] }, command: { type: "escape" } },

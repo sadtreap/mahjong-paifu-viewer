@@ -1,0 +1,54 @@
+.standings {
+  display: grid;
+  gap: 0.25rem;
+  min-inline-size: 0;
+}
+
+.heading {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1rem;
+}
+
+.table {
+  inline-size: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5rem;
+}
+
+.place,
+.name,
+.score {
+  padding: 0;
+}
+
+.place {
+  padding-inline-end: 0.75rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+/* The name takes the room the other columns leave and is cut short first. */
+.name {
+  inline-size: 100%;
+  max-inline-size: 0;
+  overflow: hidden;
+  font-weight: 400;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.score {
+  padding-inline-start: 0.75rem;
+  text-align: end;
+  white-space: nowrap;
+}
+
+.first .name,
+.first .score {
+  font-weight: 600;
+}

@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-import { readFileSync } from "node:fs";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Tile } from "../core/tile";
@@ -17,10 +16,6 @@ const discard = (tile: Tile, marks: Partial<DiscardView> = {}): DiscardView => (
 
 const many = (n: number) => Array.from({ length: n }, () => discard("1m"));
 
-/** The element a tile's paint order sits on: a sideways tile's wrapper, else the image. */
-const ordered = (img: HTMLElement) =>
-  img.style.getPropertyValue("--zx") === "" ? (img.parentElement as HTMLElement) : img;
-
 function renderPond(props: Partial<PondProps> & Pick<PondProps, "discards">) {
   return render(
     <I18nProvider>
@@ -30,8 +25,13 @@ function renderPond(props: Partial<PondProps> & Pick<PondProps, "discards">) {
 }
 
 const rows = () => [...screen.getByRole("group", { name: "A's discards" }).children];
+const landing = () =>
+  screen.getAllByRole("img").map((img) => img.className.split(" ").includes("landing"));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 describe("Pond", () => {
   it("lays the discards in rows of six, the third row taking all the rest", () => {
@@ -40,6 +40,23 @@ describe("Pond", () => {
     cleanup();
     renderPond({ discards: many(21) });
     expect(rows().map((row) => row.querySelectorAll("img").length)).toEqual([6, 6, 9]);
+  });
+
+  it("is a named group even while it is empty", () => {
+    renderPond({ discards: [] });
+    expect(rows()).toEqual([]);
+    cleanup();
+    renderPond({ discards: many(1) });
+    expect(rows().map((row) => row.querySelectorAll("img").length)).toEqual([1]);
+  });
+
+  it("keeps the discards in order, row after row", () => {
+    const tiles: Tile[] = ["1m", "2m", "3m", "4m", "5m", "6m", "7m", "8m"];
+    renderPond({ discards: tiles.map((tile) => discard(tile)) });
+    expect(screen.getAllByRole("img").map((img) => img.getAttribute("alt"))).toEqual(
+      tiles.map((tile) => `${tile[0]} Man`),
+    );
+    expect(rows()[1]?.querySelector("img")?.getAttribute("alt")).toBe("7 Man");
   });
 
   it("lays the riichi tile sideways, in its place in the row", () => {
@@ -83,55 +100,62 @@ describe("Pond", () => {
     expect(new Set(marks).size).toBe(3);
   });
 
+  it("outlines no discard without a last one", () => {
+    renderPond({ discards: many(3) });
+    const classes = screen.getAllByRole("img").map((img) => img.className);
+    expect(new Set(classes).size).toBe(1);
+    expect(screen.queryByAltText(/last discard/)).toBeNull();
+  });
+
   it("marks each tile with its seat and index, for Alt+click", () => {
     renderPond({ discards: many(13), seat: 2 });
     const tiles = screen.getAllByRole("img");
     expect(tiles[0]?.getAttribute("data-d")).toBe("2:0");
     expect(tiles[12]?.getAttribute("data-d")).toBe("2:12");
     cleanup();
+    // Seat 0 is a seat like the others.
+    renderPond({ discards: many(2), seat: 0 });
+    expect(screen.getAllByRole("img")[1]?.getAttribute("data-d")).toBe("0:1");
+    cleanup();
     renderPond({ discards: many(2) });
     expect(screen.getAllByRole("img")[0]?.hasAttribute("data-d")).toBe(false);
   });
 
-  it("hides the discard whose flight is still in the air", () => {
-    renderPond({ discards: many(3), hiddenIndex: 2, hiddenClassName: "landing" });
-    expect(
-      screen.getAllByRole("img").map((img) => img.className.split(" ").includes("landing")),
-    ).toEqual([false, false, true]);
+  it("gives the discard that lands on this step its class, and no other", () => {
+    renderPond({ discards: many(3), landingIndex: 2, landingClassName: "landing" });
+    expect(landing()).toEqual([false, false, true]);
+    cleanup();
+    renderPond({ discards: many(14), landingIndex: 0, landingClassName: "landing" });
+    expect(landing().indexOf(true)).toBe(0);
+    expect(landing().filter(Boolean)).toHaveLength(1);
   });
 
-  it("gives every discard its column and row for the 3D table's paint order", () => {
-    const discards = ["1m", "2m", "3m", "4m", "5m", "6m", "7m", "8m"].map((tile, index) =>
-      discard(tile as Tile, { riichi: index === 6 }),
-    );
-    renderPond({ discards });
-    const tiles = screen.getAllByRole("img").map((img) => {
-      const el = ordered(img);
-      return [el.style.getPropertyValue("--zx"), el.style.getPropertyValue("--zy")];
+  it("lands nothing without an index", () => {
+    renderPond({ discards: many(3), landingClassName: "landing" });
+    expect(landing()).toEqual([false, false, false]);
+    cleanup();
+    renderPond({ discards: many(3), landingIndex: -1, landingClassName: "landing" });
+    expect(landing()).toEqual([false, false, false]);
+  });
+
+  it("lands a riichi tile by the tile, inside its turned box", () => {
+    renderPond({
+      discards: [discard("1m"), discard("2m", { riichi: true })],
+      lastIndex: 1,
+      landingIndex: 1,
+      landingClassName: "landing",
     });
-    expect(tiles).toEqual([
-      ["0", "0"],
-      ["1", "0"],
-      ["2", "0"],
-      ["3", "0"],
-      ["4", "0"],
-      ["5", "0"],
-      ["0", "1"],
-      ["1", "1"],
-    ]);
+    const riichi = screen.getByAltText("2 Man, riichi declaration, last discard");
+    expect(riichi.classList.contains("landing")).toBe(true);
+    expect(riichi.parentElement?.classList.contains("landing")).toBe(false);
   });
 
-  it("counts the third row's columns on, however long it grows", () => {
-    renderPond({ discards: many(20) });
-    const last = ordered(screen.getAllByRole("img")[19] as HTMLElement);
-    expect([last.style.getPropertyValue("--zx"), last.style.getPropertyValue("--zy")]).toEqual([
-      "7",
-      "2",
-    ]);
-  });
-
-  it("isolates, so the tiles' order stays inside the pond", () => {
-    const css = readFileSync("src/ui/Pond.module.css", "utf8");
-    expect(/\.pond \{[^}]*isolation: isolate;/.exec(css)).not.toBeNull();
+  it("keeps a landed discard the tile it is: the class is the only difference", () => {
+    renderPond({ discards: many(2), lastIndex: 1, landingIndex: 1, landingClassName: "landing" });
+    const landed = screen.getAllByRole("img")[1];
+    const html = landed?.outerHTML.replace(" landing", "");
+    cleanup();
+    renderPond({ discards: many(2), lastIndex: 1 });
+    expect(screen.getAllByRole("img")[1]?.outerHTML).toBe(html);
   });
 });

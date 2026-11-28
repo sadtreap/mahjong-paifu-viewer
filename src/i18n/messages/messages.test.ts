@@ -74,7 +74,7 @@ describe("mahjong terms", () => {
       m.table.shanten(1),
       m.table.tenpai,
       m.table.furiten,
-      m.tools.hands,
+      m.viewer.showAllHands,
       m.board.discards("A"),
       m.tools.pov,
     ];
@@ -93,7 +93,7 @@ describe("mahjong terms", () => {
       "1샹텐",
       "텐파이",
       "후리텐",
-      "손패",
+      "모든 손패 보기",
       "A의 버림패",
       "시점",
     ]);
@@ -112,7 +112,7 @@ describe("mahjong terms", () => {
       "1向聴",
       "聴牌",
       "フリテン",
-      "手牌",
+      "全員の手牌を表示",
       "Aの捨て牌",
       "視点",
     ]);
@@ -125,7 +125,6 @@ describe("interpolated messages", () => {
     expect(m.table.waitsSr(["A", "B"], 6, true)).toMatch(/A.*B.*6/);
     expect(m.round.name(1, 3, 0)).toMatch(/3/);
     expect(m.round.name(1, 3, 2)).toMatch(/3.*2/);
-    expect(m.info.honba(2)).toContain("2");
     expect(m.info.deposits(3)).toContain("3");
     expect(m.transport.turn(8)).toContain("8");
     expect(m.tools.povButton("W", "N")).toMatch(/W.*N/);

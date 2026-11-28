@@ -1,48 +1,30 @@
 import type { WinEvent } from "../../core/model";
 import type { Tile } from "../../core/tile";
 import type { MeldView } from "../../replay/types";
-import { meldSlots, splitWinningHand } from "../layout";
+import { splitWinningHand } from "../layout";
 
 /**
  * Spacing of the winning hand in tile widths (matches WinHand.module.css): the gap before the
- * winning tile, the margin after it when calls follow, and the gap before each call (the kita
- * and each meld).
+ * winning tile, and the margin after it when calls follow.
  */
 const WINNING_GAP = 0.35;
 const CALLS_MARGIN = 0.45;
-const CALL_GAP = 0.3;
-
-/** Width of a sideways tile (and of a kakan's stack), in upright tile widths. */
-const SIDEWAYS_WIDTH = 4 / 3;
-
-/** How wide a winning hand is on one line, in tile widths. */
-export interface HandUnits {
-  /** The concealed tiles and the winning tile set apart: the part that never wraps. */
-  line: number;
-  /** The whole hand: that part, then the calls. */
-  all: number;
-}
 
 /**
- * The widths of the hand a win was made with, drawn as the result card draws it; null when the log
- * has no hand (the card then shows only the winning tile).
+ * How wide the part of a winning hand that never wraps is, in tile widths, drawn as the result
+ * block draws it: the concealed tiles and the winning tile set apart (the kita and the calls go
+ * after them, and under them where the block is narrow). Null when the log has no hand (the block
+ * then shows only the winning tile).
  */
-export function handUnits(
+export function handLineUnits(
   win: WinEvent,
   melds: readonly MeldView[],
   kita: readonly Tile[],
-): HandUnits | null {
+): number | null {
   if (!win.hand) {
     return null;
   }
   const { rest, winning } = splitWinningHand(win.hand, win.tile);
-  const calls = melds.map((meld) =>
-    meldSlots(meld, win.seat).reduce((sum, slot) => sum + (slot.sideways ? SIDEWAYS_WIDTH : 1), 0),
-  );
-  if (kita.length > 0) {
-    calls.unshift(kita.length);
-  }
-  const line =
-    rest.length + (winning === null ? 0 : WINNING_GAP + 1) + (calls.length > 0 ? CALLS_MARGIN : 0);
-  return { line, all: calls.reduce((sum, call) => sum + CALL_GAP + call, line) };
+  const calls = melds.length + (kita.length > 0 ? 1 : 0);
+  return rest.length + (winning === null ? 0 : WINNING_GAP + 1) + (calls > 0 ? CALLS_MARGIN : 0);
 }

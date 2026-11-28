@@ -5,7 +5,7 @@ import { cx } from "../cx";
 import { sideOf } from "../layout";
 import type { CaptionSpec } from "../viewer/types";
 import styles from "./CallCaption.module.css";
-import { type Camera, captionAnchor } from "./geometry";
+import { captionAnchor } from "./geometry";
 
 /** How long a caption stays. */
 export const CAPTION_MS = 700;
@@ -13,16 +13,15 @@ export const CAPTION_MS = 700;
 export interface CallCaptionProps {
   captions: readonly CaptionSpec[];
   pov: Seat;
-  camera: Camera;
 }
 
 /**
  * Call captions (Chi, Pon, Kan, Riichi, Kita, Ron, Tsumo): a short label over the middle of the
- * caller's pond, gone after CAPTION_MS. Flat DOM above the plane, so it reads the same from every
- * seat. Decoration only: hidden from screen readers (the viewer announces the step) and never in
- * the pointer's way. A timer removes it, so it also goes away where animations are off.
+ * caller's pond, gone after CAPTION_MS. Upright DOM over the table, so it reads the same from
+ * every seat. Decoration only: hidden from screen readers (the viewer announces the step) and
+ * never in the pointer's way. A timer removes it, so it also goes away where animations are off.
  */
-export const CallCaption = memo(function CallCaption({ captions, pov, camera }: CallCaptionProps) {
+export const CallCaption = memo(function CallCaption({ captions, pov }: CallCaptionProps) {
   const { m } = useI18n();
   const shown = captions.map((caption) => caption.id).join(",");
   const [gone, setGone] = useState("");
@@ -40,7 +39,7 @@ export const CallCaption = memo(function CallCaption({ captions, pov, camera }: 
     <div className={styles.captions} aria-hidden="true">
       {captions.map((caption) => {
         const side = sideOf(caption.seat, pov);
-        const at = captionAnchor(side, camera);
+        const at = captionAnchor(side);
         const win = caption.kind === "ron" || caption.kind === "tsumo";
         return (
           <div

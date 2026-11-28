@@ -120,11 +120,15 @@ export function standings(scores: Quad<number>, playerCount: PlayerCount = 4): S
     .map((seat, index) => ({ seat, score: scores[seat], place: index + 1 }));
 }
 
-/**
- * A win's value: "4 han · 30 fu · 7,700 points", "6 han · Haneman · 18,000 points", "2× Yakuman ·
- * 64,000 points".
- */
-export function winValueLabel(m: Messages, locale: Locale, win: WinEvent): string {
+/** A win's value in two parts: how it counts ("4 han · 30 fu", "Haneman", "2× Yakuman") and its points. */
+export interface WinValue {
+  /** "" when the log gives neither han nor a limit. */
+  count: string;
+  /** "7,700 points", or null when the log has no points. */
+  points: string | null;
+}
+
+export function winValue(m: Messages, locale: Locale, win: WinEvent): WinValue {
   const yakumanCount = (win.yaku ?? [])
     .filter((entry) => entry.yakuman)
     .reduce((sum, entry) => sum + Math.max(1, Math.round(entry.han / 13)), 0);
@@ -143,10 +147,19 @@ export function winValueLabel(m: Messages, locale: Locale, win: WinEvent): strin
       parts.push(m.result.limits[win.limit]);
     }
   }
-  if (win.points !== undefined) {
-    parts.push(m.result.points(formatPoints(locale, win.points)));
-  }
-  return parts.join(" · ");
+  return {
+    count: parts.join(" · "),
+    points: win.points === undefined ? null : m.result.points(formatPoints(locale, win.points)),
+  };
+}
+
+/**
+ * A win's value in one line: "4 han · 30 fu · 7,700 points", "6 han · Haneman · 18,000 points",
+ * "2× Yakuman · 64,000 points".
+ */
+export function winValueLabel(m: Messages, locale: Locale, win: WinEvent): string {
+  const { count, points } = winValue(m, locale, win);
+  return [count, points].filter((part) => part !== null && part !== "").join(" · ");
 }
 
 /**

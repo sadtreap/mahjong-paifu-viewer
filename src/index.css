@@ -1,39 +1,42 @@
 /*
- * One dark palette, as custom properties in labelled blocks: base (the page and its text), chrome
- * (what floats over the table, and the controls) and table (the felt and everything on it).
- * Colours are written as #rrggbb or rgb(r g b / a). The table is an object with its own colours
- * (green felt, red tile backs, dark green rails); everything around it is a near-black green-grey
- * with one green accent.
+ * One light palette, as custom properties in labelled blocks: base (the page and its text), chrome
+ * (the panel, cards, dialogs and the controls) and table (the mat and everything on it). Colours
+ * are written as #rrggbb or rgb(r g b / a). Everything is flat: surfaces differ by a tone and a
+ * hairline, tiles are white with an outline, and one orange mark says "now" on the table.
  */
 
 /* ---- base: the page, its text and the colours with one meaning everywhere */
 :root {
-  color-scheme: dark;
-  --color-fg: #ecebe6;
-  --color-muted: #a9b0aa;
+  color-scheme: light;
+  --color-bg: #f0f0ec;
+  --color-fg: #1b1b19;
+  --color-muted: #5c5c56;
   /* Fields and key caps: their fill, and a border that reaches 3:1 on it and on a card. */
-  --color-surface: #18201d;
-  --color-border: #66716c;
-  /* White text needs 4.5:1 on the accent; hovering darkens it, so contrast only goes up. */
-  --color-accent: #2f7a57;
-  --color-accent-hover: #286b4c;
+  --color-surface: #ffffff;
+  --color-border: #7f7f78;
+  /* The accent is the ink itself: a primary button, a checked box. */
+  --color-accent: #1b1b19;
+  --color-accent-hover: #000000;
   --color-on-accent: #ffffff;
-  --color-focus: #58a6ff;
-  --color-link: #58a6ff;
-  --color-danger: #ff7b6e;
-  --color-danger-bg: #2d1a17;
-  --color-gain: #5cc177;
-  --color-loss: #ff7b6e;
-  --color-overlay: rgb(12 17 15 / 0.75);
+  --color-focus: #1a5fd0;
+  --color-link: #1a5fd0;
+  --color-danger: #b52d1a;
+  --color-danger-bg: #fbeae6;
+  --color-gain: #17703f;
+  --color-loss: #b52d1a;
+  --color-overlay: rgb(240 240 236 / 0.82);
 }
 
-/* ---- chrome: floating surfaces (bars, chips, tags, popovers, cards, dialogs) and controls */
+/* ---- chrome: the panel, cards and dialogs, their hairlines, and the controls */
 :root {
-  /* Translucent over the table; the solid one is the same colour as it shows over the room. */
-  --chrome-bg: rgb(10 16 14 / 0.86);
-  --chrome-bg-solid: #0a100e;
-  --chrome-border: rgb(255 255 255 / 0.12);
-  --chrome-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+  --color-panel: #f9f9f7;
+  /* Between sections, and around a card or a quiet button. */
+  --color-line: #e1e1db;
+  --color-line-strong: #c9c9c2;
+  /* Button fills, veils of ink that work on the page and on the panel: hovered, and held or on. */
+  --color-hover: rgb(27 27 25 / 0.06);
+  --color-fill: rgb(27 27 25 / 0.1);
+  --shadow-dialog: 0 12px 32px rgb(0 0 0 / 0.16);
   --radius-control: 0.5rem;
   --radius-card: 0.75rem;
   /* The height of a control. */
@@ -43,84 +46,45 @@
   --text-caption: 0.75rem;
   --dur: 140ms;
   --ease: ease-out;
-  /* The viewer's page: its top bar (portrait screens) and its side column (a phone on its side). */
-  --top-bar: 44px;
-  --side-column: clamp(184px, 100vw - 156dvh, 216px);
-  /* How far the scrubber's strip stands above the transport bar on the felt (wide screens). */
-  --scrub-rise: 12px;
   /* The step slider's track beyond the thumb. */
-  --scrub-rest: rgb(236 235 230 / 0.3);
-  /* Button fills, light veils that work on any chrome surface: at rest, hovered, pressed. */
-  --btn-bg: rgb(255 255 255 / 0.06);
-  --btn-bg-hover: rgb(255 255 255 / 0.11);
-  --btn-bg-pressed: rgb(255 255 255 / 0.16);
+  --scrub-rest: #b4b4ac;
 }
 
 /* Fingers need larger targets than a mouse pointer. */
 @media (pointer: coarse) {
   :root {
     --control: 2.75rem;
-    --scrub-rise: 20px;
   }
 }
 
-/* ---- table: the room, the felt, the rails, the console, the tiles and the labels on the felt */
+/* ---- table: the mat, the tiles, the console and the marks on them */
 :root {
-  --room-0: #1a221e;
-  --room-1: #0c100e;
-  --room-2: #060807;
-  --felt-light: #2f7759;
-  --felt-center: #24624a;
-  --felt-edge: #143e30;
-  --felt-far: #113528;
-  --rail-top-0: #36604f;
-  --rail-top-1: #1b382d;
-  --rail-lip: #091711;
-  --rail-edge: #4d8670;
-  /* The console: its slab (lit corner, body, side), the plate in its middle, its rim and text. */
-  --console-lit: #1b3329;
-  --console-bg: #0f201a;
-  --console-side: #07120d;
-  --console-screen: #08140f;
-  --console-line: #2d4a3e;
-  --console-wind: #23392f;
-  --console-fg: #f3f0e7;
-  --console-muted: #cfe9dc;
-  /*
-   * The red badge: the dealer's wind, and furiten in a seat tag. Where a badge does not fit, the
-   * dealer's wind is a coloured letter.
-   */
-  --badge-bg: #8e2b22;
-  --badge-fg: #ffe1dc;
-  --dealer-mark: #ff9d91;
-  /* Gold marks "now" on the table: whose turn it is, and the last discard. */
-  --turn: #f5c542;
-  --highlight: #ffcb3d;
-  --stick: #f4f1ea;
-  --stick-dot: #dd2222;
-  --tile-outline: rgb(0 0 0 / 0.28);
-  --tile-shadow: rgb(0 0 0 / 0.5);
-  --tile-edge-face: #ddd5bf;
-  --tile-edge-back: #c3312f;
-  --tile-drop: rgb(0 0 0 / 0.32);
-  --tile-lid: #efe8d4;
-  --tile-back-face: #b92b29;
-  --tile-back-dark: #8f1f1e;
-  /* Review aids: the same-tile outline, and tenpai in a seat tag. */
-  --spot: #5cd6ff;
-  --aid-tenpai: #ffd76a;
+  --mat: #e5e5df;
+  --tile-face: #ffffff;
+  --tile-line: rgb(27 27 25 / 0.4);
+  /* A tsumogiri discard, and a tile lying face down. */
+  --tile-dim: #d9d9d2;
+  --tile-back: #b4b4ac;
+  --console-bg: #f7f7f4;
+  --console-line: #cfcfc8;
+  /* Orange marks "now" on the table: whose turn it is, and the last discard. */
+  --mark: #d1440d;
+  /* The same-tile outline under the pointer. */
+  --spot: #1a5fd0;
+  --stick: #ffffff;
+  --stick-dot: #c8281e;
 }
 
 /* ---- page */
 :root {
-  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans", sans-serif;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", "Noto Sans", sans-serif;
   line-height: 1.5;
   color: var(--color-fg);
-  /* The room: what shows behind the table and when the page is pulled past its edge. */
-  background-color: var(--room-1);
+  /* What shows behind everything and when the page is pulled past its edge. */
+  background-color: var(--color-bg);
 }
 
-/* The app is one screen: pulling past its edge neither bounces the page nor reloads it. */
+/* Pulling the page past its edge neither bounces it nor reloads it. */
 html,
 body {
   overscroll-behavior: none;
@@ -132,13 +96,14 @@ body {
  */
 :lang(ja) {
   font-family:
-    -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP",
+    Inter, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP",
     "Yu Gothic UI", Meiryo, sans-serif;
 }
 
 :lang(ko) {
   font-family:
-    -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    Inter, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic",
+    sans-serif;
 }
 
 /*
@@ -180,10 +145,11 @@ select {
  * ---- buttons: the one button style of the app
  *
  * A component gives a button its place and size, never its border, radius or colours. By
- * attribute: data-variant="primary" (the accent) or "ghost" (bare until hovered or focused, for
- * bars and menus); data-size="lg"; data-icon (a square with only an icon); aria-pressed="true" (a
- * toggle that is on); aria-disabled="true" or disabled. :where() keeps every selector as light as
- * the element, so a single class can still adjust one.
+ * attribute: data-variant="primary" (the ink) or "ghost" (bare until hovered or focused, for
+ * bars and lists); data-size="lg"; data-icon (a square with only an icon); aria-pressed="true" (a
+ * toggle that is on); aria-current="true" (the row of a list that is shown); aria-disabled="true"
+ * or disabled. :where() keeps every selector as light as the element, so a single class can still
+ * adjust one.
  */
 button {
   display: inline-flex;
@@ -192,16 +158,14 @@ button {
   gap: 0.375rem;
   min-block-size: var(--control);
   padding: 0.25rem 0.75rem;
-  border: 1px solid var(--chrome-border);
+  border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-control);
-  background: var(--btn-bg);
+  background: none;
   font-size: var(--text-control);
   line-height: 1.25;
   cursor: pointer;
   touch-action: manipulation;
-  transition:
-    background-color var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
+  transition: background-color var(--dur) var(--ease);
 }
 
 button > :where(svg) {
@@ -219,11 +183,10 @@ button:where([data-variant="primary"]) {
 
 button:where([data-variant="ghost"]) {
   border-color: transparent;
-  background: none;
 }
 
 button:where([data-size="lg"]) {
-  min-block-size: 3.5rem;
+  min-block-size: 3rem;
 }
 
 button:where([data-icon]) {
@@ -232,54 +195,37 @@ button:where([data-icon]) {
 }
 
 button:where([data-icon][data-size="lg"]) {
-  inline-size: 3.5rem;
+  inline-size: 3rem;
 }
 
 /* A touch screen keeps :hover on the last button tapped, so only a real pointer hovers. */
 @media (hover: hover) {
   button:where(:hover:not(:disabled, [aria-disabled="true"])) {
-    background: var(--btn-bg-hover);
+    background: var(--color-hover);
   }
 
   button:where([data-variant="primary"]:hover:not(:disabled, [aria-disabled="true"])) {
     background: var(--color-accent-hover);
   }
-
-  button:where([data-variant="ghost"]:hover:not(:disabled, [aria-disabled="true"])) {
-    border-color: var(--chrome-border);
-  }
-}
-
-button:where([data-variant="ghost"]:focus-visible) {
-  border-color: var(--chrome-border);
-  background: var(--btn-bg-hover);
 }
 
 button:where(:active:not(:disabled, [aria-disabled="true"])) {
-  background: var(--btn-bg-pressed);
+  background: var(--color-fill);
 }
 
 button:where([data-variant="primary"]:active:not(:disabled, [aria-disabled="true"])) {
   background: var(--color-accent-hover);
 }
 
-/* A toggle that is on: a lighter fill and a short bar under its content (not colour alone). */
-button:where([aria-pressed="true"]) {
-  border-color: var(--chrome-border);
-  background:
-    linear-gradient(currentcolor, currentcolor) 50% calc(100% - 0.1875rem) / 1rem 0.125rem no-repeat,
-    var(--btn-bg-pressed);
-}
-
-/* A button whose popover is open looks held down while the popover is there. */
-button:where([aria-expanded="true"]) {
-  border-color: var(--chrome-border);
-  background: var(--btn-bg-pressed);
+/* A toggle that is on, and the row that is shown: filled, and set in a heavier weight. */
+button:where([aria-pressed="true"], [aria-current="true"]) {
+  background: var(--color-fill);
+  font-weight: 600;
 }
 
 /*
  * aria-disabled buttons stay focusable (a control at its limit keeps the focus) but look disabled:
- * their content is dimmed and an accent button loses its fill. The box itself keeps its opacity, so
+ * their content is dimmed and an ink button loses its fill. The box itself keeps its opacity, so
  * a focus ring around it keeps its contrast.
  */
 button:where(:disabled, [aria-disabled="true"]) {
@@ -287,11 +233,12 @@ button:where(:disabled, [aria-disabled="true"]) {
 }
 
 button:where(:disabled, [aria-disabled="true"]) > * {
-  opacity: 0.45;
+  opacity: 0.4;
 }
 
 button:where([data-variant="primary"]:is(:disabled, [aria-disabled="true"])) {
-  background: var(--btn-bg);
+  background: var(--color-fill);
+  color: var(--color-fg);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -301,12 +248,9 @@ button:where([data-variant="primary"]:is(:disabled, [aria-disabled="true"])) {
 }
 
 @media (forced-colors: active) {
-  /*
-   * The system removes fills, so a toggle that is on, or an opener whose popover is open, gets a
-   * thick border in the selection colour.
-   */
+  /* The system removes fills, so what is on or shown gets a thick border in the selection colour. */
   button[aria-pressed="true"],
-  button[aria-expanded="true"] {
+  button[aria-current="true"] {
     border: 2px solid Highlight;
   }
 

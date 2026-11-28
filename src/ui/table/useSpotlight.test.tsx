@@ -2,10 +2,10 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Quad } from "../../core/model";
+import type { Quad, Seat } from "../../core/model";
 import { I18nProvider } from "../../i18n/I18nProvider";
 import { boardState, game, round } from "../__fixtures__/game";
-import type { Spotlight } from "../viewer/types";
+import type { Spotlight, TableStageProps } from "../viewer/types";
 import { stageProps } from "./__fixtures__/stageProps";
 import { TableStage } from "./TableStage";
 import { SPOTLIGHT_LINGER_MS, useSpotlight } from "./useSpotlight";
@@ -48,8 +48,11 @@ describe("useSpotlight", () => {
 });
 
 describe("the table's hover spotlight", () => {
-  function renderWith(spotlight: Spotlight) {
-    const props = stageProps({ game, round, state: boardState(), names }, { spotlight });
+  function renderWith(spotlight: Spotlight, overrides: Partial<TableStageProps> = {}) {
+    const props = stageProps(
+      { game, round, state: boardState(), names },
+      { spotlight, ...overrides },
+    );
     render(
       <I18nProvider>
         <TableStage {...props} />
@@ -75,6 +78,36 @@ describe("the table's hover spotlight", () => {
       vi.advanceTimersByTime(SPOTLIGHT_LINGER_MS);
     });
     expect(spotlight.clear).toHaveBeenCalled();
+  });
+
+  it("spotlights the kind of a dora indicator on the console and of a tile in a pond", () => {
+    const spotlight = { hover: vi.fn(), clear: vi.fn() };
+    renderWith(spotlight);
+    const button = screen.getByRole("button", { name: "Show score differences" });
+    // The indicator is 3 Man.
+    move(button.querySelector("img[data-k]") as HTMLElement);
+    expect(spotlight.hover).toHaveBeenLastCalledWith(2);
+    // A sideways tile is hovered by the tile inside its turned box.
+    move(screen.getByAltText("9 Man, riichi declaration, called"));
+    expect(spotlight.hover).toHaveBeenLastCalledWith(8);
+    expect(spotlight.clear).not.toHaveBeenCalled();
+  });
+
+  it("spotlights nothing over a face-down tile, which has no kind to show", () => {
+    const spotlight = { hover: vi.fn(), clear: vi.fn() };
+    renderWith(spotlight, { revealed: new Set<Seat>([0]) });
+    const hidden = screen.getByRole("group", { name: "B's hand, 13 tiles face down" });
+    move(hidden.firstElementChild as HTMLElement);
+    act(() => {
+      vi.advanceTimersByTime(SPOTLIGHT_LINGER_MS);
+    });
+    expect(spotlight.hover).not.toHaveBeenCalled();
+    // The ends of the closed kan lie face down too, around its two faces.
+    const kan = screen.getByRole("group", { name: /^Closed kan/ });
+    move(kan.firstElementChild as HTMLElement);
+    expect(spotlight.hover).not.toHaveBeenCalled();
+    move(kan.children[1] as HTMLElement);
+    expect(spotlight.hover).toHaveBeenLastCalledWith(22);
   });
 
   it("ignores touch pointers and moves with a button pressed", () => {

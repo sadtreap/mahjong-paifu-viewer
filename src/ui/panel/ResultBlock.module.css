@@ -1,0 +1,85 @@
+/*
+ * A container, so the winning hand's tiles can be sized from the width the block has: the
+ * concealed tiles with the winning tile always fit on one line (--hand-line tile widths, set by
+ * the component; a closed hand's without one), at most 1.625rem wide, and the calls go under them.
+ */
+.result {
+  --inner: calc(100cqi - 2.5rem);
+  --result-tile: min(1.625rem, var(--inner) / var(--hand-line, 14.35));
+
+  display: grid;
+  gap: 0.625rem;
+  padding: 0 1.25rem 0.875rem;
+  container-type: inline-size;
+}
+
+/* The section's heading, like the other sections', with the way on beside it. */
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-block-size: 2.5rem;
+  margin-block-end: -0.25rem;
+}
+
+.heading {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1rem;
+}
+
+.head > button {
+  min-block-size: 2rem;
+}
+
+.win {
+  display: grid;
+  gap: 0.625rem;
+  min-inline-size: 0;
+}
+
+.win + .win {
+  padding-block-start: 0.875rem;
+  border-block-start: 1px solid var(--color-line);
+}
+
+.title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.5rem;
+  overflow-wrap: anywhere;
+}
+
+/* What the eye should land on first: the winner's name, or the kind of draw. */
+.winner {
+  font-weight: 600;
+}
+
+.how {
+  color: var(--color-muted);
+}
+
+/* The points, large; how the hand counts beside them. */
+.value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.625rem;
+  margin: -0.5rem 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.points {
+  font-size: 1.625rem;
+  font-weight: 700;
+  line-height: 2rem;
+  letter-spacing: -0.02em;
+}
+
+.count {
+  color: var(--color-muted);
+}

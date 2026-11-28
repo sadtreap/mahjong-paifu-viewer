@@ -4,7 +4,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { Dialog } from "./Dialog";
 
-/** A page with two openers of one dialog, the way the viewer's menu and keys both open one. */
+/** A page with two openers of one dialog, the way the panel's actions and the keys open one. */
 function Harness({ focusBody = false }: { focusBody?: boolean }) {
   const [open, setOpen] = useState(false);
   return (

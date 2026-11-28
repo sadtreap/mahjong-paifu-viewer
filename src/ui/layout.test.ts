@@ -2,12 +2,17 @@ import { describe, expect, it } from "vitest";
 import type { Seat } from "../core/model";
 import type { DiscardView, MeldView } from "../replay/types";
 import {
+  DISCARDS_PER_ROW,
+  DRAWN_GAP,
   discardRows,
   fitScale,
   handRowWidth,
   KITA_WIDTH,
+  keyed,
+  MELD_GAP,
   meldSlots,
-  ownRowUnits,
+  POND_ROWS,
+  SIDES,
   seatDistance,
   seatOnSide,
   sideOf,
@@ -36,6 +41,15 @@ describe("seat geometry", () => {
     expect(seatDistance(0, 3)).toBe(3);
     expect(seatDistance(3, 0)).toBe(1);
     expect(seatDistance(2, 2)).toBe(0);
+  });
+
+  it("lists the sides in turn order from the point of view, counter-clockwise", () => {
+    expect(SIDES).toEqual(["bottom", "right", "top", "left"]);
+    for (const pov of [0, 1, 2, 3] as Seat[]) {
+      expect(SIDES.map((side) => seatOnSide(side, pov))).toEqual(
+        [0, 1, 2, 3].map((turn) => (pov + turn) % 4),
+      );
+    }
   });
 });
 
@@ -119,6 +133,40 @@ describe("discardRows", () => {
   it("returns no rows for an empty pond", () => {
     expect(discardRows([])).toEqual([]);
   });
+
+  it("keeps the discards in order, each with its tile", () => {
+    const tiles = ["1m", "2m", "3m", "4m", "5m", "6m", "7m"] as const;
+    const rows = discardRows(tiles.map(discard));
+    expect(rows.flat().map((entry) => entry.item.tile)).toEqual([...tiles]);
+    expect(rows.flat().map((entry) => entry.index)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(rows[1]?.[0]?.item.tile).toBe("7m");
+  });
+
+  it("has three rows of six by default, the numbers the table's geometry is built on", () => {
+    expect(DISCARDS_PER_ROW).toBe(6);
+    expect(POND_ROWS).toBe(3);
+    const rows = discardRows(Array.from({ length: 40 }, () => discard("1m")));
+    expect(rows).toHaveLength(POND_ROWS);
+    expect(rows[0]).toHaveLength(DISCARDS_PER_ROW);
+  });
+
+  it("takes other row lengths and counts", () => {
+    const discards = Array.from({ length: 11 }, () => discard("1m"));
+    expect(discardRows(discards, 4, 2).map((row) => row.length)).toEqual([4, 7]);
+    expect(discardRows(discards, 4, 5).map((row) => row.length)).toEqual([4, 4, 3]);
+  });
+});
+
+describe("keyed", () => {
+  it("gives repeated items distinct keys by their place", () => {
+    expect(keyed(["1m", "1m", "2m"])).toEqual([
+      { key: "0", index: 0, item: "1m" },
+      { key: "1", index: 1, item: "1m" },
+      { key: "2", index: 2, item: "2m" },
+    ]);
+    expect(keyed(["1m"], "d")[0]?.key).toBe("d0");
+    expect(keyed([])).toEqual([]);
+  });
 });
 
 describe("hand row width", () => {
@@ -142,26 +190,41 @@ describe("hand row width", () => {
     expect(width(["4z", "4z", "4z", "4z"])).toBeCloseTo(10 + KITA_WIDTH);
   });
 
-  it("measures the own hand with the same parts", () => {
+  it("adds every part of a row together: hand, drawn tile, kita and each meld with its gap", () => {
     const view = {
       hand: Array.from({ length: 7 }, () => "1m" as const),
       drawn: "2m" as const,
       melds: [pon(2)],
       kita: ["4z" as const],
-      discards: [],
-      score: 0,
-      riichi: false,
     };
-    expect(ownRowUnits(view, 0)).toBeCloseTo(7 + 1.4 + KITA_WIDTH + 0.25 + 2 + 4 / 3);
-    expect(ownRowUnits({ ...view, kita: [] }, 0)).toBeCloseTo(7 + 1.4 + 0.25 + 2 + 4 / 3);
+    const meld = MELD_GAP + 2 + 4 / 3;
+    expect(handRowWidth(view, 0)).toBeCloseTo(7 + 1 + DRAWN_GAP + KITA_WIDTH + meld);
+    expect(handRowWidth({ ...view, kita: [] }, 0)).toBeCloseTo(7 + 1 + DRAWN_GAP + meld);
+    expect(handRowWidth({ ...view, melds: [pon(2), pon(1)] }, 0)).toBeCloseTo(
+      7 + 1 + DRAWN_GAP + KITA_WIDTH + 2 * meld,
+    );
   });
 
-  it("keeps the drawn tile's slot in the own hand between turns", () => {
-    const drawn = { hand: Array.from({ length: 13 }, () => "1m" as const), drawn: "2m" as const };
-    const view = { ...drawn, melds: [], kita: [], discards: [], score: 0, riichi: false };
-    // After the discard the hand is 13 tiles again and nothing is drawn: same width.
-    expect(ownRowUnits({ ...view, drawn: null }, 0)).toBeCloseTo(ownRowUnits(view, 0));
-    expect(ownRowUnits({ ...view, drawn: null }, 0)).toBeCloseTo(13 + 1.4);
+  it("is as wide whichever player a meld's tile came from", () => {
+    const hand = Array.from({ length: 10 }, () => "1m" as const);
+    const width = (from: Seat) =>
+      handRowWidth({ hand, drawn: null, melds: [pon(from)], kita: [] }, 0);
+    expect(width(1)).toBe(width(2));
+    expect(width(2)).toBe(width(3));
+  });
+
+  it("counts a kakan's stack as one sideways tile, and a closed kan as four upright ones", () => {
+    const row = (meld: MeldView) =>
+      handRowWidth({ hand: [], drawn: null, melds: [meld], kita: [] }, 0);
+    expect(row(pon(1, { type: "kakan", addedTile: "5p" }))).toBeCloseTo(row(pon(1)));
+    expect(row({ type: "ankan", tiles: ["5s", "5s", "5s", "5s"] })).toBeCloseTo(MELD_GAP + 4);
+    expect(
+      row({ type: "daiminkan", tiles: ["7z", "7z", "7z"], from: 2, calledTile: "7z" }),
+    ).toBeCloseTo(MELD_GAP + 3 + 4 / 3);
+  });
+
+  it("is nothing for an empty row", () => {
+    expect(handRowWidth({ hand: [], drawn: null, melds: [], kita: [] }, 0)).toBe(0);
   });
 
   it("scales down only when the row is too wide", () => {

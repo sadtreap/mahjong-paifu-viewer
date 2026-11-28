@@ -13,7 +13,7 @@ export interface KitaTilesProps {
 
 /**
  * A seat's kita (three-player North tiles set aside): one North tile and, for two or more, a ×n
- * pill over its corner, the one place the count is shown. The pill turns with `--kita-rot` (set
+ * pill over its corner, the one place the count is shown. The pill turns with `--upright` (set
  * per seat layer) so it reads upright.
  */
 export function KitaTiles({ tiles, name }: KitaTilesProps) {

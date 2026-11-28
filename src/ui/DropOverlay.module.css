@@ -21,7 +21,7 @@
   padding: 1.5rem 2rem;
   border: 2px dashed var(--color-accent);
   border-radius: var(--radius-card);
-  background: var(--chrome-bg-solid);
+  background: var(--color-panel);
   font-size: 1.125rem;
   font-weight: 600;
   text-align: center;

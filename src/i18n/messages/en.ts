@@ -54,23 +54,15 @@ export const en = {
     tagline: "Replay Tenhou and mjai game logs; your files stay in your browser.",
   },
   tools: {
-    label: "Viewer tools",
     withKey: (label: string, key: string) => `${label} (${key})`,
-    hands: "Hands",
     pov: "Point of view",
     povButton: (wind: string, name: string) => `Point of view: ${wind}, ${name}`,
-    /** A row of the point-of-view menu; `diff` is the signed difference from the viewed player. */
-    povItem: (wind: string, name: string, score: string, diff: string | null) =>
-      `${wind}, ${name}, ${score}${diff === null ? "" : ` (${diff})`}`,
   },
   settings: {
     language: "Language",
     heading: "Settings",
     close: "Close",
     reset: "Reset to defaults",
-    view: "Table",
-    view3d: "3D",
-    viewFlat: "Flat",
     showWaits: "Show waits and shanten",
     charKeys: "Single-key shortcuts",
     charKeysHint: "Letters, digits, punctuation and Space",
@@ -198,13 +190,10 @@ export const en = {
     ura: "Ura Dora",
     uraIndicators: "Ura Dora indicators",
     pao: (player: string) => `Liability (pao): ${player}`,
-    deltas: "Point changes",
     player: "Player",
-    change: "Change",
     tenpai: "Tenpai",
     noten: "Noten",
     waits: (tiles: readonly string[]) => `Waits: ${andList(tiles)}`,
-    showTable: "Show table",
     nextRound: "Next round",
     tenpaiSeats: (names: readonly string[]) =>
       names.length === 0 ? "nobody tenpai" : `tenpai: ${andList(names)}`,
@@ -231,9 +220,6 @@ export const en = {
     kitaCount: (n: number) => `×${n}`,
     /** The console's button: the other players' scores as differences from the viewed player's. */
     scoreDiff: "Show score differences",
-    /** A seat tag's hidden text: what the console shows about the player. */
-    seatFacts: (wind: string, points: string, dealer: boolean, riichi: boolean) =>
-      `${wind}, ${points} points${dealer ? ", dealer" : ""}${riichi ? ", riichi" : ""}`,
     wallHand: (name: string, n: number) => `${name}'s hand, ${count(n, "tile", "tiles")} face down`,
     waitsShort: "Wait",
     left: (n: number) => `${n} left`,
@@ -260,11 +246,12 @@ export const en = {
     settings: "Settings",
     controls: "Controls",
   },
+  panel: {
+    label: "Game",
+    players: "Players",
+  },
   transport: {
     label: "Replay controls",
-    showResult: "Show result",
-    /** The round button's name: the round it shows, and what it opens. */
-    roundList: (round: string) => `${round}, round list`,
     prevTurn: "Previous own turn",
     nextTurn: "Next own turn",
     turn: (n: number) => `Turn ${n}`,
@@ -292,10 +279,8 @@ export const en = {
     hands: "Show / hide all hands",
     waits: "Waits and shanten",
     scoreDiff: "Score differences",
-    view: "3D / flat table",
-    roundList: "Round list",
     helpKey: "This help",
-    escape: "Close menus, hide the round result, stop autoplay",
+    escape: "Stop autoplay",
     click: "Click the table: next step",
     rightClick: "Right-click: previous step",
     wheel: "Wheel: next / previous step",
@@ -317,7 +302,6 @@ export const en = {
   },
   info: {
     dora: "Dora",
-    honba: (n: number) => `${n} honba`,
     deposits: (n: number) => count(n, "deposit", "deposits"),
   },
   rounds: {
@@ -339,8 +323,6 @@ export const en = {
     handsHidden: "Other players' hands hidden",
     scoreDiffOn: "Score differences on",
     scoreDiffOff: "Score differences off",
-    view3d: "3D table",
-    viewFlat: "Flat table",
   },
   tiles: {
     number: (value: number, suit: Suit, red: boolean) =>

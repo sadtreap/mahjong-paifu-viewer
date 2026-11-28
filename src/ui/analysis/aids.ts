@@ -1,6 +1,6 @@
 /**
  * Per-step review aids derived from the replay: the seat aids (waits, tenpai, furiten, shanten)
- * and the draw waits of the result card.
+ * and the waits of the tenpai hands at a draw.
  */
 import type { PlayerCount, Quad, RyukyokuEvent, Seat, WinEvent } from "../../core/model";
 import { activeSeats } from "../../core/players";

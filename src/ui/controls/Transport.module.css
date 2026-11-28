@@ -1,339 +1,69 @@
 /*
- * The transport in its three shapes, by data-arrangement. The viewer sets the attribute from the
- * same media queries that lay out the page and puts the element where that shape belongs, so the
- * shape and the place cannot disagree.
- *
- *   stack  (the base) the block under the table: scrubber / round and turn / large step buttons
- *          and the speed
- *   short  rows in the side column: scrubber / round / turn / step buttons and the speed
- *   wide   a bar on the felt: one row, with the scrubber as a thin line along its top edge
- *
- * "Show result", when there is one, never changes the size of anything else: in the block it lies
- * over the start of the scrubber's row (the slider keeps its whole width underneath, so its thumb
- * stays put), in the side column it has a row of its own above the scrubber, taken from the
- * column's spare room, and next to the bar it floats outside the bar's left end.
+ * One row: the buttons, the slider (which takes the room that is left, up to a hand's width), the
+ * step's number and the speed. The buttons are a finger's size everywhere. In a narrow row the
+ * number goes; too narrow for one row (a phone held upright), the buttons take the first line and
+ * the slider the second, with the speed beside it. The order on screen is always the document's,
+ * which is the focus order.
  */
 .transport {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  color: var(--color-fg);
-  cursor: default;
-}
+  --control: 2.75rem;
 
-.top,
-.jumps,
-.steps,
-.group {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  min-width: 0;
+  justify-content: center;
+  gap: 0 1rem;
+  container-type: inline-size;
 }
 
-.top {
-  position: relative;
-  min-height: var(--control);
-}
-
-/* Over the slider's start, on the controls' own background, with a gap before the track. */
-.show {
-  position: absolute;
-  z-index: 1;
-  inset-block: 0;
-  left: 0;
+.buttons {
   display: flex;
-  align-items: center;
-  padding-inline-end: 8px;
-  background: var(--chrome-bg-solid);
+  flex: none;
+  gap: 0.25rem;
+}
+
+.play > svg {
+  inline-size: 1.375rem;
+  block-size: 1.375rem;
 }
 
 .scrub {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: var(--control);
+  flex: 1 1 6rem;
+  max-inline-size: 24rem;
+  block-size: var(--control);
 }
 
-/* Hairlines between the bar's groups; the rows and the block have none. */
-.separator {
-  display: none;
-}
-
-.jumps {
-  gap: 12px;
-}
-
-.group {
-  gap: 2px;
-}
-
-/* The round group takes the room the turn group leaves. */
-.jumps > .group:first-of-type {
-  flex: 1 1 auto;
-}
-
-/* As wide as a two-digit turn, so nothing beside it moves when the turns reach ten. */
-.turn {
+.at,
+.speed {
   flex: none;
-  min-width: 4em;
-  padding-inline: 2px;
-  font-size: var(--text-control);
   font-variant-numeric: tabular-nums;
+}
+
+.at {
+  min-inline-size: 4.25rem;
+  color: var(--color-muted);
+  font-size: var(--text-secondary);
   text-align: center;
-  white-space: nowrap;
-}
-
-.steps {
-  gap: 8px;
-}
-
-/* The step buttons share the row: large targets for a thumb. */
-.steps > .group {
-  flex: 1 1 auto;
-  gap: 8px;
-}
-
-.steps > .group > button {
-  flex: 1 1 0;
-  inline-size: auto;
 }
 
 .speed {
-  flex: none;
-  inline-size: 3.5rem;
-  padding-inline: 0;
-  font-variant-numeric: tabular-nums;
+  min-inline-size: var(--control);
+  padding-inline: 0.5rem;
 }
 
-/* A 320px phone: smaller arrows and tighter gaps keep the round and the turn on one row. */
-@media (max-width: 359px) {
-  .jumps {
-    gap: 4px;
-  }
-
-  .jumps > .group {
-    gap: 0;
-  }
-
-  .jumps button[data-icon] {
-    inline-size: 2.5rem;
-    min-block-size: 2.5rem;
-  }
-
-  .turn {
-    padding-inline: 0;
-    font-size: var(--text-secondary);
+@container (max-width: 34rem) {
+  .at {
+    display: none;
   }
 }
 
-/* ---- rows in the side column (a container, so the round button can tell a narrow column) */
-.transport[data-arrangement="short"] {
-  gap: 4px;
-  container: transport / inline-size;
-}
-
-/* "Show result" takes a row of its own, as wide as the column. */
-[data-arrangement="short"] .top {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
-}
-
-[data-arrangement="short"] .show {
-  position: static;
-  padding: 0;
-  background: none;
-}
-
-[data-arrangement="short"] .show > button {
-  flex: 1 1 auto;
-}
-
-[data-arrangement="short"] .jumps {
-  display: contents;
-}
-
-[data-arrangement="short"] .group {
-  gap: 4px;
-}
-
-[data-arrangement="short"] .turn {
-  flex: 1 1 auto;
-}
-
-[data-arrangement="short"] .steps {
-  gap: 4px;
-}
-
-[data-arrangement="short"] .speed {
-  inline-size: var(--control);
-}
-
-/*
- * ---- the bar on the felt
- *
- * The scrubber's strip stands --scrub-rise (index.css) above the bar, and the page counts it into
- * the room it asks the table for. The margin makes that room part of the bar's place in the dock,
- * so the table keeps tiles, and the result card, out of the strip too.
- */
-.transport[data-arrangement="wide"] {
-  --rise: var(--scrub-rise);
-
-  position: relative;
-  flex-direction: row;
-  align-items: center;
-  gap: 2px;
-  max-width: min(720px, 100%);
-  margin-top: var(--rise);
-  padding: 3px 6px;
-  border: 1px solid var(--chrome-border);
-  border-radius: var(--radius-card);
-  background: var(--chrome-bg);
-  box-shadow: var(--chrome-shadow);
-  opacity: 0.85;
-  transition: opacity var(--dur) var(--ease);
-}
-
-/* Quiet at rest, solid in use. */
-.transport[data-arrangement="wide"]:is(:hover, :focus-within, [data-open]) {
-  opacity: 1;
-}
-
-[data-arrangement="wide"] :is(.top, .jumps, .steps) {
-  display: contents;
-}
-
-[data-arrangement="wide"] .group {
-  flex: none;
-  gap: 2px;
-}
-
-/* Only the round group gives way when the bar is as wide as it may be. */
-[data-arrangement="wide"] .jumps > .group:first-of-type {
-  flex: 0 1 auto;
-}
-
-[data-arrangement="wide"] .steps > .group > button {
-  flex: none;
-  inline-size: var(--control);
-}
-
-[data-arrangement="wide"] .separator {
-  display: block;
-  flex: none;
-  width: 1px;
-  height: 1.25rem;
-  margin-inline: 5px;
-  background: var(--chrome-border);
-}
-
-[data-arrangement="wide"] .speed {
-  inline-size: 3rem;
-}
-
-/*
- * "Show result" floats outside the bar's left end, as tall as the bar and with the bar's surface,
- * so the bar keeps its width and its place when the button comes and goes.
- */
-[data-arrangement="wide"] .show {
-  inset: -1px calc(100% + 8px) -1px auto;
-  padding: 3px;
-  border: 1px solid var(--chrome-border);
-  border-radius: var(--radius-card);
-  background: var(--chrome-bg);
-  box-shadow: var(--chrome-shadow);
-  white-space: nowrap;
-}
-
-/* A small window: the bar tightens before anything in it has to give. */
-@media (max-width: 759px) {
-  [data-arrangement="wide"] .separator {
-    margin-inline: 2px;
+@container (max-width: 26rem) {
+  .buttons {
+    flex: 1 1 100%;
+    justify-content: center;
   }
 
-  [data-arrangement="wide"] .turn {
-    font-size: var(--text-secondary);
-  }
-
-  [data-arrangement="wide"] .speed {
-    inline-size: max(2.5rem, var(--control));
-  }
-}
-
-/*
- * A small window has less room beside the bar: "Show result" stands on two short lines, in a pill
- * of a fixed width, so it can be kept on the stage: where even that does not fit beside the bar
- * (the stage, 100cqw, is barely wider than the bar, 100%), it stops 4px from the stage's edge and
- * lies over the bar's end.
- */
-@media (max-width: 899px) {
-  [data-arrangement="wide"] .show {
-    inset-inline-end: min(calc(100% + 6px), calc((100% + 100cqw) / 2 - 3.25rem - 4px));
-    inline-size: 3.25rem;
-  }
-
-  [data-arrangement="wide"] .show > button {
-    flex: 1 1 auto;
-    padding-inline: 0.25rem;
-    font-size: var(--text-caption);
-    line-height: 1.1;
-    white-space: normal;
-  }
-}
-
-/*
- * The scrubber lies on the bar's top edge: a thin line that thickens under the pointer and with
- * the focus. The strip to aim at reaches from --rise above the bar's border down to where the
- * buttons begin (16px, more for a finger); --scrub-above pushes the line down to the edge itself.
- */
-[data-arrangement="wide"] .scrub {
-  --scrub-track: 3px;
-  --scrub-thumb: 11px;
-  --scrub-above: calc(var(--rise) - 3px);
-
-  position: absolute;
-  top: calc(-1px - var(--rise));
-  right: 12px;
-  left: 12px;
-  height: calc(var(--rise) + 4px);
-}
-
-[data-arrangement="wide"] .scrub:is(:hover, :focus-within) {
-  --scrub-track: 5px;
-  --scrub-thumb: 15px;
-}
-
-/* A small window: the bar nearly spans the table, and the line's ends keep off the side hands. */
-@media (max-width: 759px) {
-  [data-arrangement="wide"] .scrub {
-    right: 28px;
-    left: 28px;
-  }
-}
-
-/* A finger has no hover: the line is thick from the start. */
-@media (pointer: coarse) {
-  [data-arrangement="wide"] .scrub {
-    --scrub-track: 5px;
-    --scrub-thumb: 15px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .transport[data-arrangement="wide"] {
-    transition: none;
-  }
-}
-
-@media (forced-colors: active) {
-  .transport[data-arrangement="wide"],
-  [data-arrangement="wide"] .show {
-    border-color: CanvasText;
-    opacity: 1;
-  }
-
-  /* The hairlines are fills. */
-  [data-arrangement="wide"] .separator {
-    background: CanvasText;
+  .scrub {
+    max-inline-size: none;
   }
 }

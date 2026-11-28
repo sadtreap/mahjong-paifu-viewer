@@ -65,27 +65,13 @@ function moveOf(
   return { kind: "step", dir: isSingleStep(from, to, ix) ? dir : 0 };
 }
 
-/** A forward step or own-turn skip: while the result card is due, it brings the card up. */
-function isForward(command: NavCommand): boolean {
-  return (command.kind === "step" || command.kind === "ownTurn") && command.dir === 1;
-}
-
-/** A move that steps onward one event at a time (a press, a hold, the wheel, autoplay). */
-const STEPPING: ReadonlySet<MoveKind> = new Set(["step", "repeat", "autoplay"]);
-
-/**
- * A new position: the result card shows again, at once or, when a single step forward reached the
- * round's last step, after a moment (so the win itself is seen first).
- */
 function moved(
   state: ViewerState,
   position: Position,
   lastMove: ViewerState["lastMove"],
   playing: boolean,
-  ix: StepIndex,
 ): ViewerState {
-  const due = lastMove.dir === 1 && STEPPING.has(lastMove.kind) && isRoundEnd(position, ix);
-  return { ...state, position, lastMove, playing, resultCard: due ? "due" : "shown" };
+  return { ...state, position, lastMove, playing };
 }
 
 function paused(state: ViewerState): ViewerState {
@@ -98,11 +84,6 @@ function paused(state: ViewerState): ViewerState {
  *
  * - Manual navigation (`user` and `repeat` sources, seeks) pauses autoplay; `autoplay` navigation
  *   keeps playing and pauses on landing at a round's last step, or when it cannot move.
- * - Every position change shows the result card again: "due" when a single step forward (a press,
- *   a hold, the wheel or autoplay) reached the round's last step, so the card waits until the
- *   viewer sends "showResult"; "shown" after any other move.
- * - While the card is due, a fresh forward step brings it up and stays in the round.
- * - `roundEnd` at the round's last step brings up a hidden or due card.
  * - Play at a round's last step (not the game's) goes on to the next round and keeps playing.
  */
 export function createViewerReducer(
@@ -116,7 +97,7 @@ export function createViewerReducer(
     }
     if (isRoundEnd(state.position, ix)) {
       const position = { round: state.position.round + 1, step: 0 };
-      return moved(state, position, { kind: "step", dir: 1 }, true, ix);
+      return moved(state, position, { kind: "step", dir: 1 }, true);
     }
     return { ...state, playing: true };
   };
@@ -125,17 +106,11 @@ export function createViewerReducer(
     switch (action.type) {
       case "nav": {
         const { command, source } = action;
-        if (state.resultCard === "due" && source === "user" && isForward(command)) {
-          return { ...paused(state), resultCard: "shown" };
-        }
         const target = resolveNav(state.position, command, ix, {
           pov: state.pov,
           repeat: source !== "user",
         });
         if (target === null || samePosition(target, state.position)) {
-          if (command.kind === "roundEnd" && state.resultCard !== "shown") {
-            return { ...paused(state), resultCard: "shown" };
-          }
           return paused(state);
         }
         const keepPlaying = source === "autoplay" && !isRoundEnd(target, ix);
@@ -144,7 +119,6 @@ export function createViewerReducer(
           target,
           moveOf(command, source, state.position, target, ix),
           keepPlaying,
-          ix,
         );
       }
       case "seek": {
@@ -159,7 +133,7 @@ export function createViewerReducer(
           kind: action.kind,
           dir: direction(state.position, position),
         };
-        return { ...moved(state, position, lastMove, false, ix), pov };
+        return { ...moved(state, position, lastMove, false), pov };
       }
       case "setPov":
         if (!playing(action.seat) || action.seat === state.pov) {
@@ -179,10 +153,6 @@ export function createViewerReducer(
         return paused(state);
       case "togglePlay":
         return state.playing ? paused(state) : startPlaying(state);
-      case "hideResult":
-        return state.resultCard === "hidden" ? state : { ...state, resultCard: "hidden" };
-      case "showResult":
-        return state.resultCard === "shown" ? state : { ...state, resultCard: "shown" };
     }
   };
 }
@@ -191,13 +161,7 @@ export function createViewerReducer(
 export function initialViewerState(start: ViewerStart | null, ix: StepIndex): ViewerState {
   const position = clampPosition({ round: start?.round ?? 0, step: start?.step ?? 0 }, ix);
   const pov = start?.pov != null && isActiveSeat(start.pov, ix.playerCount) ? start.pov : 0;
-  return {
-    position,
-    pov,
-    playing: false,
-    resultCard: "shown",
-    lastMove: { kind: "init", dir: 0 },
-  };
+  return { position, pov, playing: false, lastMove: { kind: "init", dir: 0 } };
 }
 
 /** Move kinds that come in bursts: the live region stays quiet during them (see useQuietStatus). */

@@ -10,16 +10,17 @@ A browser-based viewer for riichi mahjong game logs (paifu) from [Tenhou](https:
 
 - Reads Tenhou mjlog XML, tenhou.net/6 JSON and mjai JSONL, detecting the format from the content
 - Paste a Tenhou replay link or log id and the viewer downloads the log from tenhou.net
-- The table fills the screen, as in a game client's replay: a tilted 3D table (or a flat top-down one) whose ponds get the largest tiles, with riichi tiles sideways, tsumogiri dimmed, called tiles faded and the last discard outlined; the centre console shows the round, the tiles left, the scores and whose turn it is; the hands you do not see stand as tile backs
+- A flat table seen from above, like a diagram in a strategy book: every hand and pond around the centre console, with riichi tiles sideways, tsumogiri dimmed, called tiles faded and the last discard outlined; the console shows the round, the dora indicators, the tiles left, the scores and whose turn it is; the hands you do not see lie face down
+- A panel beside the table (under it on a phone) with everything that is words: the round, the players and their scores, the list of rounds and, at a round's end, the result. Nothing ever covers the table
 - Three-player (sanma) games in all three formats, with the empty seat and the North tiles set aside (kita)
 - The table is the step button: click to go forward, right-click to go back, hold to fast-forward, turn the mouse wheel; on a phone, tap, swipe and long press. Every round end is a stop for held keys, wheel bursts and autoplay
-- One transport bar: rounds (with a round list of who won and who dealt in), own turns, steps, autoplay at four speeds and a step slider; jumps are browser history entries, so Back returns to where you were
+- One transport bar under the table: own turns, steps, autoplay at four speeds and a step slider; the round list in the panel (who won and who dealt in) jumps to any round, and jumps are browser history entries, so Back returns to where you were
 - View from any player's seat, and show every hand or only that player's; winning hands and the hands revealed at a draw are always shown at the round end
-- Waits and shanten: each player's seat tag shows their waits (with the tiles left, or furiten) or shanten; pointing at a tile outlines every visible copy; the centre console switches to score differences
+- Waits and shanten: the player list shows each player's waits (with the tiles left, or furiten) or shanten; pointing at a tile outlines every visible copy; the centre console switches to score differences
 - Round results with the winning hand and its calls, yaku, han, fu, points, dora and ura dora and the score changes; draws with their reason and each tenpai hand's waits; final standings
 - Links to a moment: a sample or Tenhou log opens at the round, step and seat in the address, and Copy link shares it
-- A few settings, kept in your browser: 3D or flat table, waits and shanten, language and single-key shortcuts
-- Works from 320 px phones in either orientation to wide screens, in one dark theme and in Windows High Contrast mode
+- A few settings, kept in your browser: waits and shanten, language and single-key shortcuts
+- Works from 320 px phones in either orientation to wide screens, in one light theme and in Windows High Contrast mode
 - UI in English, Korean and Japanese, with the usual mahjong terms of each language
 
 ## Supported logs
@@ -32,7 +33,7 @@ Mahjong Soul logs cannot be loaded from a Mahjong Soul link: the viewer can only
 
 ## Opening a log
 
-A visit without a log in the address shows a card with every way to open one. While a game is shown, **Open another log** in the toolbar's menu (⋯) offers the same, and dropping or pasting works on the whole page.
+A visit without a log in the address shows a card with every way to open one. While a game is shown, **Open another log** at the foot of the panel offers the same, and dropping or pasting works on the whole page.
 
 - **Choose a file** with the file picker. Any file can be picked; the extension does not matter.
 - **Drop a file** anywhere on the page.
@@ -57,13 +58,13 @@ The samples and their licenses are listed in [public/samples/README.md](public/s
 
 ### Links to a moment
 
-A sample or a downloaded Tenhou log keeps its place in the address: `?sample=<id>` or `?tenhou=<log id>`, plus `round`, `step` and `pov` (the seat you view from), e.g. `?sample=tenhou-json&round=3&step=48&pov=2`. All three count from 1, like the round list, the step slider and the seat keys. Numbers out of range are clamped and invalid values are ignored. **Copy link to this moment** in the toolbar's menu (⋯) copies the link to the current moment. A local file or pasted log data is not in the address, so it has no link; Back and Forward still return to its earlier moments while the page is open.
+A sample or a downloaded Tenhou log keeps its place in the address: `?sample=<id>` or `?tenhou=<log id>`, plus `round`, `step` and `pov` (the seat you view from), e.g. `?sample=tenhou-json&round=3&step=48&pov=2`. All three count from 1, like the round list, the step slider and the seat keys. Numbers out of range are clamped and invalid values are ignored. **Copy link to this moment** at the foot of the panel copies the link to the current moment. A local file or pasted log data is not in the address, so it has no link; Back and Forward still return to its earlier moments while the page is open.
 
 ## Controls
 
-Everything has a labelled control: the toolbar (Hands, Point of view, and the menu with Open another log, Copy link, Settings and Controls) and the transport bar (round, own turn, step, play and speed buttons, and the step slider). The **Controls** dialog (`?`) lists the keys, the mouse and touch. On the table, only the centre console is a button: it switches the other players' scores to their differences from yours.
+Everything has a labelled control: the transport bar under the table (own turn, step, play and speed buttons, and the step slider) and the panel (Previous round and Next round beside the round's name, Show all hands, a row per player that views the table from that seat, a row per round that jumps to it, and Open another log, Copy link, Settings and Controls at its foot). The **Controls** dialog (`?`) lists the keys, the mouse and touch. On the table, only the centre console is a button: it switches the other players' scores to their differences from yours.
 
-The result card comes up a moment after a step forward reaches the round's end, so the win is seen first; another step forward brings it at once, and a jump (End, the round list) shows it straight away. **Show table** (or Esc) puts it away and **Show result** brings it back; **Next round** leaves the round.
+When a round ends, its result appears in the panel (who won, the hand, the yaku and the value, or the kind of draw) and the player list shows how the scores moved and, at a draw, who was tenpai. The table stays in view the whole time; **Next round**, or one more step forward, leaves the round.
 
 ### Mouse
 
@@ -73,44 +74,40 @@ The result card comes up a moment after a step forward reaches the round's end, 
 | Right-click (Ctrl+click on a Mac)  | Previous step                                      |
 | Shift+click / Shift+right-click    | Next / previous own turn                           |
 | Press and hold (left / right)      | Fast-forward / rewind, stopping at the round's end |
-| Mouse wheel over the table or bar  | Step (with Shift: own turn)                        |
+| Mouse wheel over the table         | Step (with Shift: own turn)                        |
 | Point at a tile                    | Outline every visible copy of it                   |
 | Alt+click (Option+click) a discard | Go to the moment before it was discarded           |
 | Click the centre console           | Score differences on / off                         |
-| Click beside the result card       | Show the table                                     |
 
 ### Touch
 
-| Gesture                | Action                                                         |
-| ---------------------- | -------------------------------------------------------------- |
-| Tap the table          | Next step                                                      |
-| Swipe left / right     | Next / previous step (not from the screen's edge)              |
-| Touch and hold         | Fast-forward                                                   |
-| Tap the centre console | Score differences on / off                                     |
-| Beside the result card | A tap or a swipe left shows the table; a swipe right goes back |
+| Gesture                | Action                                            |
+| ---------------------- | ------------------------------------------------- |
+| Tap the table          | Next step                                         |
+| Swipe left / right     | Next / previous step (not from the screen's edge) |
+| Touch and hold         | Fast-forward                                      |
+| Tap the centre console | Score differences on / off                        |
 
 Pinch zoom and page scrolling stay the browser's.
 
 ### Keyboard
 
-| Keys              | Action                                             |
-| ----------------- | -------------------------------------------------- |
-| → / ←             | Next / previous step                               |
-| Shift+→ / Shift+← | Next / previous own turn                           |
-| ↓                 | Next round                                         |
-| ↑                 | Start of this round, then the previous round       |
-| Home / End        | Round start / round result                         |
-| Space             | Autoplay on / off                                  |
-| + / −             | Autoplay faster / slower                           |
-| 1–4               | View from that seat (1–3 in three-player games)    |
-| V / Shift+V       | View from the next / previous player               |
-| H                 | Show / hide all hands                              |
-| W                 | Waits and shanten on / off                         |
-| D                 | Score differences on / off                         |
-| C                 | 3D / flat table                                    |
-| R                 | Round list                                         |
-| ?                 | Controls                                           |
-| Esc               | Close a menu, hide the round result, stop autoplay |
+| Keys              | Action                                          |
+| ----------------- | ----------------------------------------------- |
+| → / ←             | Next / previous step                            |
+| Shift+→ / Shift+← | Next / previous own turn                        |
+| ↓                 | Next round                                      |
+| ↑                 | Start of this round, then the previous round    |
+| Home / End        | Round start / round result                      |
+| Space             | Autoplay on / off                               |
+| + / −             | Autoplay faster / slower                        |
+| 1–4               | View from that seat (1–3 in three-player games) |
+| V / Shift+V       | View from the next / previous player            |
+| H                 | Show / hide all hands                           |
+| W                 | Waits and shanten on / off                      |
+| D                 | Score differences on / off                      |
+| ?                 | Controls                                        |
+| Esc               | Stop autoplay                                   |
 
 The single-key shortcuts (letters, digits, punctuation and Space) can be turned off in the settings; every one of them also has a button. The shortcuts work anywhere except while typing in a text field, in a select box or in a dialog; the focused step slider keeps the arrow keys, Page Up / Page Down and Home / End, as sliders do. Holding a key, fast wheel turns and autoplay stop at each round result; press again to go on. Screen readers hear each step, and what a key changed, from one live region.
 

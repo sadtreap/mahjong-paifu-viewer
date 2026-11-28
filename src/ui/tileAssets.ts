@@ -2,8 +2,8 @@ import { isKnownTile, isRedFive, type Tile } from "../core/tile";
 
 /**
  * Tile images come from FluffyStuff/riichi-mahjong-tiles (public domain), copied into public/tiles.
- * Every image shares the same 300x400 viewBox: Front.svg is the blank tile body, and each face
- * (Man1.svg, Ton.svg, ...) is a transparent symbol drawn over it. Back.svg is a complete tile.
+ * Every face (Man1.svg, Ton.svg, ...) is a transparent symbol on a 300x400 viewBox; the viewer
+ * draws the tile's body under it, and a face-down tile, in CSS (TileImage.module.css).
  */
 const SUIT_FILES = { m: "Man", p: "Pin", s: "Sou" } as const;
 const HONOR_FILES = ["Ton", "Nan", "Shaa", "Pei", "Haku", "Hatsu", "Chun"] as const;
@@ -26,10 +26,7 @@ export function tileImageUrl(name: string): string {
   return `${import.meta.env.BASE_URL}tiles/${name}.svg`;
 }
 
-export const TILE_FRONT_URL = tileImageUrl("Front");
-export const TILE_BACK_URL = tileImageUrl("Back");
-
-/** Every face (34 kinds plus the three red fives), the blank front and the back. */
+/** Every face: the 34 kinds plus the three red fives. */
 export function allTileImageUrls(): string[] {
   const faces: string[] = [];
   for (const file of Object.values(SUIT_FILES)) {
@@ -39,7 +36,7 @@ export function allTileImageUrls(): string[] {
     faces.push(`${file}5-Dora`);
   }
   faces.push(...HONOR_FILES);
-  return [...faces.map(tileImageUrl), TILE_FRONT_URL, TILE_BACK_URL];
+  return faces.map(tileImageUrl);
 }
 
 let preloaded = false;

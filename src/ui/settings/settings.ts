@@ -1,4 +1,4 @@
-import type { AutoplaySpeed, Settings, View } from "../viewer/types";
+import type { AutoplaySpeed, Settings } from "../viewer/types";
 
 /** The storage name (see src/storage.ts) of the settings blob. */
 export const SETTINGS_STORAGE_NAME = "settings";
@@ -10,11 +10,13 @@ export const SETTINGS_STORAGE_NAME = "settings";
 export const LEGACY_SHOW_ALL_HANDS_STORAGE_NAME = "showAllHands";
 
 export const AUTOPLAY_SPEEDS: readonly AutoplaySpeed[] = [0.5, 1, 2, 4];
-export const VIEWS: readonly View[] = ["3d", "flat"];
+
+/** The version the app writes, and the older ones it still reads (see readBlob). */
+const VERSION = 3;
+const OLD_VERSIONS: readonly unknown[] = [1, 2];
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
-  version: 2,
-  view: "3d",
+  version: VERSION,
   showAllHands: true,
   showWaits: true,
   charKeys: true,
@@ -37,9 +39,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * The blob's fields when it parses as a settings object of a known version, else null. Version 1
- * stored the same five fields under the same names (next to others that no longer exist), so both
- * versions are read alike.
+ * The blob's fields when it parses as a settings object of a known version, else null. Versions 1
+ * and 2 stored today's four fields under the same names (next to others that no longer exist,
+ * such as version 2's choice between a 3D and a flat table), so every version is read alike.
  */
 function readBlob(raw: string | null): Record<string, unknown> | null {
   if (raw === null) {
@@ -51,12 +53,14 @@ function readBlob(raw: string | null): Record<string, unknown> | null {
   } catch {
     return null;
   }
-  return isRecord(parsed) && (parsed.version === 1 || parsed.version === 2) ? parsed : null;
+  return isRecord(parsed) && (parsed.version === VERSION || OLD_VERSIONS.includes(parsed.version))
+    ? parsed
+    : null;
 }
 
 /**
  * What a stored blob is to this version of the app: "none" (nothing stored), "current", "old"
- * (version 1, which is rewritten in the current form when it is loaded) or "unknown" (not JSON, or
+ * (version 1 or 2, which is rewritten in the current form when it is loaded) or "unknown" (not JSON, or
  * a version this app does not know; it is read as the defaults and left as stored until a setting
  * changes).
  */
@@ -68,7 +72,7 @@ export function blobKind(raw: string | null): "none" | "current" | "old" | "unkn
   if (blob === null) {
     return "unknown";
   }
-  return blob.version === 1 ? "old" : "current";
+  return blob.version === VERSION ? "current" : "old";
 }
 
 /**
@@ -92,7 +96,6 @@ export function parseSettings(raw: string | null, legacyShowAllHands: string | n
       settings[key] = value;
     }
   }
-  settings.view = oneOf(blob.view, VIEWS) ?? settings.view;
   settings.autoplaySpeed = oneOf(blob.autoplaySpeed, AUTOPLAY_SPEEDS) ?? settings.autoplaySpeed;
   return settings;
 }
@@ -103,7 +106,6 @@ export function serializeSettings(settings: Settings): string {
   for (const key of BOOLEAN_KEYS) {
     known[key] = settings[key];
   }
-  known.view = settings.view;
   known.autoplaySpeed = settings.autoplaySpeed;
   return JSON.stringify(known);
 }

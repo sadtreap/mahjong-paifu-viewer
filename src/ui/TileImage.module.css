@@ -1,36 +1,43 @@
+/*
+ * A flat tile. Its box is --tile-w wide; the body is drawn a hair inside the box (a transparent
+ * border), so tiles that touch show a seam of what lies under them, and each keeps its own
+ * hairline. The face artwork is transparent and fills the body.
+ */
 .tile {
   --w: var(--tile-w, 2rem);
 
   display: block;
   flex: none;
+  box-sizing: border-box;
   width: var(--w);
   height: calc(var(--w) * 4 / 3);
-  background-size: 100% 100%;
-  /* Matches the rounded corners of the tile artwork (radius 40 on a 300x400 tile). */
-  border-radius: 13.3% / 10%;
-  box-shadow:
-    0 0 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
-    0 max(1px, calc(var(--w) * 0.04)) max(1px, calc(var(--w) * 0.06)) var(--tile-shadow);
+  border: calc(var(--w) * 0.02) solid transparent;
+  border-radius: calc(var(--w) * 0.11);
+  background: var(--tile-face) padding-box;
+  box-shadow: inset 0 0 0 1px var(--tile-line);
   user-select: none;
   -webkit-user-drag: none;
 }
 
-/* Face-down tile (the artwork is a complete tile, so it needs no body). */
+/* Face down: the body alone, in the back's tone. */
 .back {
-  background: none;
+  background-color: var(--tile-back);
 }
 
 .dimmed {
-  filter: brightness(0.8) saturate(0.8);
+  background-color: var(--tile-dim);
 }
 
 .called {
-  opacity: 0.4;
+  opacity: 0.3;
 }
 
+/* The last discard: a ring in the mark's colour, over the tiles beside it. */
 .highlighted {
-  outline: max(2px, calc(var(--w) * 0.08)) solid var(--highlight);
-  outline-offset: max(1px, calc(var(--w) * 0.04));
+  position: relative;
+  z-index: 1;
+  outline: max(2px, calc(var(--w) * 0.07)) solid var(--mark);
+  outline-offset: calc(var(--w) * -0.02);
 }
 
 .sideways {
@@ -50,94 +57,18 @@
 }
 
 /*
- * The table (data-thick on the stage): lying tiles show their thickness toward the camera, as a
- * face-coloured edge, a back-coloured edge and a soft drop shadow. The stage gives the thickness
- * in tile widths (--tile-thick); each seat layer sets the direction (--dx, --dy), and the defaults
- * are the bottom seat's.
+ * The faces are dark artwork made for a white tile, and a tsumogiri discard and a face-down tile
+ * are told apart by their fill alone: a tile keeps its own colours when the system picks the
+ * page's, and gets an outline of its own in place of the hairline.
  */
-[data-thick] .tile {
-  --d: calc(var(--w) * var(--tile-thick));
-
-  box-shadow:
-    0 0 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
-    calc(var(--dx, 0) * var(--d) * 0.5) calc(var(--dy, 1) * var(--d) * 0.5) 0 var(--tile-edge-face),
-    calc(var(--dx, 0) * var(--d)) calc(var(--dy, 1) * var(--d)) 0 var(--tile-edge-back),
-    calc(var(--dx, 0) * var(--d) * 1.4) calc(var(--dy, 1) * var(--d) * 1.4) calc(var(--d) * 0.8)
-    var(--tile-drop);
-}
-
-/* A face-down tile lies on its face: the back-coloured edge is on top. */
-[data-thick] .back {
-  box-shadow:
-    0 0 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
-    calc(var(--dx, 0) * var(--d) * 0.5) calc(var(--dy, 1) * var(--d) * 0.5) 0 var(--tile-edge-back),
-    calc(var(--dx, 0) * var(--d)) calc(var(--dy, 1) * var(--d)) 0 var(--tile-edge-face),
-    calc(var(--dx, 0) * var(--d) * 1.4) calc(var(--dy, 1) * var(--d) * 1.4) calc(var(--d) * 0.8)
-    var(--tile-drop);
-}
-
-/* A sideways tile draws its thickness on the unrotated wrapper, so it falls toward the camera. */
-[data-thick] .sideways {
-  --w: var(--tile-w, 2rem);
-  --d: calc(var(--w) * var(--tile-thick));
-
-  border-radius: 10% / 13.3%;
-  box-shadow:
-    0 0 0 max(1px, calc(var(--w) * 0.02)) var(--tile-outline),
-    calc(var(--dx, 0) * var(--d) * 0.5) calc(var(--dy, 1) * var(--d) * 0.5) 0 var(--tile-edge-face),
-    calc(var(--dx, 0) * var(--d)) calc(var(--dy, 1) * var(--d)) 0 var(--tile-edge-back),
-    calc(var(--dx, 0) * var(--d) * 1.4) calc(var(--dy, 1) * var(--d) * 1.4) calc(var(--d) * 0.8)
-    var(--tile-drop);
-}
-
-[data-thick] .sideways > .tile {
-  box-shadow: none;
-}
-
-/*
- * Paint order of lying tiles that touch (TileImage depth). The thickness above falls outside the
- * tile box, toward the camera, so a nearer tile has to be painted over a farther one; in plain
- * document order the right seat (along its rows) and the far seat (across its pond rows) painted
- * each farther tile's thickness over its nearer neighbour's face. The seat layer's camera direction
- * (--dx, --dy) turns the tile's [column, row] into that order. The groups holding these tiles
- * isolate (Pond, HandRow), so the order stays among their own tiles.
- */
-[data-thick] .depth {
-  position: relative;
-  z-index: calc(100 + var(--dx, 0) * var(--zx, 0) + var(--dy, 1) * var(--zy, 0));
-}
-
-[data-thick] .dimmed {
-  filter: brightness(0.82) saturate(0.8);
-}
-
-/*
- * A called discard fades with a filter, not with opacity: a see-through tile showed its farther
- * neighbour's drawn thickness through its face (a red band). So the base rule's opacity is reset
- * here, and the filter (fitted to it) gives the look of 38% opacity over the felt: a low-contrast,
- * felt-tinted tile.
- */
-[data-thick] .called {
-  opacity: 1;
-  filter: contrast(0.52) sepia(1) hue-rotate(101deg) saturate(0.81) brightness(0.62);
-}
-
-[data-thick] .highlighted {
-  outline: max(2px, calc(var(--w) * 0.09)) solid var(--highlight);
-  outline-offset: max(1px, calc(var(--w) * 0.04));
-}
-
 @media (forced-colors: active) {
-  [data-thick] .tile,
-  [data-thick] .sideways {
+  .tile {
+    forced-color-adjust: none;
     outline: 1px solid CanvasText;
+    outline-offset: -1px;
   }
 
-  [data-thick] .sideways > .tile {
-    outline: none;
-  }
-
-  [data-thick] .highlighted {
+  .highlighted {
     outline: 3px solid Highlight;
   }
 }

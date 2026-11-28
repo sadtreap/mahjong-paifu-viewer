@@ -1,8 +1,8 @@
 /**
- * Contract types shared by the viewer's parts (table, controls, result card, shell): the viewer
- * state and its actions, the settings blob, and the props the parts are wired with.
+ * Contract types shared by the viewer's parts (table, transport, panel, shell): the viewer state
+ * and its actions, the settings blob, and the props the parts are wired with.
  */
-import type { ReactNode, Ref } from "react";
+import type { Ref } from "react";
 import type {
   GameLog,
   PlayerCount,
@@ -19,11 +19,8 @@ import type { Bounds, Position } from "../navigation";
 import type { SampleId } from "../samples";
 
 export type Dir = 1 | -1;
-export type View = "3d" | "flat";
 export type AutoplaySpeed = 0.5 | 1 | 2 | 4;
 export type Side = "bottom" | "right" | "top" | "left";
-/** The page's three arrangements; see arrangement.ts for the media queries that pick one. */
-export type Arrangement = "wide" | "short" | "stack";
 
 export type StepKind =
   | "deal"
@@ -84,17 +81,11 @@ export interface DiscardIndex {
   decisionStep(ref: DiscardRef): number | undefined;
 }
 
-/**
- * The result card at a round's last step: shown, due (it comes up after a moment, once the win has
- * been seen) or hidden ("Show table"). Every position change sets it to shown or due.
- */
-export type ResultCardState = "shown" | "due" | "hidden";
 export interface ViewerState {
   position: Position;
   /** Always a playing seat. */
   pov: Seat;
   playing: boolean;
-  resultCard: ResultCardState;
   lastMove: { kind: MoveKind; dir: -1 | 0 | 1 };
 }
 export type ViewerAction =
@@ -104,9 +95,7 @@ export type ViewerAction =
   | { type: "cyclePov"; delta: 1 | -1 }
   | { type: "play" }
   | { type: "pause" }
-  | { type: "togglePlay" }
-  | { type: "hideResult" }
-  | { type: "showResult" };
+  | { type: "togglePlay" };
 /** 0-based, unclamped. */
 export interface ViewerStart {
   round: number;
@@ -124,22 +113,15 @@ export interface CaptionSpec {
   seat: Seat;
   kind: "chi" | "pon" | "kan" | "riichi" | "kita" | "ron" | "tsumo";
 }
+/** What moves on a step: the discard just made lands in its pond (a short slide from the hand). */
 export interface MotionSpec {
-  flight: {
-    seat: Seat;
-    index: number;
-    source: "hand" | "drawn" | "opponent";
-    riichi: boolean;
-  } | null;
-  /** Seats whose standing wall gives way to the face-up hand on this step (the round-end reveal). */
-  reveal: readonly Seat[];
+  landing: DiscardRef | null;
 }
 
 /** Persistent preferences, stored as one versioned JSON blob; see settings/settings.ts. */
 export interface Settings {
-  version: 2;
-  view: View;
-  /** Off: opponents' hands stay hidden (standing walls on the 3D table). */
+  version: 3;
+  /** Off: opponents' hands lie face down. */
   showAllHands: boolean;
   /** The waits and shanten aid next to each player. */
   showWaits: boolean;
@@ -155,8 +137,8 @@ export interface Spotlight {
 }
 
 // ---- table
-/** What the table shows next to one playing seat. */
-export interface SeatTagInfo {
+/** One playing seat at a step: what the console and the player list show about it. */
+export interface SeatInfo {
   seat: Seat;
   side: Side;
   name: string;
@@ -173,12 +155,8 @@ export interface TableStageProps {
   names: Quad<string>;
   pov: Seat;
   revealed: ReadonlySet<Seat>;
-  view: View;
-  /** Picks the camera: "stack" has its own; "wide" and "short" share one. */
-  arrangement: Arrangement;
-  /** = !showAllHands: the opponents' hidden hands stand as walls. */
-  walls: boolean;
-  tags: readonly SeatTagInfo[];
+  /** The playing seats, in side order from the point of view. */
+  seats: readonly SeatInfo[];
   /** Empty unless a single forward step. */
   captions: readonly CaptionSpec[];
   motion: MotionSpec;
@@ -189,16 +167,6 @@ export interface TableStageProps {
   /** The console shows the other players' scores as differences from the viewed player. */
   scoreDiff: boolean;
   onToggleScoreDiff(): void;
-  /**
-   * The transport bar ("wide" only), in a slot centred on the felt strip between the viewed
-   * player's pond and hand. The slot ignores stage gestures.
-   */
-  dock?: ReactNode;
-  /**
-   * The result card's layer, in a slot above everything else in the stage. The slot ignores stage
-   * gestures; its box is the stage down to the dock slot, raised by `--overlay-rise`.
-   */
-  overlay?: ReactNode;
 }
 export interface SeatZoneProps {
   side: Side;
@@ -207,62 +175,12 @@ export interface SeatZoneProps {
   view: SeatView | null;
   name: string;
   revealed: boolean;
-  isPov: boolean;
-  walled: boolean;
   highlightIndex: number;
-  /** -1 = none. */
-  flightIndex: number;
-}
-export interface OwnHandProps {
-  seat: Seat;
-  view: SeatView;
-  name: string;
+  /** The discard that slides into the pond on this step; -1 = none. */
+  landingIndex: number;
 }
 
-// ---- controls
-/** The viewer's popovers; at most one is open. */
-export type PopoverName = "pov" | "menu" | "rounds";
-/** One playing seat at a step: a row of the point-of-view menu, which doubles as the scoreboard. */
-export interface PlayerRow {
-  seat: Seat;
-  name: string;
-  wind: Wind;
-  score: number;
-}
-export interface PovMenuProps {
-  /** One row per playing seat, in seat order. */
-  players: readonly PlayerRow[];
-  pov: Seat;
-  onPov(seat: Seat): void;
-  open: boolean;
-  onOpenChange(open: boolean): void;
-}
-export interface AppMenuProps {
-  /** A sample or a Tenhou log: the menu lists "Copy link to this moment". */
-  linkable: boolean;
-  onOpenLog(): void;
-  onCopyLink(): void;
-  onSettings(): void;
-  onHelp(): void;
-  open: boolean;
-  onOpenChange(open: boolean): void;
-}
-export interface ToolbarProps
-  extends Omit<PovMenuProps, "open" | "onOpenChange">,
-    Omit<AppMenuProps, "open" | "onOpenChange"> {
-  showAllHands: boolean;
-  onToggleHands(): void;
-  /** Which of the toolbar's two menus is open. */
-  popover: PopoverName | null;
-  onPopover(popover: PopoverName | null): void;
-}
-export interface InfoChipProps {
-  /** The revealed indicators only. */
-  doraIndicators: readonly KnownTile[];
-  honba: number;
-  /** Riichi deposits on the table. */
-  deposits: number;
-}
+// ---- transport
 export interface ScrubberProps {
   /** Round index and its step count (at least 1). */
   round: number;
@@ -273,6 +191,72 @@ export interface ScrubberProps {
   describe(step: number): string;
   turnOf(step: number): number;
   onSeek(position: Position, kind: "scrub"): void;
+}
+/** Which ends the position has reached: the buttons that would go further are disabled. */
+export interface NavLimits {
+  gameStart: boolean;
+  gameEnd: boolean;
+  lastRound: boolean;
+}
+export interface TransportProps {
+  limits: NavLimits;
+  playing: boolean;
+  speed: AutoplaySpeed;
+  /** Returns false when nothing moved. */
+  onNav(command: NavCommand, source: Exclude<NavSource, "autoplay">): boolean;
+  onTogglePlay(): void;
+  onSpeed(speed: AutoplaySpeed): void;
+  scrubber: ScrubberProps;
+}
+export interface LiveStatusProps {
+  /** What the current step shows, in words. */
+  text: string;
+  /** Steps are flying by (autoplay, a hold, a wheel burst, a scrub): they are not read out. */
+  quiet: boolean;
+  /**
+   * A message that takes the text's place and is read out even while quiet. A new `id` reads the
+   * same words out again.
+   */
+  announcement: { id: number; text: string } | null;
+}
+
+// ---- panel
+export interface RoundHeaderProps {
+  /** The round's name with its honba count, e.g. "East 2, 1 honba". */
+  roundName: string;
+  turn: number;
+  /** null for a round that could not be replayed: the header shows its name alone. */
+  wallRemaining: number | null;
+  /** Riichi deposits on the table. */
+  deposits: number;
+  limits: NavLimits;
+  onNav(command: NavCommand, source: "user"): boolean;
+}
+/** One playing seat at a step: a row of the player list, which is also the scoreboard. */
+export interface PlayerRow {
+  seat: Seat;
+  name: string;
+  wind: Wind;
+  score: number;
+  aid: SeatAid | null;
+}
+/** Who was tenpai at a draw, and what each of those hands waited on. */
+export interface TenpaiInfo {
+  seats: readonly Seat[];
+  /** The waits of each tenpai seat whose hand is known. */
+  waits: Partial<Record<Seat, readonly KnownTile[]>>;
+}
+export interface PlayerListProps {
+  /** One row per playing seat, in seat order. */
+  players: readonly PlayerRow[];
+  pov: Seat;
+  onPov(seat: Seat): void;
+  showAllHands: boolean;
+  onToggleHands(): void;
+  /** At a round's result: every seat's point change, all of the round's results together. */
+  changes: Quad<number> | null;
+  /** At a draw that lists its tenpai seats: every row says tenpai (with the waits) or noten. */
+  tenpai: TenpaiInfo | null;
 }
 /** How a round ended: its wins (several for a multiple ron), or a draw; null with no result. */
 export type RoundOutcome =
@@ -304,41 +288,8 @@ export interface RoundListProps {
   onRound(index: number): void;
   /** Jumps to the game's last step. */
   onFinal(): void;
-  open: boolean;
-  onOpenChange(open: boolean): void;
 }
-export interface TransportProps {
-  /** Where the transport sits: a bar on the felt, rows in the side column, or the bottom block. */
-  arrangement: Arrangement;
-  turn: number;
-  limits: { gameStart: boolean; gameEnd: boolean; lastRound: boolean };
-  playing: boolean;
-  speed: AutoplaySpeed;
-  /** Returns false when nothing moved. */
-  onNav(command: NavCommand, source: Exclude<NavSource, "autoplay">): boolean;
-  onTogglePlay(): void;
-  onSpeed(speed: AutoplaySpeed): void;
-  /** Shows the hidden result card again; null while there is no hidden card. */
-  onShowResult: (() => void) | null;
-  scrubber: ScrubberProps;
-  roundList: RoundListProps;
-  /** The viewer attaches wheel stepping here. */
-  rootRef: Ref<HTMLDivElement>;
-}
-export interface LiveStatusProps {
-  /** What the current step shows, in words. */
-  text: string;
-  /** Steps are flying by (autoplay, a hold, a wheel burst, a scrub): they are not read out. */
-  quiet: boolean;
-  /**
-   * A message that takes the text's place and is read out even while quiet. A new `id` reads the
-   * same words out again.
-   */
-  announcement: { id: number; text: string } | null;
-}
-
-// ---- result card
-export interface ResultCardProps {
+export interface ResultBlockProps {
   results: ReadonlyArray<WinEvent | RyukyokuEvent>;
   /** The seats at the result step, with the hands the result reveals. */
   seats: Quad<SeatView>;
@@ -346,11 +297,16 @@ export interface ResultCardProps {
   playerCount: PlayerCount;
   /** Non-null only at the game's last result. */
   final: Quad<number> | null;
-  /** The waits of each tenpai seat at a draw. */
-  drawWaits: Partial<Record<Seat, readonly KnownTile[]>>;
   doraIndicators: readonly KnownTile[];
-  onHide(): void;
   onNextRound(): void;
+}
+export interface PanelActionsProps {
+  /** A sample or a Tenhou log: the actions include "Copy link to this moment". */
+  linkable: boolean;
+  onOpenLog(): void;
+  onCopyLink(): void;
+  onSettings(): void;
+  onHelp(): void;
 }
 
 // ---- shell

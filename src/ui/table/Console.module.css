@@ -1,84 +1,101 @@
 /*
- * The console: a low slab in the middle of the plane (--console-from, --console-size from
- * geometry.ts). Lengths are in u; text has a floor of 11 px, so on the smallest tables it takes a
- * larger share of the slab.
+ * The console: a square in the middle of the table, as wide as a pond row (--console-size from
+ * geometry.ts). Lengths are in u, a tile's width; text has a floor of 10 px, so on the smallest
+ * tables it takes a larger share of the square.
  */
-/* A container, so the text can ask how much slab it has (the smallest flat tables). */
 .console {
-  --rim: var(--console-line);
+  --from: calc((var(--units) - var(--console-size)) / 2);
 
   position: absolute;
-  container: console / size;
-  left: calc(var(--u) * var(--console-from));
-  top: calc(var(--u) * var(--console-from));
+  left: calc(var(--u) * var(--from));
+  top: calc(var(--u) * var(--from));
   width: calc(var(--u) * var(--console-size));
   height: calc(var(--u) * var(--console-size));
-  border-radius: calc(var(--u) * 0.4);
-  background: linear-gradient(160deg, var(--console-lit), var(--console-bg) 45%);
-  box-shadow:
-    inset 0 0 0 max(1px, calc(var(--u) * 0.05)) var(--rim),
-    0 calc(var(--u) * 0.07) 0 var(--console-side),
-    0 calc(var(--u) * 0.1) calc(var(--u) * 0.16) rgb(0 0 0 / 0.5);
 }
 
-/*
- * The button covers the slab inside its rim and takes none of the app's button look. It stops a
- * little short of the slab's edge: the plane is seen in perspective, where the box of a console
- * that reached its corners would lap over the boxes of the pond tiles beside it.
- */
+/* The button is the square, and takes none of the app's button look. */
 .press {
   position: absolute;
-  inset: calc(var(--u) * 0.05);
+  inset: 0;
   display: block;
   min-block-size: 0;
   padding: 0;
-  border: 0;
-  border-radius: calc(var(--u) * 0.35);
-  background: none;
-  color: var(--console-fg);
-  line-height: 1;
+  border: 1px solid var(--console-line);
+  border-radius: calc(var(--u) * 0.16);
+  background: var(--console-bg);
+  color: var(--color-fg);
+  font-weight: 400;
+  line-height: 1.2;
   transition: none;
 }
 
 @media (hover: hover) {
-  .console:has(.press:hover) {
-    --rim: var(--console-muted);
+  .press:hover {
+    border-color: var(--color-border);
+    background: var(--console-bg);
   }
 }
 
-/* Showing differences: a bright rim. */
-.console:has(.press[aria-pressed="true"]) {
-  --rim: var(--console-fg);
+.press:active {
+  background: var(--console-bg);
+}
+
+/* Showing differences: an ink rim. */
+.press[aria-pressed="true"] {
+  border-color: var(--color-fg);
+  background: var(--console-bg);
+  font-weight: 400;
 }
 
 .press:focus-visible {
   outline: max(2px, calc(var(--u) * 0.07)) solid var(--color-focus);
-  outline-offset: 0;
+  outline-offset: 1px;
 }
 
-/* The middle: the round name and the tiles left, on a darker plate between the four cells. */
+/* The middle: the round name, the dora indicators and the tiles left, between the four cells. */
 .screen {
   position: absolute;
   inset: calc(var(--u) * 1.05);
-  display: grid;
-  place-content: center;
-  place-items: center;
-  gap: calc(var(--u) * 0.1);
-  border-radius: calc(var(--u) * 0.25);
-  background: var(--console-screen);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--u) * 0.12);
   white-space: nowrap;
 }
 
 .round {
-  font-weight: 700;
-  font-size: max(calc(var(--u) * 0.62), 11px);
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  font-size: max(calc(var(--u) * 0.4), 10px);
+}
+
+.dora {
+  --tile-w: calc(var(--u) * 0.72);
+
+  display: flex;
+  align-items: center;
+}
+
+.doraLabel {
+  margin-inline-end: calc(var(--u) * 0.16);
+  color: var(--color-muted);
+  font-size: max(calc(var(--u) * 0.31), 10px);
+}
+
+/* Four or five indicators take the middle's whole width: the tiles say "dora" by themselves. */
+.dora:is([data-count="4"], [data-count="5"]) > .doraLabel {
+  display: none;
 }
 
 .left {
-  color: var(--console-muted);
-  font-size: max(calc(var(--u) * 0.5), 11px);
+  color: var(--color-muted);
+  font-size: max(calc(var(--u) * 0.31), 10px);
   font-variant-numeric: tabular-nums;
+}
+
+/* The fewer words of a small console (see the container query below). */
+.short {
+  display: none;
 }
 
 /* One layer per player, turned to that player's edge and laid out as the near edge. */
@@ -100,129 +117,86 @@
   rotate: 90deg;
 }
 
-/*
- * A cell: the wind at the player's left end of the edge, the score in the middle of the edge. Each
- * corner of the console so holds one wind, with the scores between them.
- */
+/* A cell: the seat wind and the score, centred on the player's edge. */
 .cell {
   position: absolute;
-  left: calc(var(--u) * 0.25);
-  right: calc(var(--u) * 0.25);
-  bottom: calc(var(--u) * 0.21);
-  height: calc(var(--u) * 0.76);
+  left: 0;
+  right: 0;
+  bottom: calc(var(--u) * 0.24);
   display: flex;
   align-items: center;
+  justify-content: center;
+  gap: calc(var(--u) * 0.16);
   font-variant-numeric: tabular-nums;
 }
 
-/* The far player's cell reads upright; its wind stays at that player's left, the top right. */
+/* The far player's cell reads upright. */
 .edge[data-edge="top"] > .cell {
-  flex-direction: row-reverse;
   rotate: 180deg;
 }
 
 .wind {
   flex: none;
-  width: max(calc(var(--u) * 0.72), 12px);
-  height: max(calc(var(--u) * 0.72), 12px);
+  width: max(calc(var(--u) * 0.56), 12px);
+  height: max(calc(var(--u) * 0.56), 12px);
   display: grid;
   place-items: center;
-  border-radius: calc(var(--u) * 0.16);
-  background: var(--console-wind);
-  font-weight: 800;
-  font-size: max(calc(var(--u) * 0.5), 11px);
+  border-radius: calc(var(--u) * 0.1);
+  color: var(--color-muted);
+  font-weight: 600;
+  font-size: max(calc(var(--u) * 0.33), 10px);
 }
 
 .dealer {
-  background: var(--badge-bg);
-  color: var(--badge-fg);
+  background: var(--color-fg);
+  color: var(--console-bg);
 }
 
 .score {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font-weight: 700;
-  font-size: max(calc(var(--u) * 0.62), 11px);
+  font-weight: 600;
+  font-size: max(calc(var(--u) * 0.37), 10px);
 }
 
 /* Whose turn it is: a bar along that player's edge. */
 .turn {
   position: absolute;
-  left: calc(var(--u) * 0.85);
-  right: calc(var(--u) * 0.85);
-  bottom: calc(var(--u) * 0.04);
-  height: max(2px, calc(var(--u) * 0.11));
+  left: 24%;
+  right: 24%;
+  bottom: calc(var(--u) * 0.07);
+  height: max(2px, calc(var(--u) * 0.08));
   border-radius: 99px;
-  background: var(--turn);
-  box-shadow: 0 0 calc(var(--u) * 0.3) var(--turn);
+  background: var(--mark);
 }
 
 /*
- * The smallest tables: the slab is about 60 px wide, and text at its floor size leaves no room for
- * the winds. They stay on the seat tags, which mark the dealer's there (SeatTags.module.css, the
- * same query). Each score is centred on its edge, around the round name and the tiles left, just
- * inside the turn bar.
+ * A small table (a phone's): the text is near its floor size, so the middle says less (the round
+ * without its honba, the tiles left as a number) and gives up its label, and the cells stand
+ * closer to the rim.
  */
-@container stage (max-width: 310px) or (max-height: 290px) {
+@container stage (max-width: 440px) or (max-height: 440px) {
   .screen {
-    inset: 12px;
-    gap: 0;
-    background: none;
+    inset: calc(var(--u) * 0.95);
+    gap: 1px;
+  }
+
+  .full,
+  .doraLabel {
+    display: none;
+  }
+
+  .short {
+    display: inline;
   }
 
   .cell {
-    left: 0;
-    right: 0;
-    bottom: calc(max(2px, var(--u) * 0.11) + 1px);
-    height: 11px;
-  }
-
-  .wind {
-    display: none;
-  }
-
-  .round,
-  .left,
-  .score {
-    letter-spacing: -0.04em;
-  }
-
-  .turn {
-    left: 13px;
-    right: 13px;
-    bottom: 0;
-  }
-}
-
-/*
- * A slab under 60 px (the flat table on the smallest phones) has no room between the side scores
- * for the round name: it gives way (the round button names the round), and the tiles left may
- * take two lines.
- */
-@container console (width < 60px) {
-  .round {
-    display: none;
-  }
-
-  .screen {
-    white-space: normal;
-    text-align: center;
-  }
-
-  .left {
-    overflow-wrap: anywhere;
+    bottom: calc(var(--u) * 0.18);
+    gap: 2px;
   }
 }
 
 @media (forced-colors: active) {
   .press {
     border: 1px solid ButtonText;
-  }
-
-  .screen {
-    background: none;
   }
 
   .wind {
@@ -236,6 +210,5 @@
   .turn {
     forced-color-adjust: none;
     background: Highlight;
-    box-shadow: none;
   }
 }

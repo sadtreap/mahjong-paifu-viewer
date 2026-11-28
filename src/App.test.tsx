@@ -5,6 +5,8 @@ import { App } from "./App";
 import type { GameLog, Round } from "./core/model";
 import { MAX_LOG_SIZE } from "./formats/index";
 import { I18nProvider } from "./i18n/I18nProvider";
+import { ja } from "./i18n/messages/ja";
+import { shown, spoken } from "./test/dom-text";
 import { makeGame, makeSanmaGame, sampleRound, sampleSanmaRound } from "./test/round-builder";
 import { game as shortGame } from "./ui/__fixtures__/game";
 import { doubleRonRound } from "./ui/viewer/__fixtures__/games";
@@ -19,8 +21,10 @@ const threeRounds: GameLog = makeGame([
   { ...doubleRonRound(), number: 3 },
 ]);
 
-/** Two three-player rounds (24 steps each). */
-const sanma: GameLog = makeSanmaGame([sampleSanmaRound(), { ...sampleSanmaRound(), number: 2 }]);
+/** Two three-player rounds (24 steps each), with the final scores a complete log carries. */
+const sanma: GameLog = makeSanmaGame([sampleSanmaRound(), { ...sampleSanmaRound(), number: 2 }], {
+  finalScores: [35000, 28800, 41200, 0],
+});
 
 /** A game as recorded from another seat: seat `hidden`'s own tiles are unknown ("?"). */
 function hideSeat(source: GameLog, hidden: number): GameLog {
@@ -154,16 +158,29 @@ const fileInput = (root: HTMLElement = document.body) =>
 const slider = () => screen.getByRole("slider", { name: "Step in this round" }) as HTMLInputElement;
 /** The position in the round as the step slider has it: "step / steps", 1-based. */
 const counter = () => `${slider().value} / ${slider().max}`;
-const roundButton = () => button(/, round list$/);
-/** The round on the table, as the round button names it. */
-const roundName = () =>
-  roundButton()
-    .getAttribute("aria-label")
-    ?.replace(/, round list$/, "");
-const pov = () => button(/^Point of view:/).getAttribute("aria-label");
 const liveText = () => document.querySelector("[aria-live]")?.textContent ?? "";
-const card = () => screen.getByRole("region", { name: "Round result" });
-const roundList = () => screen.queryByRole("group", { name: "Rounds" });
+
+// ---- the panel beside the table, top to bottom
+const panel = () => screen.getByRole("complementary", { name: "Game" });
+/** The round on the table, as the panel's head names it. */
+const roundName = () =>
+  within(panel().querySelector("header") as HTMLElement).getByRole("heading", { level: 2 })
+    .textContent;
+const result = () => screen.getByRole("region", { name: "Round result" });
+const players = () => screen.getByRole("region", { name: "Players" });
+const playerRows = () => within(players()).getAllByRole("button");
+const hands = () => screen.getByRole("checkbox", { name: "Show all hands" }) as HTMLInputElement;
+/** The viewed player as the player list marks it: the pressed row's wind and name, "East A". */
+const pov = () =>
+  spoken(within(players()).getByRole("button", { pressed: true })).replace(/ Point of view.*$/, "");
+const roundRows = () =>
+  within(screen.getByRole("region", { name: "Rounds" })).getAllByRole("button");
+/** One of the app's actions at the panel's foot. */
+const action = (name: string) =>
+  within(screen.getByRole("group", { name: "Menu" })).getByRole("button", { name });
+/** Whose hand lies at the bottom of the table, as its group is named: "A's hand". */
+const ownHand = () =>
+  stage().querySelector("[data-own-hand] [role='group']")?.getAttribute("aria-label") ?? null;
 
 /** Types into the paste box of the card or a dialog and presses its Open button. */
 async function submitText(text: string, root: HTMLElement = document.body) {
@@ -184,12 +201,6 @@ async function openGame(query = "", body = "GAME") {
   return fetchMock;
 }
 
-/** Opens a menu item of the toolbar's Menu. */
-async function chooseFromMenu(item: string) {
-  await click(button("Menu"));
-  await click(screen.getByRole("menuitem", { name: item }));
-}
-
 afterEach(() => {
   cleanup();
   localStorage.clear();
@@ -200,18 +211,19 @@ afterEach(() => {
 });
 
 describe("App without a log in the address", () => {
-  it("shows the landing card on the empty room and loads nothing", async () => {
+  it("shows the landing card and loads nothing", async () => {
     const fetchMock = stubFetch();
     renderApp();
     await settle();
     expect(fetchMock).not.toHaveBeenCalled();
-    const cardOnRoom = landing() as HTMLElement;
-    expect(within(cardOnRoom).getByRole("heading", { level: 1 }).textContent).toBe(
+    const card = landing() as HTMLElement;
+    expect(within(card).getByRole("heading", { level: 1 }).textContent).toBe(
       "Mahjong Paifu Viewer",
     );
-    expect(pasteBox(cardOnRoom)).toBeTruthy();
-    expect(within(cardOnRoom).getByRole("combobox", { name: "Language" })).toBeTruthy();
+    expect(pasteBox(card)).toBeTruthy();
+    expect(within(card).getByRole("combobox", { name: "Language" })).toBeTruthy();
     noTable();
+    expect(screen.queryByRole("complementary")).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -243,9 +255,8 @@ describe("App loading", () => {
     await table();
     expect(landing()).toBeNull();
     expect(window.location.search).toBe("");
-    await click(button("Menu"));
-    expect(screen.getByRole("menuitem", { name: "Open another log" })).toBeTruthy();
-    expect(screen.queryByRole("menuitem", { name: "Copy link to this moment" })).toBeNull();
+    expect(action("Open another log")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Copy link to this moment" })).toBeNull();
   });
 
   it("opens log text typed into the box", async () => {
@@ -254,7 +265,8 @@ describe("App loading", () => {
     await submitText("SANMA");
     await table();
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(pov()).toBe("Point of view: East, A");
+    expect(pov()).toBe("East A");
+    expect(playerRows()).toHaveLength(3);
   });
 
   it("downloads a pasted Tenhou link from tenhou.net and views from the link's seat", async () => {
@@ -263,8 +275,11 @@ describe("App loading", () => {
     await pasteAnywhere(`https://tenhou.net/0/?log=${TENHOU_ID}&tw=1`);
     await table();
     expect(fetched(fetchMock)).toEqual([TENHOU_DATA_URL]);
-    expect(pov()).toBe("Point of view: South, B");
+    expect(pov()).toBe("South B");
+    expect(ownHand()).toBe("B's hand");
     expect(window.location.search).toContain(`tenhou=${TENHOU_ID}`);
+    // A log with an address has a link to copy.
+    expect(action("Copy link to this moment")).toBeTruthy();
   });
 
   it("opens a dropped file and shows the overlay while it is dragged over the window", async () => {
@@ -283,10 +298,10 @@ describe("App loading", () => {
     renderApp();
     await drag("drop", { text: `https://tenhou.net/0/?log=${TENHOU_ID}` });
     await table();
-    expect(pov()).toBe("Point of view: East, A");
+    expect(pov()).toBe("East A");
     await pasteAnywhere(`tenhou.net/0/?log=${TENHOU_ID}&tw=2`);
     expect(fetched(fetchMock)).toEqual([TENHOU_DATA_URL, TENHOU_DATA_URL]);
-    expect(pov()).toBe("Point of view: West, C");
+    expect(pov()).toBe("West C");
   });
 
   it("opens the sample the address names at its round, step and seat", async () => {
@@ -294,7 +309,14 @@ describe("App loading", () => {
     expect(fetched(fetchMock)).toEqual([expect.stringMatching(SAMPLE_URL)]);
     expect(roundName()).toBe("East 2");
     expect(counter()).toBe("3 / 25");
-    expect(pov()).toBe("Point of view: North, D");
+    expect(pov()).toBe("North D");
+    expect(ownHand()).toBe("D's hand");
+    expect(roundRows().map((row) => row.getAttribute("aria-current"))).toEqual([
+      null,
+      "true",
+      null,
+      null,
+    ]);
     // Nothing was pressed: the focus stays on the page.
     expect(document.activeElement).toBe(document.body);
   });
@@ -306,7 +328,7 @@ describe("App loading", () => {
     await table();
     expect(fetched(fetchMock)).toEqual([TENHOU_DATA_URL]);
     expect(liveText()).toBe("A draws East");
-    expect(pov()).toBe("Point of view: South, B");
+    expect(pov()).toBe("South B");
   });
 
   it("clamps a position past the end of the game and ignores invalid values", async () => {
@@ -328,9 +350,9 @@ describe("App loading", () => {
     window.history.replaceState(null, "", "/?sample=tenhou-json");
     renderApp();
     await settle();
-    const cardOnRoom = landing() as HTMLElement;
-    expect(within(cardOnRoom).getByRole("status").textContent).toBe("Downloading the log…");
-    expect(within(cardOnRoom).queryByRole("textbox")).toBeNull();
+    const card = landing() as HTMLElement;
+    expect(within(card).getByRole("status").textContent).toBe("Downloading the log…");
+    expect(within(card).queryByRole("textbox")).toBeNull();
     await act(async () => {
       answer(new Response("GAME"));
     });
@@ -406,34 +428,58 @@ describe("App load errors", () => {
 });
 
 describe("App point of view and hands", () => {
-  it("hides the other hands with H and with the Hands toggle, and remembers it", async () => {
+  it("hides the other hands with H and with the Show all hands check box, and remembers it", async () => {
     await openGame();
-    const hands = button("Show all hands");
-    expect(hands.getAttribute("aria-pressed")).toBe("true");
+    expect(hands().checked).toBe(true);
     expect(within(stage()).getByRole("group", { name: "B's hand" })).toBeTruthy();
     await press("h");
-    expect(hands.getAttribute("aria-pressed")).toBe("false");
+    expect(hands().checked).toBe(false);
     expect(within(stage()).queryByRole("group", { name: "B's hand" })).toBeNull();
     expect(
       within(stage()).getByRole("group", { name: "B's hand, 13 tiles face down" }),
     ).toBeTruthy();
-    await click(hands);
-    expect(hands.getAttribute("aria-pressed")).toBe("true");
-    await click(hands);
+    await click(hands());
+    expect(hands().checked).toBe(true);
+    expect(within(stage()).getByRole("group", { name: "B's hand" })).toBeTruthy();
+    await click(hands());
     cleanup();
     await openGame();
-    expect(button("Show all hands").getAttribute("aria-pressed")).toBe("false");
+    expect(hands().checked).toBe(false);
+  });
+
+  it("views from the player pressed in the player list, and the address follows", async () => {
+    await openGame("&round=1&step=3");
+    expect(pov()).toBe("East A");
+    const row = playerRows()[2] as HTMLElement;
+    act(() => row.focus());
+    await click(row);
+    expect(pov()).toBe("West C");
+    expect(ownHand()).toBe("C's hand");
+    expect(document.activeElement).toBe(playerRows()[2]);
+    expect(window.location.search).toContain("sample=tenhou-json");
+    expect(window.location.search).toContain("step=3");
+    expect(window.location.search).toContain("pov=3");
+    // The round list shows this player's changes now: C wins 8,000 in East 3.
+    expect(roundRows().map((round) => round.querySelector("[data-sign]")?.textContent)).toEqual([
+      undefined,
+      undefined,
+      "C +8,000",
+      undefined,
+    ]);
   });
 
   it("shows the hands the round end reveals in a log recorded from one seat", async () => {
     await openGame("", "HIDDEN");
+    // B's tiles are unknown to the log: with every hand shown, the player list still has nothing
+    // to say about that one.
+    expect(spoken(playerRows()[1] as HTMLElement)).toBe("South B 25,000");
     await press("h");
     expect(
       within(stage()).getByRole("group", { name: "B's hand, 13 tiles face down" }),
     ).toBeTruthy();
     await press("End");
     expect(liveText()).toContain("B wins by ron off A");
-    await press("Escape");
+    // Nothing covers the table at the result: the winner's hand lies open on it.
     const winner = within(within(stage()).getByRole("group", { name: "B's hand" }))
       .getAllByRole("img")
       .map((img) => img.getAttribute("alt"));
@@ -443,6 +489,15 @@ describe("App point of view and hands", () => {
     expect(
       within(stage()).getByRole("group", { name: /^C's hand, \d+ tiles face down$/ }),
     ).toBeTruthy();
+    // The panel shows the same hand with the tile it won on.
+    const hand = within(within(result()).getByRole("group", { name: "Winning hand" }))
+      .getAllByRole("img")
+      .map((img) => img.getAttribute("alt"));
+    expect(hand).toHaveLength(14);
+    expect(hand.at(-1)).toBe("Winning tile: 1 Pin");
+    // One round, so the game ends here: the standings, and no way on.
+    expect(within(result()).getByRole("table", { name: "Final standings" })).toBeTruthy();
+    expect(within(result()).queryByRole("button", { name: "Next round" })).toBeNull();
   });
 });
 
@@ -451,37 +506,53 @@ describe("App dialogs", () => {
     ["Open another log", "Open a log"],
     ["Settings", "Settings"],
     ["Controls", "Controls"],
-  ])("opens %s from the Menu and gives the focus back to the Menu button", async (item, name) => {
+  ])("opens %s from the panel and gives the focus back to its button", async (item, name) => {
     await openGame();
-    await chooseFromMenu(item);
+    const opener = action(item);
+    act(() => opener.focus());
+    await click(opener);
     const dialog = screen.getByRole("dialog", { name });
-    expect(screen.queryByRole("menu")).toBeNull();
     await click(within(dialog).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.activeElement).toBe(button("Menu"));
+    expect(document.activeElement).toBe(action(item));
   });
 
   it("opens the controls on ? and keeps the viewer's keys from the table under it", async () => {
     await openGame("&round=1&step=3");
     await press("?");
     const dialog = screen.getByRole("dialog", { name: "Controls" });
-    expect(within(dialog).getByRole("region", { name: "Keyboard" })).toBeTruthy();
-    for (const key of ["ArrowRight", "h", "c", "End"]) {
+    const keys = within(dialog).getByRole("region", { name: "Keyboard" });
+    for (const key of ["ArrowRight", "h", "d", "End"]) {
       await press(key, { target: dialog });
     }
     expect(counter()).toBe("3 / 25");
-    expect(button("Show all hands").getAttribute("aria-pressed")).toBe("true");
+    expect(hands().checked).toBe(true);
+    // The help lists the keys there are: Esc only stops autoplay, and no key switches a table
+    // view or opens a round list.
+    expect(keys.textContent).toContain("Stop autoplay");
+    expect(keys.textContent).not.toMatch(/Close menus|round result, stop|3D|Round list/);
   });
 
-  it("switches the table view, the aid and the language from the settings", async () => {
+  it("switches the aid and the language from the settings", async () => {
     await openGame("&round=1&step=9");
-    expect(within(stage()).getAllByText("Tenpai").length).toBeGreaterThan(0);
-    await chooseFromMenu("Settings");
+    const notes = () => playerRows().map((row) => spoken(row));
+    expect(notes()).toEqual([
+      "East A Point of view 24,000 Waits 9 Man and Hatsu, 4 left",
+      "South B 25,000 Waits 8 Pin and 1 Sou, 4 left",
+      "West C 25,000",
+      "North D 25,000 Waits 2 Man and 5 Man, 6 left, furiten",
+    ]);
+    await click(action("Settings"));
     const dialog = screen.getByRole("dialog", { name: "Settings" });
-    await click(within(dialog).getByRole("radio", { name: "Flat" }));
-    expect(stage().getAttribute("data-view")).toBe("flat");
+    // The table has one view: the settings have none to choose.
+    expect(within(dialog).queryByRole("radio")).toBeNull();
     await click(within(dialog).getByRole("checkbox", { name: "Show waits and shanten" }));
-    expect(within(stage()).queryByText("Tenpai")).toBeNull();
+    expect(notes()).toEqual([
+      "East A Point of view 24,000",
+      "South B 25,000",
+      "West C 25,000",
+      "North D 25,000",
+    ]);
     await act(async () => {
       fireEvent.change(within(dialog).getByRole("combobox", { name: "Language" }), {
         target: { value: "ja" },
@@ -490,22 +561,32 @@ describe("App dialogs", () => {
     expect(liveText()).toBe("A リーチ宣言：東");
     expect(screen.getByRole("dialog", { name: "設定" })).toBeTruthy();
     expect(screen.getAllByAltText("一萬").length).toBeGreaterThan(0);
+    // The panel speaks the language too.
+    const translated = screen.getByRole("complementary", { name: ja.panel.label });
+    expect(within(translated).getByRole("heading", { name: ja.panel.players })).toBeTruthy();
+    expect(within(translated).getByRole("heading", { name: ja.rounds.label })).toBeTruthy();
+    expect(within(translated).getByRole("checkbox", { name: ja.viewer.showAllHands })).toBeTruthy();
+    expect(within(translated).getByRole("button", { name: ja.menu.open })).toBeTruthy();
   });
 
   it("turns the single-key shortcuts off, and the controls say so", async () => {
     await openGame("&round=1&step=3");
-    await chooseFromMenu("Settings");
+    await click(action("Settings"));
     const settings = screen.getByRole("dialog", { name: "Settings" });
     await click(within(settings).getByRole("checkbox", { name: "Single-key shortcuts" }));
     await click(within(settings).getByRole("button", { name: "Close" }));
-    for (const key of ["h", "c", "d", "r", " "]) {
+    for (const key of ["h", "d", "v", " "]) {
       expect(await press(key), key).toBe(true);
     }
-    expect(button("Show all hands").getAttribute("aria-pressed")).toBe("true");
-    expect(roundList()).toBeNull();
+    expect(hands().checked).toBe(true);
+    expect(pov()).toBe("East A");
+    expect(button("Play")).toBeTruthy();
     await press("ArrowRight");
     expect(counter()).toBe("4 / 25");
-    await chooseFromMenu("Controls");
+    // What the keys did, the panel still does.
+    await click(hands());
+    expect(hands().checked).toBe(false);
+    await click(action("Controls"));
     const keys = within(screen.getByRole("dialog", { name: "Controls" })).getByRole("region", {
       name: "Keyboard",
     });
@@ -532,7 +613,8 @@ describe("App history", () => {
     ]);
     expect(roundName()).toBe("East 2");
     expect(counter()).toBe("5 / 24");
-    expect(pov()).toBe("Point of view: West, C");
+    expect(pov()).toBe("West C");
+    expect(playerRows()).toHaveLength(3);
   });
 });
 
@@ -552,26 +634,52 @@ describe("App with a three-player game", () => {
     expect(
       within(stage()).getByRole("group", { name: "B's kita: 1 North tile set aside" }),
     ).toBeTruthy();
+    expect(playerRows().map((row) => shown(row).split(" ").slice(0, 2).join(" "))).toEqual([
+      "E A",
+      "S B",
+      "W C",
+    ]);
     await press("End");
     expect(liveText()).toContain("Result · C wins by ron off B");
-    const rows = within(card()).getAllByRole("row");
-    expect(rows.map((row) => row.textContent)).toEqual([
-      "PlayerPointsChange",
-      "A35,000",
-      "B28,800−5,200",
-      "C41,200+6,200",
-    ]);
-    await click(within(card()).getByRole("button", { name: "Next round" }));
+    expect(spoken(within(result()).getByRole("article"))).toBe(
+      "C Ron off B 5,200 points 3 han · 40 fu Ittsu 2 han Aka Dora 1 han",
+    );
+    // The player list is the score table: three rows, with the round's change before the score.
+    const rows = playerRows().map((row) => shown(row));
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toMatch(/^E A Point of view 35,000( |$)/);
+    expect(rows[1]).toMatch(/^S B −5,200 28,800( |$)/);
+    expect(rows[2]).toMatch(/^W C \+6,200 41,200( |$)/);
+    const next = within(result()).getByRole("button", { name: "Next round" });
+    act(() => next.focus());
+    await click(next);
     expect(roundName()).toBe("East 2");
+    expect(counter()).toBe("1 / 24");
+    expect(document.activeElement).toBe(stage());
+  });
+
+  it("jumps from the round list, and ranks three players at the game's end", async () => {
+    await openSanma();
+    await click(roundRows()[1] as HTMLElement);
+    expect(roundName()).toBe("East 2");
+    expect(counter()).toBe("1 / 24");
+    await click(button("Final standings"));
+    expect(counter()).toBe("24 / 24");
+    expect(
+      within(within(result()).getByRole("table", { name: "Final standings" }))
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => spoken(row)),
+    ).toEqual(["1st C 41,200", "2nd A 35,000", "3rd B 28,800"]);
   });
 });
 
 describe("App focus", () => {
   it("moves the focus to the stage when another log replaces the game", async () => {
     const fetchMock = await openGame("&round=1&step=4");
-    const menu = button("Menu");
-    act(() => menu.focus());
-    await chooseFromMenu("Open another log");
+    const opener = action("Open another log");
+    act(() => opener.focus());
+    await click(opener);
     const dialog = screen.getByRole("dialog", { name: "Open a log" });
     await click(within(dialog).getByRole("button", { name: "3-player" }));
     expect(fetched(fetchMock).at(-1)).toMatch(SANMA_URL);

@@ -15,10 +15,10 @@ export interface PondProps {
   lastIndex: number;
   /** The pond's seat: each tile then carries `data-d="seat:index"` (Alt+click on a discard). */
   seat?: Seat;
-  /** Index of a discard drawn invisible while its flight proxy is in the air, or -1. */
-  hiddenIndex?: number;
-  /** Class for the invisible discard (see hiddenIndex). */
-  hiddenClassName?: string;
+  /** Index of the discard that slides in on this step (the one just made), or -1. */
+  landingIndex?: number;
+  /** Class for the landing discard (see landingIndex). */
+  landingClassName?: string;
 }
 
 /**
@@ -31,18 +31,17 @@ export function Pond({
   name,
   lastIndex,
   seat,
-  hiddenIndex = -1,
-  hiddenClassName,
+  landingIndex = -1,
+  landingClassName,
 }: PondProps) {
   const { m } = useI18n();
   return (
     <TileGroup className={styles.pond} label={m.board.discards(name)}>
-      {discardRows(discards).map((row, rowIndex) => (
+      {discardRows(discards).map((row) => (
         <div key={row[0]?.key} className={styles.row}>
-          {row.map(({ key, index, item }, column) => (
+          {row.map(({ key, index, item }) => (
             <TileImage
               key={key}
-              depth={[column, rowIndex]}
               tile={item.tile}
               sideways={item.riichi}
               dimmed={item.tsumogiri}
@@ -50,7 +49,7 @@ export function Pond({
               highlighted={index === lastIndex}
               label={discardLabel(m, item, index === lastIndex)}
               discardRef={seat === undefined ? undefined : `${seat}:${index}`}
-              className={cx(index === hiddenIndex && hiddenClassName)}
+              className={cx(index === landingIndex && landingClassName)}
             />
           ))}
         </div>

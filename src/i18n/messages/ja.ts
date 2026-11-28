@@ -11,22 +11,15 @@ export const ja: Messages = {
     tagline: "天鳳・mjaiの牌譜をブラウザ内で再生し、ファイルは外部に送信されません。",
   },
   tools: {
-    label: "ビューアのツール",
     withKey: (label: string, key: string) => `${label}（${key}）`,
-    hands: "手牌",
     pov: "視点",
     povButton: (wind: string, name: string) => `視点：${wind}、${name}`,
-    povItem: (wind: string, name: string, score: string, diff: string | null) =>
-      `${wind}、${name}、${score}点${diff === null ? "" : `（${diff}）`}`,
   },
   settings: {
     language: "言語",
     heading: "設定",
     close: "閉じる",
     reset: "初期設定に戻す",
-    view: "卓の表示",
-    view3d: "3D",
-    viewFlat: "平面",
     showWaits: "待ち・向聴数を表示",
     charKeys: "文字キーのショートカット",
     charKeysHint: "文字・数字・記号・Space",
@@ -153,13 +146,10 @@ export const ja: Messages = {
     ura: "裏ドラ",
     uraIndicators: "裏ドラ表示牌",
     pao: (player: string) => `責任払い（パオ）：${player}`,
-    deltas: "点数移動",
     player: "プレイヤー",
-    change: "増減",
     tenpai: "聴牌",
     noten: "不聴",
     waits: (tiles: readonly string[]) => `待ち：${tiles.join("、")}`,
-    showTable: "卓を見る",
     nextRound: "次の局",
     tenpaiSeats: (names: readonly string[]) =>
       names.length === 0 ? "全員不聴" : `聴牌：${names.join("、")}`,
@@ -184,8 +174,6 @@ export const ja: Messages = {
     kita: (name: string, n: number) => `${name}の北抜き：${n}枚`,
     kitaCount: (n: number) => `×${n}`,
     scoreDiff: "点差を表示",
-    seatFacts: (wind: string, points: string, dealer: boolean, riichi: boolean) =>
-      `${wind}家、${points}点${dealer ? "、親" : ""}${riichi ? "、リーチ" : ""}`,
     wallHand: (name: string, n: number) => `${name}の手牌、伏せ牌${n}枚`,
     waitsShort: "待ち",
     left: (n: number) => `残り${n}枚`,
@@ -212,10 +200,12 @@ export const ja: Messages = {
     settings: "設定",
     controls: "操作方法",
   },
+  panel: {
+    label: "対局情報",
+    players: "プレイヤー",
+  },
   transport: {
     label: "再生操作",
-    showResult: "結果を表示",
-    roundList: (round: string) => `${round}、局の一覧`,
     prevTurn: "前の自分の手番",
     nextTurn: "次の自分の手番",
     turn: (n: number) => `${n}巡目`,
@@ -243,10 +233,8 @@ export const ja: Messages = {
     hands: "全員の手牌の表示／非表示",
     waits: "待ち・向聴数の表示",
     scoreDiff: "点差の表示",
-    view: "3D／平面の卓",
-    roundList: "局の一覧",
     helpKey: "このヘルプ",
-    escape: "メニューを閉じる・局の結果を隠す・自動再生を止める",
+    escape: "自動再生を止める",
     click: "卓をクリック：次の一手",
     rightClick: "右クリック：前の一手",
     wheel: "ホイール：次／前の一手",
@@ -268,7 +256,6 @@ export const ja: Messages = {
   },
   info: {
     dora: "ドラ",
-    honba: (n: number) => `${n}本場`,
     deposits: (n: number) => `供託 ${n}`,
   },
   rounds: {
@@ -288,8 +275,6 @@ export const ja: Messages = {
     handsHidden: "他家の手牌を隠しました",
     scoreDiffOn: "点差の表示をオンにしました",
     scoreDiffOff: "点差の表示をオフにしました",
-    view3d: "3D表示にしました",
-    viewFlat: "平面表示にしました",
   },
   tiles: {
     number: (value: number, suit: Suit, red: boolean) =>

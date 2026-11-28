@@ -13,8 +13,6 @@ export type KeyCommand =
   | { type: "toggleHands" }
   | { type: "toggleWaits" }
   | { type: "toggleScoreDiff" }
-  | { type: "toggleView" }
-  | { type: "roundList" }
   | { type: "help" }
   | { type: "escape" };
 
@@ -74,25 +72,4 @@ export function stepSpeed(speed: AutoplaySpeed, delta: 1 | -1): AutoplaySpeed {
 export function cycleSpeed(speed: AutoplaySpeed): AutoplaySpeed {
   const index = AUTOPLAY_SPEEDS.indexOf(speed);
   return AUTOPLAY_SPEEDS[(index + 1) % AUTOPLAY_SPEEDS.length] ?? 1;
-}
-
-export interface EscapeContext {
-  /** A popover is open and the key did not reach it (the focus is somewhere else). */
-  popoverOpen: boolean;
-  /** The result card is up, or waiting to come up (at a result step and not hidden). */
-  resultShown: boolean;
-  playing: boolean;
-}
-
-export type EscapeAction = "closePopover" | "hideResult" | "pause";
-
-/** What Esc does, the topmost thing first: close a popover, hide the result card, pause autoplay. */
-export function escapeAction(context: EscapeContext): EscapeAction | null {
-  if (context.popoverOpen) {
-    return "closePopover";
-  }
-  if (context.resultShown) {
-    return "hideResult";
-  }
-  return context.playing ? "pause" : null;
 }

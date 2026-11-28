@@ -1,25 +1,14 @@
 import { useCallback } from "react";
 import type { Seat } from "../../core/model";
 import { useI18n } from "../../i18n/context";
-import { escapeAction, type KeyCommand, stepSpeed } from "./commands";
-import type {
-  DialogName,
-  PlayerRow,
-  PopoverName,
-  Settings,
-  ViewerAction,
-  ViewerState,
-} from "./types";
+import { type KeyCommand, stepSpeed } from "./commands";
+import type { DialogName, PlayerRow, Settings, ViewerAction, ViewerState } from "./types";
 import type { ViewerStore } from "./useViewerState";
 
 export interface ViewerCommandOptions {
   state: ViewerState;
   dispatch: ViewerStore["dispatch"];
   navigate: ViewerStore["navigate"];
-  /** The step on the table is a round's result. */
-  atResult: boolean;
-  popover: PopoverName | null;
-  setPopover(popover: PopoverName | null): void;
   settings: Settings;
   update(patch: Partial<Settings>): void;
   openDialog(dialog: DialogName): void;
@@ -35,17 +24,14 @@ export interface ViewerCommandOptions {
 
 /**
  * What the viewer's keyboard shortcuts do (useViewerKeys runs the returned handler). A key that
- * changes something only the eye sees on the table (the hands, the view, the score differences,
- * the point of view, the speed) says so to screen readers through the live region; the waits aid
- * shows a toast too, as it appears only next to visible hands.
+ * changes something only the eye sees on the table (the hands, the score differences, the point
+ * of view, the speed) says so to screen readers through the live region; the waits aid shows a
+ * toast too, as it appears only next to visible hands.
  */
 export function useViewerCommands({
   state,
   dispatch,
   navigate,
-  atResult,
-  popover,
-  setPopover,
   settings,
   update,
   openDialog,
@@ -56,7 +42,7 @@ export function useViewerCommands({
   say,
 }: ViewerCommandOptions): (command: KeyCommand, event: { repeat: boolean }) => boolean {
   const { m } = useI18n();
-  const { resultCard, playing } = state;
+  const { playing } = state;
 
   const sayPov = useCallback(
     (action: ViewerAction) => {
@@ -72,32 +58,14 @@ export function useViewerCommands({
 
   return useCallback(
     (command, event) => {
-      if (command.type === "escape") {
-        switch (
-          escapeAction({
-            popoverOpen: popover !== null,
-            resultShown: atResult && resultCard !== "hidden",
-            playing,
-          })
-        ) {
-          case "closePopover":
-            setPopover(null);
-            return true;
-          case "hideResult":
-            dispatch({ type: "hideResult" });
-            return true;
-          case "pause":
-            dispatch({ type: "pause" });
-            return true;
-          default:
-            return false;
-        }
-      }
-      // An open popover has the keyboard: no shortcut works behind it.
-      if (popover !== null) {
-        return false;
-      }
       switch (command.type) {
+        case "escape":
+          // Esc stops autoplay; with nothing playing it is not ours.
+          if (!playing) {
+            return false;
+          }
+          dispatch({ type: "pause" });
+          return true;
         case "nav":
           navigate(command.command, event.repeat ? "repeat" : "user");
           return true;
@@ -120,10 +88,6 @@ export function useViewerCommands({
           update({ showAllHands: !settings.showAllHands });
           say(settings.showAllHands ? m.toast.handsHidden : m.toast.handsShown);
           return true;
-        case "toggleView":
-          update({ view: settings.view === "3d" ? "flat" : "3d" });
-          say(settings.view === "3d" ? m.toast.viewFlat : m.toast.view3d);
-          return true;
         case "toggleWaits":
           update({ showWaits: !settings.showWaits });
           show(settings.showWaits ? m.toast.waitsOff : m.toast.waitsOn);
@@ -132,20 +96,13 @@ export function useViewerCommands({
           toggleScoreDiff();
           say(scoreDiff ? m.toast.scoreDiffOff : m.toast.scoreDiffOn);
           return true;
-        case "roundList":
-          setPopover("rounds");
-          return true;
         case "help":
           openDialog("help");
           return true;
       }
     },
     [
-      popover,
-      atResult,
-      resultCard,
       playing,
-      setPopover,
       dispatch,
       navigate,
       sayPov,

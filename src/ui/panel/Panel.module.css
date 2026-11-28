@@ -1,0 +1,27 @@
+/*
+ * A column of sections. Beside the table it is one screen tall: the sections keep their height
+ * and the round list (the one marked data-fill) takes the rest; under the table it is as tall as
+ * its content, and the page scrolls (Viewer.module.css sets --panel-fill for the first case).
+ */
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-panel);
+  color: var(--color-fg);
+  font-size: var(--text-control);
+  line-height: 1.25rem;
+}
+
+.panel > * {
+  flex: none;
+}
+
+.panel > * + * {
+  border-block-start: 1px solid var(--color-line);
+}
+
+.panel > [data-fill] {
+  flex: var(--panel-fill, none);
+}

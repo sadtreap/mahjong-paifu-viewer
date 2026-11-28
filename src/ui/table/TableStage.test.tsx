@@ -4,34 +4,54 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Quad, Seat } from "../../core/model";
 import { I18nProvider } from "../../i18n/I18nProvider";
 import { buildTimeline } from "../../replay/timeline";
-import type { BoardState } from "../../replay/types";
+import type { BoardState, DiscardView, MeldView, SeatView } from "../../replay/types";
 import { sanmaCrossFormatGame } from "../../test/sanma-game";
 import { boardState, game, round } from "../__fixtures__/game";
 import type { TableStageProps } from "../viewer/types";
 import { stageProps } from "./__fixtures__/stageProps";
 import { CAPTION_MS } from "./CallCaption";
-import { FLIGHT_FALLBACK_MS } from "./FlightLayer";
-import { CAMERAS, captionAnchor, STACK_TILT } from "./geometry";
-import { REVEAL_MS, TableStage } from "./TableStage";
+import { captionAnchor, handScale, pondScale, stageVars } from "./geometry";
+import { TableStage } from "./TableStage";
 
 const names: Quad<string> = ["A", "B", "C", "D"];
 
-function renderStage(overrides: Partial<TableStageProps> = {}, state: BoardState = boardState()) {
+function stageElement(overrides: Partial<TableStageProps> = {}, state: BoardState = boardState()) {
   const props = stageProps({ game, round, state, names, pov: overrides.pov ?? 0 }, overrides);
-  return render(
+  return (
     <I18nProvider>
       <TableStage {...props} />
-    </I18nProvider>,
+    </I18nProvider>
   );
+}
+
+const renderStage = (overrides: Partial<TableStageProps> = {}, state: BoardState = boardState()) =>
+  render(stageElement(overrides, state));
+
+/** The fixture's table with one seat changed. */
+function withSeat(seat: Seat, change: Partial<SeatView>): BoardState {
+  const state = boardState();
+  const seats = [...state.seats] as Quad<SeatView>;
+  seats[seat] = { ...seats[seat], ...change };
+  return { ...state, seats };
 }
 
 const stage = () => screen.getByRole("region", { name: "Mahjong table" });
 const consoleButton = () => screen.getByRole("button", { name: "Show score differences" });
-const tagOf = (seat: number) => stage().querySelector(`[data-seat="${seat}"]`) as HTMLElement;
+const layer = (side: string) => stage().querySelector(`[data-side="${side}"]`) as HTMLElement;
 const SIDES = ["bottom", "right", "top", "left"] as const;
 /** The console's cells as text, in side order from the point of view (null where none). */
 const cells = () =>
   SIDES.map((side) => consoleButton().querySelector(`[data-edge="${side}"]`)?.textContent ?? null);
+/** The class of every pond tile on the table, by its `seat:index`. */
+const pondClasses = () =>
+  Object.fromEntries(
+    [...stage().querySelectorAll("[data-d]")].map((el) => [
+      el.getAttribute("data-d") ?? "",
+      el.className,
+    ]),
+  );
+/** The backs of a hidden hand: bodies without artwork, hidden from assistive technology. */
+const backs = (group: HTMLElement) => group.querySelectorAll('span[aria-hidden="true"]:empty');
 
 afterEach(() => {
   cleanup();
@@ -52,238 +72,62 @@ describe("TableStage", () => {
     expect(screen.getByAltText("1 Pin (just drawn)")).toBeTruthy();
     for (const seat of names) {
       expect(screen.getByRole("group", { name: `${seat}'s discards` })).toBeTruthy();
+      expect(screen.getByRole("group", { name: `${seat}'s hand` })).toBeTruthy();
     }
   });
 
-  it("shows the round and the tiles left on the console", () => {
+  it("draws one layer per seat around the console, each with its pond and its hand row", () => {
     renderStage();
-    // The round's name without its honba count.
-    expect(screen.getByText("East 1")).toBeTruthy();
-    expect(screen.getByText("60 left")).toBeTruthy();
-    // The console is a button with a name of its own, so the tiles left are repeated as text.
-    expect(screen.getByText("60 tiles left").className).toBe("sr-only");
-    expect(consoleButton().contains(screen.getByText("60 tiles left"))).toBe(false);
-  });
-
-  it("shows each seat's wind and score on its edge of the console, hidden from screen readers", () => {
-    renderStage();
-    expect(cells()).toEqual(["E25000", "S24000", "W25000", "N25000"]);
-    for (const cell of consoleButton().querySelectorAll("[data-edge]")) {
-      expect(cell.getAttribute("aria-hidden")).toBe("true");
-    }
-    cleanup();
-    renderStage({ pov: 2 });
-    expect(cells()).toEqual(["W25000", "N25000", "E25000", "S24000"]);
-  });
-
-  it("marks the dealer's wind and the edge of the player whose turn it is", () => {
-    renderStage();
-    const button = consoleButton();
-    const winds = [...button.querySelectorAll("[data-edge] > span > span:first-child")];
-    expect(winds.map((wind) => wind.textContent)).toEqual(["E", "S", "W", "N"]);
-    // Only East's badge carries the dealer's class.
-    expect(new Set(winds.map((wind) => wind.className)).size).toBe(2);
-    expect(winds.filter((wind) => wind.className === winds[0]?.className)).toHaveLength(1);
-    // The turn bar: seat 3 (on the left) is to act.
-    const bars = [...button.querySelectorAll("[data-edge]")].filter(
-      (cell) => cell.children.length === 2,
+    const table = stage().firstElementChild as HTMLElement;
+    expect(stage().children).toHaveLength(1);
+    expect([...table.querySelectorAll("[data-side]")].map((el) => el.parentElement)).toEqual(
+      Array(4).fill(table),
     );
-    expect(bars.map((cell) => cell.getAttribute("data-edge"))).toEqual(["left"]);
-  });
-
-  it("makes the console the one button on the felt, which stage gestures treat as a button", () => {
-    const onToggleScoreDiff = vi.fn();
-    renderStage({ onToggleScoreDiff });
-    expect(within(stage()).getAllByRole("button")).toEqual([consoleButton()]);
-    expect(consoleButton().getAttribute("aria-pressed")).toBe("false");
-    // Not ignored: a swipe that starts on it steps, and only a tap presses it.
-    expect(consoleButton().closest('[data-gesture="ignore"]')).toBeNull();
-    expect(consoleButton().closest("[data-side]")).toBeNull();
-    fireEvent.click(consoleButton());
-    expect(onToggleScoreDiff).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows the other players' scores as differences from the viewed player's", () => {
-    renderStage({ scoreDiff: true });
-    expect(consoleButton().getAttribute("aria-pressed")).toBe("true");
-    // Seat 0 looks: its own score stays, B is 1,000 behind, the others level.
-    expect(cells()).toEqual(["E25000", "S−1000", "W±0", "N±0"]);
-    cleanup();
-    renderStage({ scoreDiff: true, pov: 1 });
-    expect(cells()).toEqual(["S24000", "W+1000", "N+1000", "E+1000"]);
-  });
-
-  it("lays a riichi stick by the console on the declarer's side, as decoration", () => {
-    renderStage();
-    const sticks = [...stage().querySelectorAll("[data-side] > span[aria-hidden]")];
-    expect(sticks.map((stick) => stick.parentElement?.getAttribute("data-side"))).toEqual([
-      "right",
-    ]);
-    expect(sticks[0]?.querySelector("img")).toBeNull();
-  });
-
-  it("draws the point of view's hand outside the plane, standing", () => {
-    renderStage();
-    const own = screen.getByRole("group", { name: "A's hand" });
-    expect(own.closest("[data-side]")).toBeNull();
-    expect(within(own).getAllByRole("img")[0]?.getAttribute("src")).toMatch(/tiles\/Man1\.svg$/);
-    // The bottom seat has no hand row in the plane.
-    expect(screen.getAllByRole("group", { name: "A's hand" })).toHaveLength(1);
-  });
-
-  it("draws hidden hands face down when walls are off, counted in the group's name", () => {
-    renderStage({ revealed: new Set<Seat>([0]) });
-    const hidden = screen.getByRole("group", { name: "B's hand, 13 tiles face down" });
-    // The backs themselves are not announced one by one.
-    expect(within(hidden).queryAllByRole("img")).toEqual([]);
-    const backs = [...hidden.querySelectorAll("img")];
-    expect(backs).toHaveLength(13);
-    for (const img of backs) {
-      expect(img.getAttribute("alt")).toBe("");
-      expect(img.getAttribute("src")).toMatch(/tiles\/Back\.svg$/);
+    for (const [index, side] of SIDES.entries()) {
+      const name = names[index];
+      expect(within(layer(side)).getByRole("group", { name: `${name}'s discards` })).toBeTruthy();
+      expect(within(layer(side)).getByRole("group", { name: `${name}'s hand` })).toBeTruthy();
     }
-    expect(screen.queryByRole("group", { name: "B's hand" })).toBeNull();
-    expect(stage().hasAttribute("data-walls")).toBe(false);
+    // The calls lie in their owner's row.
+    expect(within(layer("top")).getByRole("group", { name: "C's calls" })).toBeTruthy();
+    expect(within(layer("left")).getByRole("group", { name: "D's calls" })).toBeTruthy();
+    expect(within(layer("bottom")).queryByRole("group", { name: /calls$/ })).toBeNull();
   });
 
-  it("stands hidden hands up as walls, the far one in the unrotated layer", () => {
-    renderStage({ revealed: new Set<Seat>([0]), walls: true });
-    expect(stage().hasAttribute("data-walls")).toBe(true);
-    const right = screen.getByRole("group", { name: "B's hand, 13 tiles face down" });
-    // The group's name counts the faces; they are not announced one by one.
-    expect(within(right).queryAllByRole("img")).toEqual([]);
-    expect(right.querySelectorAll('img[alt=""]')).toHaveLength(13);
-    expect(right.closest("[data-side]")?.getAttribute("data-side")).toBe("right");
-    // C (across) has 11 concealed tiles and a pon.
-    const top = screen.getByRole("group", { name: "C's hand, 11 tiles face down" });
-    expect(top.closest("[data-side]")).toBeNull();
-    expect(top.closest('[data-layer="wtop"]')).not.toBeNull();
-    // The contact shadow, the lids and the end cap are decoration.
-    const shadow = right.previousElementSibling;
-    const lids = right.nextElementSibling;
-    const cap = lids?.nextElementSibling;
-    for (const el of [shadow, lids, cap]) {
-      expect(el?.getAttribute("aria-hidden")).toBe("true");
-    }
-    expect(lids?.children).toHaveLength(13);
-    expect(top.nextElementSibling?.nextElementSibling).toBeNull();
-    // The spacer keeps the row's place, so melds stay put.
-    expect(screen.getByRole("group", { name: "Pon: 9 Man, 9 Man, 9 Man" })).toBeTruthy();
-    expect(screen.queryByRole("group", { name: "B's hand" })).toBeNull();
-  });
-
-  it("keeps lying backs in flat mode", () => {
-    renderStage({ revealed: new Set<Seat>([0]), walls: true, view: "flat" });
-    expect(stage().getAttribute("data-view")).toBe("flat");
-    // No standing walls: the hidden hands lie in their rows, face down.
-    expect(stage().querySelector('[data-layer="wtop"]')).toBeNull();
-    const right = stage().querySelector('[data-side="right"]') as HTMLElement;
-    const hidden = within(right).getByRole("group", { name: "B's hand, 13 tiles face down" });
-    expect(hidden.closest("[data-side]")).toBe(right);
-    expect(hidden.querySelectorAll('img[src$="Back.svg"]')).toHaveLength(13);
+  it("draws the viewed player's hand like the others, in the bottom layer, and marks it", () => {
+    renderStage();
+    const own = stage().querySelectorAll("[data-own-hand]");
+    expect(own).toHaveLength(1);
+    expect(own[0]?.parentElement).toBe(layer("bottom"));
+    const hand = within(own[0] as HTMLElement).getByRole("group", { name: "A's hand" });
+    expect(screen.getAllByRole("group", { name: "A's hand" })).toEqual([hand]);
+    const tiles = within(hand).getAllByRole("img");
+    expect(tiles).toHaveLength(13);
+    expect(tiles[0]?.getAttribute("src")).toMatch(/tiles\/Man1\.svg$/);
+    expect(tiles[12]?.getAttribute("alt")).toBe("1 Pin (just drawn)");
   });
 
   it("rotates the table to the point of view", () => {
     renderStage({ pov: 2 });
-    const bottom = stage().querySelector('[data-side="bottom"]') as HTMLElement;
-    expect(within(bottom).getByRole("group", { name: "C's discards" })).toBeTruthy();
-    expect(screen.getByRole("group", { name: "C's hand" }).closest("[data-side]")).toBeNull();
-    const left = stage().querySelector('[data-side="left"]') as HTMLElement;
-    expect(within(left).getByRole("group", { name: "B's hand" })).toBeTruthy();
+    expect(within(layer("bottom")).getByRole("group", { name: "C's discards" })).toBeTruthy();
+    expect(within(layer("right")).getByRole("group", { name: "D's hand" })).toBeTruthy();
+    expect(within(layer("top")).getByRole("group", { name: "A's hand" })).toBeTruthy();
+    expect(within(layer("left")).getByRole("group", { name: "B's hand" })).toBeTruthy();
+    const own = stage().querySelector("[data-own-hand]") as HTMLElement;
+    expect(within(own).getByRole("group", { name: "C's hand" })).toBeTruthy();
+    expect(within(own).getByRole("group", { name: "C's calls" })).toBeTruthy();
+    expect(stage().querySelectorAll("[data-own-hand]")).toHaveLength(1);
   });
 
-  it("marks face-up tiles with their kind and pond tiles with seat:index", () => {
+  it("gives the stage the table's numbers, whatever the table shows", () => {
     renderStage();
-    expect(screen.getByAltText("5 Man (red)").getAttribute("data-k")).toBe("4");
-    expect(screen.getByAltText("9 Man, riichi declaration, called").getAttribute("data-d")).toBe(
-      "1:0",
-    );
-    expect(
-      screen.getByAltText("7 Sou, discarded right after drawing, last discard").dataset.d,
-    ).toBe("3:0");
-    renderStage({ revealed: new Set<Seat>([0]) });
-    const back = screen.getByRole("group", { name: "B's hand, 13 tiles face down" });
-    expect(back.querySelector("img")?.hasAttribute("data-k")).toBe(false);
-  });
-
-  it("tags every seat with its wind and name, as text", () => {
-    renderStage();
-    expect([0, 1, 2, 3].map((seat) => tagOf(seat).textContent?.slice(0, 2))).toEqual([
-      "EA",
-      "SB",
-      "WC",
-      "ND",
-    ]);
-    expect([0, 1, 2, 3].map((seat) => tagOf(seat).getAttribute("data-tag-side"))).toEqual([
-      ...SIDES,
-    ]);
-    for (const name of names) {
-      expect(screen.queryByRole("button", { name: new RegExp(`^${name}\\b`) })).toBeNull();
+    const style = stage().getAttribute("style");
+    for (const [name, value] of Object.entries(stageVars())) {
+      expect(stage().style.getPropertyValue(name), name).toBe(value);
     }
-    // The wind's letter is for the eye; the hidden text names the wind in full.
-    expect(tagOf(1).querySelector('[aria-hidden="true"]')?.textContent).toBe("S");
-    expect(tagOf(1).closest("[data-side]")).toBeNull();
-  });
-
-  it("repeats what the console draws about a seat as hidden text in its tag", () => {
-    renderStage();
-    const facts = [0, 1, 2, 3].map((seat) => tagOf(seat).querySelector(".sr-only")?.textContent);
-    expect(facts).toEqual([
-      "East, 25,000 points, dealer",
-      "South, 24,000 points, riichi",
-      "West, 25,000 points",
-      "North, 25,000 points",
-    ]);
-    // No score to see in a tag: the console shows it.
-    const seen = [...tagOf(1).querySelectorAll(":scope > :not(.sr-only)")];
-    expect(seen.map((el) => el.textContent).join("")).toBe("SB");
-  });
-
-  it("writes the camera's numbers on the stage, the same whether or not hands are hidden", () => {
-    renderStage({ walls: false });
-    const shown = stage().getAttribute("style") ?? "";
-    expect(shown).toContain("--tilt: 34deg");
-    expect(shown).toContain("--pond-tile: 1.33");
-    expect(shown).toContain("--console-size: 5");
     cleanup();
-    renderStage({ walls: true, revealed: new Set<Seat>([0]) });
-    expect(stage().getAttribute("style")).toBe(shown);
-    cleanup();
-    renderStage({ arrangement: "stack" });
-    expect(stage().getAttribute("style")).toContain("--tilt: 20deg");
-    cleanup();
-    renderStage({ arrangement: "stack", view: "flat" });
-    expect(stage().getAttribute("style")).toContain("--tilt: 0deg");
-    cleanup();
-    renderStage({ arrangement: "short" });
-    expect(stage().getAttribute("style")).toContain("--tilt: 34deg");
-  });
-
-  it("fits the stack camera's tilt to the stage's size", () => {
-    const measured = (width: number, height: number) =>
-      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
-        width,
-        height,
-        x: 0,
-        y: 0,
-        top: 0,
-        left: 0,
-        right: width,
-        bottom: height,
-        toJSON() {},
-      });
-    measured(390, 1200);
-    renderStage({ arrangement: "stack" });
-    expect(stage().style.getPropertyValue("--tilt")).toBe(`${STACK_TILT.min}deg`);
-    cleanup();
-    measured(320, 234);
-    renderStage({ arrangement: "stack" });
-    expect(stage().style.getPropertyValue("--tilt")).toBe(`${STACK_TILT.max}deg`);
-    cleanup();
-    // The other arrangements keep their camera, whatever the size.
-    renderStage({ arrangement: "wide" });
-    expect(stage().style.getPropertyValue("--tilt")).toBe("34deg");
-    vi.restoreAllMocks();
+    renderStage({ pov: 2, revealed: new Set<Seat>([2]), scoreDiff: true });
+    expect(stage().getAttribute("style")).toBe(style);
   });
 
   it("keeps the hooks the browser checks read", () => {
@@ -297,106 +141,453 @@ describe("TableStage", () => {
     expect(within(own).getByRole("group", { name: "A's hand" })).toBeTruthy();
   });
 
-  it("jumps on Alt+press on a pond tile without letting the press through", () => {
+  it("forwards the stage element to stageRef, an object or a function", () => {
+    const stageRef = { current: null as HTMLElement | null };
+    const { unmount } = renderStage({ stageRef });
+    expect(stageRef.current).toBe(stage());
+    expect(stageRef.current?.tabIndex).toBe(-1);
+    unmount();
+    expect(stageRef.current).toBeNull();
+    const callback = vi.fn();
+    renderStage({ stageRef: callback });
+    expect(callback).toHaveBeenLastCalledWith(stage());
+  });
+});
+
+describe("the console", () => {
+  it("shows the round with its honba, and without it for a small table", () => {
+    renderStage();
+    expect(consoleButton().contains(screen.getByText("East 1, 1 honba"))).toBe(true);
+    expect(consoleButton().contains(screen.getByText("East 1"))).toBe(true);
+    cleanup();
+    // The honba count is the table's, not the round's first.
+    renderStage({}, boardState({ honba: 0 }));
+    expect(screen.queryByText(/honba/)).toBeNull();
+    expect(screen.getAllByText("East 1")).toHaveLength(2);
+  });
+
+  it("shows the tiles left in two wordings, and says them once beside the button", () => {
+    renderStage();
+    expect(consoleButton().contains(screen.getByText("60 tiles left"))).toBe(true);
+    expect(consoleButton().contains(screen.getByText("60 left"))).toBe(true);
+    // The console is a button with a name of its own, so what it shows is repeated as text.
+    const hidden = stage().querySelector(".sr-only") as HTMLElement;
+    expect(hidden.textContent).toBe("Dora indicators: 3 Man. 60 tiles left");
+    expect(consoleButton().contains(hidden)).toBe(false);
+    expect(stage().querySelectorAll(".sr-only")).toHaveLength(1);
+    cleanup();
+    renderStage({}, boardState({ wallRemaining: 1 }));
+    expect(screen.getByText("1 left")).toBeTruthy();
+  });
+
+  it("shows the dora indicators as tiles, named in the hidden text", () => {
+    renderStage({}, boardState({ doraIndicators: ["3m", "2z", "0p", "9s"] }));
+    const dora = consoleButton().querySelector("[data-count]") as HTMLElement;
+    expect(dora.getAttribute("data-count")).toBe("4");
+    expect(dora.textContent).toBe("Dora");
+    const tiles = [...dora.querySelectorAll("img")];
+    expect(tiles.map((img) => img.getAttribute("src")?.replace(/^.*\//, ""))).toEqual([
+      "Man3.svg",
+      "Nan.svg",
+      "Pin5-Dora.svg",
+      "Sou9.svg",
+    ]);
+    // Pictures on a button: the hidden text beside it names them.
+    expect(tiles.map((img) => img.getAttribute("alt"))).toEqual(["", "", "", ""]);
+    expect(within(dora).queryAllByRole("img")).toEqual([]);
+    expect(tiles.map((img) => img.getAttribute("data-k"))).toEqual(["2", "28", "13", "26"]);
+    expect(stage().querySelector(".sr-only")?.textContent).toBe(
+      "Dora indicators: 3 Man, South, 5 Pin (red), 9 Sou. 60 tiles left",
+    );
+  });
+
+  it("leaves the dora out while there is none to show", () => {
+    renderStage({}, boardState({ doraIndicators: [] }));
+    expect(consoleButton().querySelector("[data-count]")).toBeNull();
+    expect(consoleButton().querySelector("img")).toBeNull();
+    expect(screen.queryByText("Dora")).toBeNull();
+    expect(stage().querySelector(".sr-only")?.textContent).toBe("60 tiles left");
+  });
+
+  it("counts the riichi deposits on the table, and says nothing of none", () => {
+    renderStage();
+    expect(consoleButton().contains(screen.getByText("1 deposit"))).toBe(true);
+    cleanup();
+    renderStage({}, boardState({ riichiSticks: 3 }));
+    expect(screen.getByText("3 deposits")).toBeTruthy();
+    cleanup();
+    renderStage({}, boardState({ riichiSticks: 0 }));
+    expect(screen.queryByText(/deposit/)).toBeNull();
+  });
+
+  it("shows each seat's wind and score on its edge, hidden from screen readers", () => {
+    renderStage();
+    expect(cells()).toEqual(["E25,000", "S24,000", "W25,000", "N25,000"]);
+    for (const cell of consoleButton().querySelectorAll("[data-edge]")) {
+      expect(cell.getAttribute("aria-hidden")).toBe("true");
+    }
+    cleanup();
+    renderStage({ pov: 2 });
+    expect(cells()).toEqual(["W25,000", "N25,000", "E25,000", "S24,000"]);
+  });
+
+  it("marks the dealer's wind and the edge of the player whose turn it is", () => {
+    renderStage();
+    const button = consoleButton();
+    const winds = [...button.querySelectorAll("[data-edge] > span > span:first-child")];
+    expect(winds.map((wind) => wind.textContent)).toEqual(["E", "S", "W", "N"]);
+    // Only East's badge carries the dealer's class.
+    expect(new Set(winds.map((wind) => wind.className)).size).toBe(2);
+    expect(winds.filter((wind) => wind.className === winds[0]?.className)).toHaveLength(1);
+    // The turn bar: seat 3 (on the left) is to act.
+    const bars = () =>
+      [...consoleButton().querySelectorAll("[data-edge]")]
+        .filter((cell) => cell.children.length === 2)
+        .map((cell) => cell.getAttribute("data-edge"));
+    expect(bars()).toEqual(["left"]);
+    cleanup();
+    renderStage({}, boardState({ activeSeat: null }));
+    expect(bars()).toEqual([]);
+    cleanup();
+    renderStage({ pov: 3 });
+    expect(bars()).toEqual(["bottom"]);
+  });
+
+  it("is the one button on the table, which stage gestures treat as a button", () => {
+    const onToggleScoreDiff = vi.fn();
+    renderStage({ onToggleScoreDiff });
+    expect(within(stage()).getAllByRole("button")).toEqual([consoleButton()]);
+    expect(consoleButton().getAttribute("type")).toBe("button");
+    expect(consoleButton().getAttribute("aria-pressed")).toBe("false");
+    expect(consoleButton().hasAttribute("tabindex")).toBe(false);
+    // Not ignored: a swipe that starts on it steps, and only a tap presses it.
+    expect(stage().querySelector('[data-gesture="ignore"]')).toBeNull();
+    expect(consoleButton().closest("[data-side]")).toBeNull();
+    fireEvent.click(consoleButton());
+    expect(onToggleScoreDiff).toHaveBeenCalledTimes(1);
+  });
+
+  it("names its key in the tooltip", () => {
+    renderStage();
+    expect(consoleButton().getAttribute("title")).toMatch(/^Show score differences \(.+\)$/);
+  });
+
+  it("shows the other players' scores as differences from the viewed player's", () => {
+    renderStage({ scoreDiff: true });
+    expect(consoleButton().getAttribute("aria-pressed")).toBe("true");
+    // Seat 0 looks: its own score stays, B is 1,000 behind, the others level.
+    expect(cells()).toEqual(["E25,000", "S−1,000", "W±0", "N±0"]);
+    cleanup();
+    renderStage({ scoreDiff: true, pov: 1 });
+    expect(cells()).toEqual(["S24,000", "W+1,000", "N+1,000", "E+1,000"]);
+  });
+});
+
+describe("the seats' tiles", () => {
+  it("lays a riichi stick by the console on the declarer's side, as decoration", () => {
+    renderStage();
+    const sticks = [...stage().querySelectorAll("[data-side] > span[aria-hidden]")];
+    expect(sticks.map((stick) => stick.parentElement?.getAttribute("data-side"))).toEqual([
+      "right",
+    ]);
+    expect(sticks[0]?.childElementCount).toBe(0);
+    // It comes first in its layer, so the pond and the hand row are drawn after it.
+    expect(layer("right").firstElementChild).toBe(sticks[0]);
+  });
+
+  it("outlines the last discard and no other", () => {
+    renderStage();
+    const classes = pondClasses();
+    const last = screen.getByAltText("7 Sou, discarded right after drawing, last discard");
+    expect(last.getAttribute("data-d")).toBe("3:0");
+    expect(screen.getAllByAltText(/last discard$/)).toEqual([last]);
+    // Two steps later the viewed player's discard is the last one: it takes the outline and
+    // the earlier tile loses it.
+    cleanup();
+    const later = withSeat(0, {
+      drawn: null,
+      discards: [{ tile: "1p", tsumogiri: true, riichi: false, called: false }],
+    });
+    renderStage({}, { ...later, eventIndex: 10, lastEvent: round.events[10] ?? null });
+    const now = screen.getByAltText("1 Pin, discarded right after drawing, last discard");
+    expect(now.getAttribute("data-d")).toBe("0:0");
+    expect(screen.getAllByAltText(/last discard$/)).toEqual([now]);
+    const before = screen.getByAltText("7 Sou, discarded right after drawing");
+    expect(before.className).not.toBe(classes["3:0"]);
+    expect(now.className).toBe(classes["3:0"]);
+  });
+
+  it("outlines nothing on a step that is not a discard", () => {
+    renderStage({}, boardState({ eventIndex: 7, lastEvent: round.events[7] ?? null }));
+    expect(screen.queryByAltText(/last discard$/)).toBeNull();
+    expect(screen.getByAltText("7 Sou, discarded right after drawing")).toBeTruthy();
+  });
+
+  it("gives the discard that lands on this step a class of its own", () => {
+    renderStage();
+    const still = pondClasses();
+    expect(Object.keys(still).sort()).toEqual(["1:0", "2:0", "3:0"]);
+    cleanup();
+    renderStage({ motion: { landing: { seat: 3, index: 0 } } });
+    const moving = pondClasses();
+    expect(Object.keys(moving).filter((ref) => moving[ref] !== still[ref])).toEqual(["3:0"]);
+    // One class more on the tile: the outline of the last discard stays.
+    const added = (moving["3:0"] ?? "").split(" ").filter((name) => !still["3:0"]?.includes(name));
+    expect(added).toHaveLength(1);
+    expect(moving["3:0"]?.startsWith(`${still["3:0"]} `)).toBe(true);
+    // The same class whichever seat's discard lands.
+    cleanup();
+    renderStage({ motion: { landing: { seat: 1, index: 0 } } });
+    const other = pondClasses();
+    expect(Object.keys(other).filter((ref) => other[ref] !== still[ref])).toEqual(["1:0"]);
+    expect(other["1:0"]?.split(" ")).toContain(added[0]);
+  });
+
+  it("lands nothing without a motion, or for a discard that is not on the table", () => {
+    renderStage();
+    const still = pondClasses();
+    cleanup();
+    renderStage({ motion: { landing: { seat: 0, index: 0 } } });
+    expect(pondClasses()).toEqual(still);
+    cleanup();
+    renderStage({ motion: { landing: { seat: 3, index: 5 } } });
+    expect(pondClasses()).toEqual(still);
+  });
+
+  it("marks face-up tiles with their kind and pond tiles with seat:index", () => {
+    renderStage();
+    expect(screen.getByAltText("5 Man (red)").getAttribute("data-k")).toBe("4");
+    expect(screen.getByAltText("9 Man, riichi declaration, called").getAttribute("data-d")).toBe(
+      "1:0",
+    );
+    expect(
+      screen.getByAltText("7 Sou, discarded right after drawing, last discard").dataset.d,
+    ).toBe("3:0");
+    // Only pond tiles carry a discard's place.
+    for (const tile of stage().querySelectorAll("[data-d]")) {
+      expect(tile.closest('[role="group"]')?.getAttribute("aria-label")).toMatch(/'s discards$/);
+    }
+  });
+
+  it("draws hidden hands as backs, counted in the group's name", () => {
+    renderStage({ revealed: new Set<Seat>([0]) });
+    const hidden = screen.getByRole("group", { name: "B's hand, 13 tiles face down" });
+    // The backs themselves are not announced one by one, and are no images.
+    expect(within(hidden).queryAllByRole("img")).toEqual([]);
+    expect(backs(hidden)).toHaveLength(13);
+    expect(hidden.querySelector("img, [data-k]")).toBeNull();
+    expect(screen.queryByRole("group", { name: "B's hand" })).toBeNull();
+    // C (across) has 11 concealed tiles and a pon; D has a closed kan.
+    expect(backs(screen.getByRole("group", { name: "C's hand, 11 tiles face down" }))).toHaveLength(
+      11,
+    );
+    expect(backs(screen.getByRole("group", { name: "D's hand, 13 tiles face down" }))).toHaveLength(
+      13,
+    );
+    expect(screen.getByRole("group", { name: "Pon: 9 Man, 9 Man, 9 Man" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: /^Closed kan/ })).toBeTruthy();
+    // The viewed player's hand is face up.
+    expect(
+      within(screen.getByRole("group", { name: "A's hand" })).getAllByRole("img"),
+    ).toHaveLength(13);
+  });
+
+  it("gives away nothing of a hidden hand: no face, no kind for the spotlight", () => {
+    renderStage({ revealed: new Set<Seat>([0]) });
+    // D holds the only red 5 Man and no other face of it is on the table.
+    expect(stage().querySelector('[data-k="4"]')).toBeNull();
+    expect(stage().innerHTML).not.toContain("Man5-Dora");
+    cleanup();
+    renderStage({ revealed: new Set<Seat>([0, 3]) });
+    expect(stage().querySelector('[data-k="4"]')).not.toBeNull();
+  });
+
+  it("hides the viewed player's drawn tile with the hand, from another seat", () => {
+    renderStage({ pov: 1, revealed: new Set<Seat>([1]) });
+    const hidden = screen.getByRole("group", { name: "A's hand, 13 tiles face down" });
+    expect(hidden.closest("[data-side]")).toBe(layer("left"));
+    expect(backs(hidden)).toHaveLength(13);
+    expect(screen.queryByAltText("1 Pin (just drawn)")).toBeNull();
+    expect(
+      within(screen.getByRole("group", { name: "B's hand" })).getAllByRole("img"),
+    ).toHaveLength(13);
+  });
+
+  it("shows every hand that is revealed, as at a round's end", () => {
+    renderStage({ revealed: new Set<Seat>([0, 1]) });
+    expect(screen.getByRole("group", { name: "A's hand" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "B's hand" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "C's hand, 11 tiles face down" })).toBeTruthy();
+  });
+
+  /** The tile scales a seat's layer carries: its pond's and its hand row's. */
+  const scales = (name: string) => {
+    const pond = screen.getByRole("group", { name: `${name}'s discards` }).parentElement;
+    const hand = screen.getByRole("group", { name: `${name}'s hand` }).closest("[style]");
+    return {
+      pond: pond?.style.getPropertyValue("--ps"),
+      hand: (hand as HTMLElement).style.getPropertyValue("--hs"),
+    };
+  };
+
+  it("writes each pond's and each hand row's own tile scale, 1 while they fit", () => {
+    // The fixture's D holds thirteen tiles beside a closed kan, more than a real hand: its row
+    // is the one that shrinks.
+    const state = boardState();
+    renderStage({}, state);
+    for (const [seat, name] of names.entries()) {
+      const view = state.seats[seat as Seat];
+      expect(scales(name), name).toEqual({
+        pond: pondScale(view.discards).toFixed(4),
+        hand: handScale(view, seat as Seat).toFixed(4),
+      });
+    }
+    // A short pond, and a closed hand with its draw.
+    expect(scales("A")).toEqual({ pond: "1.0000", hand: "1.0000" });
+    // The scales are the pond's and the row's alone: neither box carries the other's.
+    const pond = screen.getByRole("group", { name: "A's discards" }).parentElement;
+    expect(pond?.style.getPropertyValue("--hs")).toBe("");
+    expect(pond?.hasAttribute("data-own-hand")).toBe(false);
+  });
+
+  it("shrinks only the tiles of a pond that has grown too long", () => {
+    renderStage();
+    const before = names.map(scales);
+    cleanup();
+    const discards: DiscardView[] = Array.from({ length: 30 }, () => ({
+      tile: "1z",
+      tsumogiri: true,
+      riichi: false,
+      called: false,
+    }));
+    renderStage({}, withSeat(2, { discards }));
+    expect(Number(scales("C").pond)).toBeLessThan(1);
+    expect(scales("C")).toEqual({ pond: pondScale(discards).toFixed(4), hand: before[2]?.hand });
+    expect(["A", "B", "D"].map(scales)).toEqual([before[0], before[1], before[3]]);
+    // The rows of the long pond: six, six and all the rest.
+    const pond = screen.getByRole("group", { name: "C's discards" });
+    expect([...pond.children].map((row) => row.querySelectorAll("img").length)).toEqual([6, 6, 18]);
+  });
+
+  it("shrinks only the tiles of a hand row with too many calls", () => {
+    renderStage();
+    const before = names.map(scales);
+    cleanup();
+    const kan: MeldView = {
+      type: "daiminkan",
+      tiles: ["7z", "7z", "7z"],
+      from: 1,
+      calledTile: "7z",
+    };
+    const view = { hand: ["1m" as const], drawn: "2m" as const, melds: [kan, kan, kan, kan] };
+    renderStage({}, withSeat(0, view));
+    expect(Number(scales("A").hand)).toBeLessThan(1);
+    expect(scales("A")).toEqual({
+      pond: before[0]?.pond,
+      hand: handScale({ ...view, kita: [] }, 0).toFixed(4),
+    });
+    expect(["B", "C", "D"].map(scales)).toEqual(before.slice(1));
+  });
+});
+
+describe("Alt+click on a discard", () => {
+  it("jumps without letting the press through", () => {
     const onPondJump = vi.fn();
     const outside = vi.fn();
     renderStage({ onPondJump });
     stage().addEventListener("pointerdown", outside);
     const tile = screen.getByAltText("7 Sou, discarded right after drawing, last discard");
-    fireEvent.pointerDown(tile, { altKey: true, button: 0 });
+    // The press is cancelled as well as stopped.
+    expect(fireEvent.pointerDown(tile, { altKey: true, button: 0 })).toBe(false);
     expect(onPondJump).toHaveBeenCalledWith({ seat: 3, index: 0 });
     expect(outside).not.toHaveBeenCalled();
-    fireEvent.pointerDown(tile, { button: 0 });
+    expect(fireEvent.pointerDown(tile, { button: 0 })).toBe(true);
     expect(onPondJump).toHaveBeenCalledTimes(1);
     expect(outside).toHaveBeenCalledTimes(1);
-    // Alt+press elsewhere on the table is an ordinary press.
-    fireEvent.pointerDown(screen.getByAltText("5 Man (red)"), { altKey: true, button: 0 });
-    expect(onPondJump).toHaveBeenCalledTimes(1);
-    expect(outside).toHaveBeenCalledTimes(2);
   });
 
-  it("forwards the stage element to stageRef", () => {
-    const stageRef = { current: null as HTMLElement | null };
-    renderStage({ stageRef });
-    expect(stageRef.current).toBe(stage());
-    expect(stageRef.current?.tabIndex).toBe(-1);
+  it("reads the discard from a sideways riichi tile too", () => {
+    const onPondJump = vi.fn();
+    renderStage({ onPondJump });
+    fireEvent.pointerDown(screen.getByAltText("9 Man, riichi declaration, called"), {
+      altKey: true,
+      button: 0,
+    });
+    expect(onPondJump).toHaveBeenCalledWith({ seat: 1, index: 0 });
   });
 
-  it("marks the stage while an overlay card is up, and takes the console out of the Tab order", () => {
-    const { rerender } = renderStage();
-    expect(consoleButton().hasAttribute("tabindex")).toBe(false);
-    const props = stageProps({ game, round, state: boardState(), names, pov: 0 }, {});
-    rerender(
-      <I18nProvider>
-        <TableStage {...props} overlay={<div>card</div>} />
-      </I18nProvider>,
+  it("is an ordinary press anywhere else on the table, and with another button", () => {
+    const onPondJump = vi.fn();
+    const outside = vi.fn();
+    renderStage({ onPondJump });
+    stage().addEventListener("pointerdown", outside);
+    const elsewhere = [
+      screen.getByAltText("5 Man (red)"),
+      screen.getByRole("group", { name: "D's discards" }),
+      consoleButton(),
+      stage(),
+    ];
+    for (const target of elsewhere) {
+      fireEvent.pointerDown(target, { altKey: true, button: 0 });
+    }
+    // Alt with the secondary button is the step back it always is.
+    fireEvent.pointerDown(
+      screen.getByAltText("7 Sou, discarded right after drawing, last discard"),
+      { altKey: true, button: 2 },
     );
-    expect(stage().hasAttribute("data-overlay")).toBe(true);
-    expect(screen.getByText("card")).toBeTruthy();
-    // The card lies over the console: a keyboard user is not sent under it. The tags stay.
-    expect(consoleButton().getAttribute("tabindex")).toBe("-1");
-    expect(tagOf(0).textContent).toContain("A");
+    expect(onPondJump).not.toHaveBeenCalled();
+    expect(outside).toHaveBeenCalledTimes(elsewhere.length + 1);
   });
 
-  it("marks the stage with its arrangement, and whether its dock holds something", () => {
-    renderStage({ arrangement: "stack" });
-    expect(stage().getAttribute("data-arrangement")).toBe("stack");
-    expect(stage().hasAttribute("data-dock")).toBe(false);
-    cleanup();
-    renderStage({ dock: <div>bar</div> });
-    expect(stage().hasAttribute("data-dock")).toBe(true);
+  it("calls the handler of the latest render", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    // The same ref, so the stage keeps the listener it has.
+    const stageRef = { current: null as HTMLElement | null };
+    const { rerender } = renderStage({ onPondJump: first, stageRef });
+    rerender(stageElement({ onPondJump: second, stageRef }));
+    fireEvent.pointerDown(
+      screen.getByAltText("7 Sou, discarded right after drawing, last discard"),
+      { altKey: true, button: 0 },
+    );
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith({ seat: 3, index: 0 });
   });
+});
 
-  it("stands side players' tags beside the table where the stage has room, else on the felt", () => {
-    const places = () =>
-      [0, 1, 2, 3].map((seat) => tagOf(seat).parentElement?.getAttribute("data-place"));
-    renderStage({ dock: <div>bar</div> });
-    expect(places()).toEqual(["bottom-right", "rim-right", "top-left", "rim-left"]);
-    cleanup();
-    renderStage({ arrangement: "short" });
-    expect(places()).toEqual(["bottom-right", "rim-right", "top-left", "rim-left"]);
-    cleanup();
-    renderStage({ arrangement: "stack" });
-    expect(places()[1]).toMatch(/^(top|bottom)-right$/);
-    expect(places().slice(2)).toEqual(["top-left", "bottom-left"]);
-  });
-
-  it("puts the dock and the overlay in slots that stage gestures ignore", () => {
-    renderStage({ dock: <div>bar</div>, overlay: <div>card</div> });
-    const dock = screen.getByText("bar").closest('[data-gesture="ignore"]');
-    const overlay = screen.getByText("card").closest('[data-gesture="ignore"]');
-    expect(dock).not.toBeNull();
-    expect(overlay).not.toBeNull();
-    expect(overlay).not.toBe(dock);
-    expect(stage().contains(dock)).toBe(true);
-    // The overlay comes first, so the keyboard reaches the card before the bar, and lies outside
-    // the box that clips the table; the dock is the last thing in the table's frame.
-    expect(stage().firstElementChild).toBe(overlay);
-    expect(overlay?.parentElement).toBe(stage());
-    const frame = stage().querySelector("[data-own-hand]")?.parentElement as HTMLElement;
-    expect(frame.lastElementChild?.contains(dock as Element)).toBe(true);
-    expect(dock?.textContent).toBe("bar");
-  });
-
-  it("renders no slot without content", () => {
-    renderStage();
-    expect(stage().querySelector('[data-gesture="ignore"]')).toBeNull();
-    expect(stage().hasAttribute("data-overlay")).toBe(false);
-    expect(stage().children).toHaveLength(1);
-  });
-
-  it("shows call captions as decoration, for a moment", () => {
+describe("call captions", () => {
+  it("show as decoration, for a moment", () => {
     vi.useFakeTimers();
     renderStage({ captions: [{ id: 1, seat: 2, kind: "pon" }] });
     const caption = screen.getByText("Pon");
     expect(caption.closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(caption.closest("[data-side]")).toBe(caption);
+    expect(caption.getAttribute("data-side")).toBe("top");
+    // Upright over the table, not in a seat's turned layer.
+    expect(caption.parentElement?.parentElement).toBe(stage().firstElementChild);
     act(() => {
-      vi.advanceTimersByTime(CAPTION_MS);
+      vi.advanceTimersByTime(CAPTION_MS - 1);
+    });
+    expect(screen.queryByText("Pon")).not.toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(1);
     });
     expect(screen.queryByText("Pon")).toBeNull();
   });
 
-  it("centres each caption on its caller's pond, also two at once", () => {
+  it("show again for the next call, after the last one has gone", () => {
+    vi.useFakeTimers();
+    const { rerender } = renderStage({ captions: [{ id: 1, seat: 2, kind: "pon" }] });
+    act(() => {
+      vi.advanceTimersByTime(CAPTION_MS);
+    });
+    rerender(stageElement({ captions: [] }));
+    expect(stage().querySelector('[aria-hidden="true"] [data-side]')).toBeNull();
+    rerender(stageElement({ captions: [{ id: 9, seat: 3, kind: "chi" }] }));
+    expect(screen.getByText("Chi").getAttribute("data-side")).toBe("left");
+  });
+
+  it("centre each caption on its caller's pond, also two at once", () => {
     // Point of view 0: seat 1 is on the right, seat 3 on the left.
     renderStage({
       captions: [
@@ -409,83 +600,34 @@ describe("TableStage", () => {
       .map((el) => [el.style.getPropertyValue("--ax"), el.style.getPropertyValue("--ay")]);
     expect(at).toEqual(
       (["left", "right"] as const).map((side) => {
-        const anchor = captionAnchor(side, CAMERAS.wide);
+        const anchor = captionAnchor(side);
         return [anchor.x.toFixed(5), anchor.y.toFixed(5)];
       }),
     );
+    expect(at[0]).not.toEqual(at[1]);
   });
 
-  it("flies a discard through a proxy, then shows the real tile", () => {
-    vi.useFakeTimers();
-    const state = boardState();
-    renderStage(
-      { motion: { flight: { seat: 3, index: 0, source: "opponent", riichi: false }, reveal: [] } },
-      state,
-    );
-    const real = screen.getByAltText("7 Sou, discarded right after drawing, last discard");
-    expect(real.className).not.toBe("");
-    const proxies = stage().querySelectorAll('[aria-hidden="true"] img[data-k="24"]');
-    expect(proxies).toHaveLength(1);
-    expect(proxies[0]?.closest("[data-side]")).toBeNull();
-    const before = real.className;
-    act(() => {
-      vi.advanceTimersByTime(FLIGHT_FALLBACK_MS);
-    });
-    expect(stage().querySelectorAll('[aria-hidden="true"] img[data-k="24"]')).toHaveLength(0);
-    expect(real.className).not.toBe(before);
+  it("follow the point of view", () => {
+    renderStage({ pov: 2, captions: [{ id: 1, seat: 2, kind: "riichi" }] });
+    const caption = screen.getByText("Riichi");
+    expect(caption.getAttribute("data-side")).toBe("bottom");
+    expect(caption.style.getPropertyValue("--ay")).toBe(captionAnchor("bottom").y.toFixed(5));
   });
 
-  it("plays the round-end reveal on the step only, not when H or C changes the table later", () => {
-    const state = boardState();
-    const reveal = { flight: null, reveal: [1 as Seat] };
-    const props = (overrides: Partial<TableStageProps>) =>
-      stageProps({ game, round, state, names }, { revealed: new Set<Seat>([0, 1]), ...overrides });
-    const leavingFaces = () =>
-      (stage().querySelector('[data-side="right"]') as HTMLElement).querySelectorAll(
-        '[aria-hidden="true"] img[src$="Back.svg"]',
-      ).length;
-    // Reached with hands shown (no walls): nothing to reveal.
-    const { rerender } = render(
-      <I18nProvider>
-        <TableStage {...props({ walls: false, motion: reveal })} />
-      </I18nProvider>,
-    );
-    expect(leavingFaces()).toBe(0);
-    // H hides the hands at the same step: the walls stand, and no reveal plays.
-    rerender(
-      <I18nProvider>
-        <TableStage {...props({ walls: true, motion: reveal })} />
-      </I18nProvider>,
-    );
-    expect(leavingFaces()).toBe(0);
-    // Flat, then C back to 3D at the same step: still no reveal.
-    rerender(
-      <I18nProvider>
-        <TableStage {...props({ walls: true, view: "flat", motion: reveal })} />
-      </I18nProvider>,
-    );
-    rerender(
-      <I18nProvider>
-        <TableStage {...props({ walls: true, view: "3d", motion: reveal })} />
-      </I18nProvider>,
-    );
-    expect(leavingFaces()).toBe(0);
-  });
-
-  it("keeps a revealed wall for the round-end reveal, then removes it", () => {
-    vi.useFakeTimers();
+  it("say a win in another colour than a call", () => {
     renderStage({
-      walls: true,
-      revealed: new Set<Seat>([0, 1]),
-      motion: { flight: null, reveal: [1] },
+      captions: [
+        { id: 1, seat: 1, kind: "pon" },
+        { id: 2, seat: 2, kind: "kan" },
+        { id: 3, seat: 3, kind: "ron" },
+        { id: 4, seat: 0, kind: "tsumo" },
+      ],
     });
-    const right = stage().querySelector('[data-side="right"]') as HTMLElement;
-    expect(within(right).getByRole("group", { name: "B's hand" })).toBeTruthy();
-    expect(right.querySelectorAll('[aria-hidden="true"] img[src$="Back.svg"]')).toHaveLength(13);
-    act(() => {
-      vi.advanceTimersByTime(REVEAL_MS);
-    });
-    expect(right.querySelectorAll('img[src$="Back.svg"]')).toHaveLength(0);
+    const classOf = (text: string) => screen.getByText(text).className;
+    expect(classOf("Kan")).toBe(classOf("Pon"));
+    expect(classOf("Tsumo")).toBe(classOf("Ron"));
+    expect(classOf("Ron")).not.toBe(classOf("Pon"));
+    expect(classOf("Ron").startsWith(classOf("Pon"))).toBe(true);
   });
 });
 
@@ -509,45 +651,52 @@ describe("TableStage in a three-player game", () => {
     );
   }
 
-  it("draws three seats and an empty chair that moves with the point of view", () => {
+  it("draws three seats and an empty side that moves with the point of view", () => {
     for (const [pov, side] of [
       [0, "left"],
       [1, "top"],
       [2, "right"],
     ] as const) {
       renderSanma(pov);
-      const empty = stage().querySelector(`[data-side="${side}"]`) as HTMLElement;
-      expect(empty.querySelector("img")).toBeNull();
-      expect(empty.textContent).toBe("");
-      expect(stage().querySelectorAll("[data-seat]")).toHaveLength(3);
+      // The empty chair's layer keeps its place and holds nothing.
+      expect(layer(side).childElementCount).toBe(0);
+      expect(SIDES.filter((s) => layer(s).childElementCount === 0)).toEqual([side]);
       // The console has no cell on the empty side either.
       expect(cells().map((cell) => cell === null)).toEqual(SIDES.map((s) => s === side));
       expect(screen.getAllByRole("group", { name: /'s discards$/ })).toHaveLength(3);
+      expect(screen.getAllByRole("group", { name: /'s hand$/ })).toHaveLength(3);
       expect(stage().textContent).not.toContain("Player 4");
+      const own = stage().querySelector("[data-own-hand]") as HTMLElement;
+      expect(own.closest("[data-side]")).toBe(layer("bottom"));
+      expect(within(own).getByRole("group", { name: `${sanmaNames[pov]}'s hand` })).toBeTruthy();
       cleanup();
     }
   });
 
-  it("shows kita as a labelled group, with a ×n pill from two tiles on, and the tags' winds", () => {
+  it("gives the three seats East, South and West on the console", () => {
     renderSanma(0);
-    const kita = screen.getByRole("group", { name: "C's kita: 2 North tiles set aside" });
-    expect(within(kita).getAllByRole("img")).toHaveLength(1);
-    expect(within(kita).getByText("×2").getAttribute("aria-hidden")).toBe("true");
-    // One tile is its own count.
-    const own = screen.getByRole("group", { name: "A's kita: 1 North tile set aside" });
-    expect(own.closest("[data-side]")).toBeNull();
-    expect(own.textContent).toBe("");
-    const winds = [...stage().querySelectorAll("[data-seat]")].map(
-      (tag) => tag.querySelector('[aria-hidden="true"]')?.textContent,
-    );
-    expect(winds.sort()).toEqual(["E", "S", "W"]);
+    const winds = [...consoleButton().querySelectorAll("[data-edge] > span > span:first-child")];
+    expect(winds.map((wind) => wind.textContent)).toEqual(["E", "S", "W"]);
+    expect(cells()[3]).toBeNull();
   });
 
-  it("counts kita only on the kita tiles, never in a tag", () => {
+  it("shows kita as a labelled group in its owner's row, with a ×n pill from two tiles on", () => {
     renderSanma(0);
-    for (const seat of [0, 1, 2]) {
-      expect(tagOf(seat).textContent).not.toContain("×");
-    }
+    const kita = screen.getByRole("group", { name: "C's kita: 2 North tiles set aside" });
+    expect(kita.closest("[data-side]")).toBe(layer("top"));
+    expect(within(kita).getAllByRole("img")).toHaveLength(1);
+    expect(within(kita).getByText("×2").getAttribute("aria-hidden")).toBe("true");
+    // One tile is its own count; the viewed player's kita lies in the own row.
+    const own = screen.getByRole("group", { name: "A's kita: 1 North tile set aside" });
+    expect(own.closest("[data-own-hand]")).not.toBeNull();
+    expect(own.textContent).toBe("");
     expect(screen.getAllByText("×2")).toHaveLength(1);
+  });
+
+  it("keeps kita face up beside a hidden hand", () => {
+    renderSanma(0, { revealed: new Set<Seat>([0]) });
+    const kita = screen.getByRole("group", { name: "C's kita: 2 North tiles set aside" });
+    expect(within(kita).getByRole("img", { name: "North" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: /^C's hand, \d+ tiles face down$/ })).toBeTruthy();
   });
 });

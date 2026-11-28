@@ -5,21 +5,29 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GameLog } from "../core/model";
 import { I18nProvider } from "../i18n/I18nProvider";
 import { readStorage, writeStorage } from "../storage";
-import { makeGame, makeSanmaGame, sampleRound, sampleSanmaRound } from "../test/round-builder";
+import { shown, spoken } from "../test/dom-text";
+import {
+  draw,
+  makeGame,
+  makeRound,
+  makeSanmaGame,
+  ryukyoku,
+  sampleRound,
+  sampleSanmaRound,
+  tsumogiri,
+} from "../test/round-builder";
 import { game as fixtureGame } from "./__fixtures__/game";
-import { SHORT, WIDE } from "./arrangement";
-import { CARD_GUARD_MS } from "./controls/ResultLayer";
 import { SettingsProvider } from "./settings/SettingsProvider";
 import { SETTINGS_STORAGE_NAME } from "./settings/settings";
 import { useDialogs } from "./settings/useSettings";
-import { RESULT_DELAY_MS, Viewer } from "./Viewer";
+import { Viewer } from "./Viewer";
 import { doubleRonRound } from "./viewer/__fixtures__/games";
-import type { Arrangement, LinkSource, ViewerStart } from "./viewer/types";
+import type { LinkSource, ViewerStart } from "./viewer/types";
 import { TOAST_MS } from "./viewer/useToast";
 
 /**
  * Three rounds told apart by their names: East 1 (sampleRound, 25 steps: 7 draw S0, 8 riichi S0,
- * 24 ron), East 2 (the same round) and East 3 (a double ron in 4 steps).
+ * 11 open kan S2, 24 ron), East 2 (the same round) and East 3 (a double ron in 4 steps).
  */
 const threeRounds: GameLog = makeGame([
   sampleRound(),
@@ -27,22 +35,27 @@ const threeRounds: GameLog = makeGame([
   { ...doubleRonRound(), number: 3 },
 ]);
 
-/** Two three-player rounds (24 steps each). */
-const sanma: GameLog = makeSanmaGame([sampleSanmaRound(), { ...sampleSanmaRound(), number: 2 }]);
+/** Two three-player rounds (24 steps each), with the final scores a complete log carries. */
+const sanma: GameLog = makeSanmaGame([sampleSanmaRound(), { ...sampleSanmaRound(), number: 2 }], {
+  finalScores: [35000, 28800, 41200, 0],
+});
 
-/** A matchMedia that answers the arrangement queries (and nothing else, so no reduced motion). */
-function arrange(arrangement: Arrangement) {
-  const matching = { wide: WIDE, short: SHORT, stack: "" }[arrangement];
-  vi.stubGlobal(
-    "matchMedia",
-    vi.fn((query: string) => ({
-      media: query,
-      matches: query === matching,
-      addEventListener() {},
-      removeEventListener() {},
-    })),
-  );
-}
+/**
+ * East 1 ends in an exhaustive draw after one discard (4 steps) with A (waiting on every Man tile)
+ * and D (waiting on Chun) tenpai; East 2 is sampleRound.
+ */
+const drawGame: GameLog = makeGame([
+  makeRound({
+    events: [
+      draw(0, "5z"),
+      tsumogiri(0, "5z"),
+      ryukyoku("exhaustive", [1500, -1500, -1500, 1500], { tenpai: [0, 3] }),
+    ],
+  }),
+  { ...sampleRound(), number: 2 },
+]);
+
+const SAMPLE: LinkSource = { kind: "sample", id: "tenhou-json" };
 
 /** Shows which of the shell's dialogs the viewer asked for. */
 function DialogProbe() {
@@ -91,18 +104,40 @@ const button = (name: string | RegExp) => screen.getByRole("button", { name });
 const slider = () => screen.getByRole("slider", { name: "Step in this round" }) as HTMLInputElement;
 /** The position in the round as the step slider has it: "step / steps", 1-based. */
 const counter = () => `${slider().value} / ${slider().max}`;
-const transport = () => screen.getByRole("group", { name: "Replay controls" });
-/** The round on the table, as the round button names it. */
-const roundName = () =>
-  button(/, round list$/)
-    .getAttribute("aria-label")
-    ?.replace(/, round list$/, "");
 const liveText = () => document.querySelector("[aria-live]")?.textContent ?? "";
-const stage = () => screen.getByRole("region", { name: "Mahjong table" });
-const card = () => screen.getByRole("region", { name: "Round result" });
-const queryCard = () => screen.queryByRole("region", { name: "Round result" });
 const stored = () =>
   JSON.parse(readStorage(SETTINGS_STORAGE_NAME) ?? "{}") as Record<string, unknown>;
+
+// ---- the page's parts
+const stage = () => screen.getByRole("region", { name: "Mahjong table" });
+const transport = () => screen.getByRole("group", { name: "Replay controls" });
+const panel = () => screen.getByRole("complementary", { name: "Game" });
+
+// ---- the panel's parts, top to bottom
+const header = () => panel().querySelector("header") as HTMLElement;
+/** The round on the table, as the panel's head names it. */
+const roundName = () => within(header()).getByRole("heading", { level: 2 }).textContent;
+/** The line under the round's name: "Turn 3 · 61 tiles left · 1 deposit". */
+const facts = () => header().querySelector("p")?.textContent ?? null;
+const roundButton = (name: "Previous round" | "Next round") =>
+  within(header()).getByRole("button", { name });
+const result = () => screen.getByRole("region", { name: "Round result" });
+const queryResult = () => screen.queryByRole("region", { name: "Round result" });
+const players = () => screen.getByRole("region", { name: "Players" });
+const playerRows = () => within(players()).getAllByRole("button");
+const hands = () => screen.getByRole("checkbox", { name: "Show all hands" }) as HTMLInputElement;
+/** The viewed player as the player list marks it: the pressed row's wind and name, "East A". */
+const pov = () =>
+  spoken(within(players()).getByRole("button", { pressed: true })).replace(/ Point of view.*$/, "");
+const rounds = () => screen.getByRole("region", { name: "Rounds" });
+/** The rows of the round list: one per round, then "Final standings". */
+const roundRows = () => within(rounds()).getAllByRole("button");
+const menu = () => screen.getByRole("group", { name: "Menu" });
+
+/** Whose hand lies at the bottom of the table, as its group is named: "A's hand". */
+const ownHand = () =>
+  stage().querySelector("[data-own-hand] [role='group']")?.getAttribute("aria-label") ?? null;
+const handOf = (name: string) => within(stage()).queryByRole("group", { name });
 
 /** Presses a key on an element (the window by default); false when a handler prevented it. */
 async function press(
@@ -138,7 +173,18 @@ async function mouse(target: Element, mouseButton = 0, init: PointerEventInit = 
   });
 }
 
-async function wheel(target: Element, deltaY: number) {
+const TOUCH = { button: 0, pointerId: 1, isPrimary: true, pointerType: "touch" };
+
+/** A finger put down on an element at `from` and lifted at `to` (x, on one line). */
+async function swipe(target: Element, from: number, to: number) {
+  await act(async () => {
+    fireEvent.pointerDown(target, { ...TOUCH, clientX: from, clientY: 300 });
+    fireEvent.pointerUp(target, { ...TOUCH, clientX: to, clientY: 300 });
+  });
+}
+
+/** Turns the wheel over an element; false when a handler took it (the page does not scroll). */
+async function wheel(target: Element, deltaY: number): Promise<boolean> {
   const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY });
   // happy-dom's WheelEvent is not a MouseEvent: give it the modifier keys a browser's has.
   for (const key of ["shiftKey", "ctrlKey", "metaKey", "altKey"] as const) {
@@ -147,12 +193,10 @@ async function wheel(target: Element, deltaY: number) {
   await act(async () => {
     target.dispatchEvent(event);
   });
+  return !event.defaultPrevented;
 }
 
-/** Lets the result card's first moment pass, after which presses on it and beside it count. */
-function afterGuard() {
-  vi.spyOn(performance, "now").mockReturnValue(performance.now() + CARD_GUARD_MS);
-}
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 afterEach(() => {
   cleanup();
@@ -192,21 +236,20 @@ describe("Viewer keys", () => {
     expect(counter()).toBe("1 / 25");
   });
 
-  it("stops key auto-repeat at the round's result, and fresh presses go on", async () => {
+  it("stops key auto-repeat at the round's result, and a fresh press goes on", async () => {
     renderViewer({ start: at(0, 21) });
     for (let i = 0; i < 6; i++) {
       await press("ArrowRight", { repeat: true });
     }
     expect(roundName()).toBe("East 1");
     expect(counter()).toBe("25 / 25");
-    expect(queryCard()).toBeNull();
-    // The first brings up the result card, which was waiting; the next leaves the round.
-    await press("ArrowRight");
-    expect(queryCard()).not.toBeNull();
-    expect(roundName()).toBe("East 1");
+    // The result is in the panel as soon as its step is on the table.
+    expect(queryResult()).not.toBeNull();
+    // Nothing waits for a second press: the next one leaves the round.
     await press("ArrowRight");
     expect(roundName()).toBe("East 2");
     expect(counter()).toBe("1 / 25");
+    expect(queryResult()).toBeNull();
   });
 
   it("does nothing on next round at the end of the game", async () => {
@@ -263,48 +306,73 @@ describe("Viewer keys", () => {
     expect(back).not.toHaveBeenCalled();
   });
 
+  it("has no key for a table view or a round list any more: C and R are the browser's", async () => {
+    renderViewer({ start: at(0, 2) });
+    for (const [key, code] of [
+      ["c", "KeyC"],
+      ["r", "KeyR"],
+    ] as const) {
+      expect(await press(key, { code }), key).toBe(true);
+    }
+    expect(counter()).toBe("3 / 25");
+    expect(liveText()).toBe("A discards 3 Man");
+    expect(document.activeElement).toBe(document.body);
+  });
+
   it("views from seats 1 to 3 in a three-player game and ignores 4", async () => {
     renderViewer({ game: sanma });
-    const pov = () => button(/^Point of view:/).getAttribute("aria-label");
-    expect(pov()).toBe("Point of view: East, A");
+    expect(playerRows()).toHaveLength(3);
+    expect(pov()).toBe("East A");
     await press("2", { code: "Digit2" });
-    expect(pov()).toBe("Point of view: South, B");
+    expect(pov()).toBe("South B");
     await press("3", { code: "Digit3" });
-    expect(pov()).toBe("Point of view: West, C");
+    expect(pov()).toBe("West C");
+    expect(ownHand()).toBe("C's hand");
     await press("4", { code: "Digit4" });
-    expect(pov()).toBe("Point of view: West, C");
+    expect(pov()).toBe("West C");
     await press("v");
-    expect(pov()).toBe("Point of view: East, A");
+    expect(pov()).toBe("East A");
     await press("v", { shiftKey: true });
-    expect(pov()).toBe("Point of view: West, C");
+    expect(pov()).toBe("West C");
     expect(document.body.textContent).not.toContain("Player 4");
   });
 
-  it("shows all hands and switches to the flat table with H and C", async () => {
+  it("hides and shows the other players' hands with H", async () => {
     renderViewer();
-    const hands = button("Show all hands");
-    expect(hands.getAttribute("aria-pressed")).toBe("true");
-    expect(stage().hasAttribute("data-walls")).toBe(false);
+    expect(hands().checked).toBe(true);
+    expect(handOf("B's hand")).not.toBeNull();
     await press("h");
-    expect(hands.getAttribute("aria-pressed")).toBe("false");
-    expect(stage().hasAttribute("data-walls")).toBe(true);
-    await click(hands);
-    expect(stage().hasAttribute("data-walls")).toBe(false);
-    await press("c");
-    expect(stage().getAttribute("data-view")).toBe("flat");
+    expect(hands().checked).toBe(false);
+    expect(handOf("B's hand")).toBeNull();
+    expect(handOf("B's hand, 13 tiles face down")).not.toBeNull();
+    // The viewed player's own hand stays face up.
+    expect(ownHand()).toBe("A's hand");
+    expect(stored().showAllHands).toBe(false);
+    await press("h");
+    expect(hands().checked).toBe(true);
+    expect(handOf("B's hand")).not.toBeNull();
   });
 
   it("turns the waits aid off and on with W and says so in a toast", async () => {
     renderViewer();
     const toast = () => screen.queryByText(/^Waits and shanten/, { ignore: "[aria-live] *" });
     expect(toast()).toBeNull();
+    expect(spoken(playerRows()[0] as HTMLElement)).toBe("East A Point of view 25,000 1-shanten");
     expect(await press("w")).toBe(false);
     expect(stored().showWaits).toBe(false);
     expect(toast()?.textContent).toBe("Waits and shanten off");
     expect(liveText()).toBe("Waits and shanten off");
+    // The player list drops what every hand is waiting on.
+    expect(playerRows().map(spoken)).toEqual([
+      "East A Point of view 25,000",
+      "South B 25,000",
+      "West C 25,000",
+      "North D 25,000",
+    ]);
     await press("w");
     expect(stored().showWaits).toBe(true);
     expect(toast()?.textContent).toBe("Waits and shanten on");
+    expect(spoken(playerRows()[0] as HTMLElement)).toBe("East A Point of view 25,000 1-shanten");
   });
 
   it("says in the live region what a key changed on the table, without a toast", async () => {
@@ -313,8 +381,7 @@ describe("Viewer keys", () => {
     for (const [key, code] of [
       ["h"],
       ["h"],
-      ["c"],
-      ["c"],
+      ["d"],
       ["d"],
       ["2", "Digit2"],
       ["v"],
@@ -326,9 +393,8 @@ describe("Viewer keys", () => {
     expect(said).toEqual([
       "Other players' hands hidden",
       "All hands shown",
-      "Flat table",
-      "3D table",
       "Score differences on",
+      "Score differences off",
       "Point of view: South, B",
       "Point of view: West, C",
       "Autoplay speed: 2×",
@@ -350,132 +416,240 @@ describe("Viewer keys", () => {
     expect(counter()).toBe("3 / 25");
   });
 
-  it("does nothing on letter keys while single-key shortcuts are off", async () => {
-    writeStorage(SETTINGS_STORAGE_NAME, JSON.stringify({ version: 2, charKeys: false }));
+  it("does nothing on character keys while single-key shortcuts are off", async () => {
+    writeStorage(SETTINGS_STORAGE_NAME, JSON.stringify({ version: 3, charKeys: false }));
     renderViewer();
-    for (const key of ["h", "w", "d", "c", "r", " "]) {
+    for (const key of ["h", "w", "d", "v", "?", " "]) {
       expect(await press(key), key).toBe(true);
     }
-    expect(button("Show all hands").getAttribute("aria-pressed")).toBe("true");
-    expect(screen.queryByRole("group", { name: "Rounds" })).toBeNull();
+    expect(await press("2", { code: "Digit2" })).toBe(true);
+    expect(hands().checked).toBe(true);
+    expect(pov()).toBe("East A");
+    expect(button("Play")).toBeTruthy();
+    expect(screen.getByTestId("dialog").textContent).toBe("");
     await press("ArrowRight");
     expect(counter()).toBe("2 / 25");
   });
+
+  it("leaves Esc to the browser while nothing plays: the result has nothing to hide", async () => {
+    renderViewer({ start: at(0, 24) });
+    expect(await press("Escape")).toBe(true);
+    expect(queryResult()).not.toBeNull();
+    expect(roundName()).toBe("East 1");
+    expect(counter()).toBe("25 / 25");
+  });
 });
 
-describe("Viewer arrangement", () => {
-  const PARTS = ["Dora indicators", "Viewer tools", "Mahjong table", "Replay controls"];
-  /** The viewer's four parts, as they come in the document. */
-  const order = () =>
-    [...document.querySelectorAll("[aria-label]")]
-      .map((element) => element.getAttribute("aria-label") ?? "")
-      .filter((label) => PARTS.includes(label));
+describe("Viewer page", () => {
+  /** True when `later` comes after `earlier` in the document. */
+  const follows = (earlier: Element, later: Element) =>
+    (earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
-  it.each<Arrangement>(["wide", "short", "stack"])(
-    "tells the table it is %s and has one transport, in its place",
-    (arrangement) => {
-      arrange(arrangement);
-      renderViewer();
-      expect(stage().getAttribute("data-arrangement")).toBe(arrangement);
-      expect(screen.getAllByRole("group", { name: "Replay controls" })).toHaveLength(1);
-      expect(transport().getAttribute("data-arrangement")).toBe(arrangement);
-      // On a wide screen the bar lies on the felt; otherwise the controls come after the stage.
-      expect(stage().contains(transport())).toBe(arrangement === "wide");
-      expect(
-        stage().compareDocumentPosition(transport()) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
-    },
-  );
-
-  it("keeps one order in the document: info chip, toolbar, stage, transport", () => {
-    for (const arrangement of ["wide", "short", "stack"] as const) {
-      arrange(arrangement);
-      renderViewer();
-      expect(order()).toEqual(PARTS);
-      cleanup();
+  it("holds the stage, the transport, the panel and its one live region, in that order", () => {
+    renderViewer();
+    const main = screen.getByRole("main");
+    const live = document.querySelector("[aria-live]") as HTMLElement;
+    const parts = [stage(), transport(), panel(), live];
+    for (const [index, part] of parts.entries()) {
+      expect(main.contains(part)).toBe(true);
+      const next = parts[index + 1];
+      if (next) {
+        expect(follows(part, next), `part ${index}`).toBe(true);
+        // Side by side on the page: none of them lies in, or over, another.
+        expect(part.contains(next)).toBe(false);
+      }
     }
+    expect(screen.getAllByRole("group", { name: "Replay controls" })).toHaveLength(1);
+    expect(screen.getAllByRole("complementary")).toHaveLength(1);
   });
 
-  /** What Tab goes through, by name, with the stage (which takes the focus from code) marked. */
-  const tabOrder = () =>
-    [...document.querySelectorAll<HTMLElement>("button, input, [tabindex]")]
-      .filter((element) => element.matches("[data-stage]") || element.tabIndex >= 0)
-      .map((element) =>
-        element.matches("[data-stage]")
-          ? "(stage)"
-          : (element.getAttribute("aria-label") ?? element.textContent),
-      );
-  const TRANSPORT = [
-    "Step in this round",
-    "Previous round",
-    "East 1, round list",
-    "Next round",
-    "Previous own turn",
-    "Next own turn",
-    "Previous step",
-    "Play",
-    "Next step",
-    "Autoplay speed: 1×",
-  ];
-
-  it.each<Arrangement>(["wide", "short", "stack"])(
-    "keeps the focus order of the screen when %s: toolbar, stage, result card, transport",
-    async (arrangement) => {
-      arrange(arrangement);
-      renderViewer({ start: at(0, 24) });
-      const tools = ["Show all hands", "Point of view: East, A", "Menu", "(stage)"];
-      // The card, over the stage, comes before the bar even where the bar lies on the felt.
-      expect(tabOrder()).toEqual([...tools, "Show table", "Next round", ...TRANSPORT]);
-      expect(transport().contains(card())).toBe(false);
-      await press("Escape");
-      // The console on the felt is in reach again, and Show result leads the transport.
-      expect(tabOrder()).toEqual([...tools, "Show score differences", "Show result", ...TRANSPORT]);
-    },
-  );
-
-  it("has a heading, and neither a side panel nor a step counter", () => {
-    renderViewer();
-    expect(document.querySelector("aside")).toBeNull();
+  it("has a heading for the page and one for each section of the panel, top to bottom", async () => {
+    renderViewer({ start: at(0, 23) });
+    const sections = () =>
+      within(panel())
+        .getAllByRole("heading", { level: 2 })
+        .map((heading) => heading.textContent);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Mahjong Paifu Viewer");
-    expect(document.body.textContent).not.toMatch(/Step \d+ \/ \d+/);
+    expect(sections()).toEqual(["East 1", "Players", "Rounds"]);
+    expect(follows(rounds(), menu())).toBe(true);
+    expect(panel().contains(menu())).toBe(true);
+    // At a round's result, the result comes between the round and the players.
+    await press("ArrowRight");
+    expect(sections()).toEqual(["East 1", "Round result", "Players", "Rounds"]);
+    expect(within(panel()).getByRole("heading", { level: 3 }).textContent).toBe("A Ron off B");
+  });
+
+  it("keeps the focus order of the screen: the table, the transport, then the panel", () => {
+    renderViewer({ start: at(0, 24), origin: SAMPLE });
+    /** What Tab goes through, by name, with the stage (which takes the focus from code) marked. */
+    const nameOf = (control: HTMLElement): string => {
+      if (control.matches("[data-stage]")) {
+        return "(stage)";
+      }
+      if (players().contains(control) && control.tagName === "BUTTON") {
+        return pov() === spoken(control).replace(/ Point of view.*$/, "")
+          ? "(viewed player)"
+          : "(player)";
+      }
+      if (control.hasAttribute("data-round")) {
+        return "(round)";
+      }
+      return (
+        control.getAttribute("aria-label") ??
+        control.closest("label")?.textContent ??
+        spoken(control)
+      );
+    };
+    const tabOrder = [...document.querySelectorAll<HTMLElement>("button, input, [tabindex]")]
+      .filter((control) => control.matches("[data-stage]") || control.tabIndex >= 0)
+      .map(nameOf);
+    expect(tabOrder).toEqual([
+      "(stage)",
+      "Show score differences",
+      "Previous own turn",
+      "Previous step",
+      "Play",
+      "Next step",
+      "Next own turn",
+      "Step in this round",
+      "Autoplay speed: 1×",
+      "Previous round",
+      "Next round",
+      // The result's own way on to the next round.
+      "Next round",
+      "Show all hands",
+      "(viewed player)",
+      "(player)",
+      "(player)",
+      "(player)",
+      "(round)",
+      "(round)",
+      "(round)",
+      "Final standings",
+      "Open another log",
+      "Copy link to this moment",
+      "Settings",
+      "Controls",
+    ]);
+  });
+
+  it("has no toolbar, no popover and nothing to press on the table but the console", () => {
+    renderViewer({ start: at(0, 24) });
+    expect(screen.queryByRole("group", { name: "Viewer tools" })).toBeNull();
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.querySelector("[aria-expanded], [aria-haspopup]")).toBeNull();
+    for (const name of ["Show table", "Show result", /, round list$/, /^Point of view:/]) {
+      expect(screen.queryByRole("button", { name }), String(name)).toBeNull();
+    }
+    // The round's result is words in the panel: nothing covers the table, at a result either.
+    expect(within(stage()).getAllByRole("button")).toEqual([button("Show score differences")]);
+    expect(stage().querySelector('[data-gesture="ignore"]')).toBeNull();
+    expect(stage().contains(result())).toBe(false);
+    // One table, seen from above: no view to switch, no arrangement told to the parts.
+    expect(stage().hasAttribute("data-view")).toBe(false);
+    expect(stage().hasAttribute("data-arrangement")).toBe(false);
+    expect(transport().hasAttribute("data-arrangement")).toBe(false);
   });
 });
 
 describe("Viewer without a round to show", () => {
-  it.each<Arrangement>(["wide", "stack"])(
-    "says so in the table's place and keeps its controls when %s",
-    (arrangement) => {
-      arrange(arrangement);
-      const { focusRef } = renderViewer({ game: makeGame([]) });
-      expect(focusRef.current).toBe(stage());
-      expect(within(stage()).getByText(/^This round could not be replayed/)).toBeTruthy();
-      expect(liveText()).toMatch(/^This round could not be replayed/);
-      expect(document.querySelectorAll("[aria-live]")).toHaveLength(1);
-      expect(screen.getAllByRole("group", { name: "Replay controls" })).toHaveLength(1);
-      expect(button("Menu")).toBeTruthy();
-      expect(counter()).toBe("1 / 1");
-    },
-  );
+  it("says so in the table's place and keeps its controls, which go nowhere", async () => {
+    const { focusRef } = renderViewer({ game: makeGame([]) });
+    const failed = () => within(stage()).getByText(/^This round could not be replayed/);
+    expect(focusRef.current).toBe(stage());
+    expect(failed()).toBeTruthy();
+    expect(liveText()).toMatch(/^This round could not be replayed/);
+    expect(document.querySelectorAll("[aria-live]")).toHaveLength(1);
+    expect(screen.getAllByRole("group", { name: "Replay controls" })).toHaveLength(1);
+    expect(counter()).toBe("1 / 1");
+    for (const name of ["Previous step", "Play", "Next step"]) {
+      expect(button(name).getAttribute("aria-disabled"), name).toBe("true");
+    }
+    // The panel has no round to name and nobody to list, and still the way to another log.
+    expect(panel().querySelector("header")).toBeNull();
+    expect(within(players()).queryAllByRole("button")).toHaveLength(0);
+    expect(roundRows().map((row) => row.textContent)).toEqual(["Final standings"]);
+    expect(within(menu()).getByRole("button", { name: "Open another log" })).toBeTruthy();
+    await press("ArrowRight");
+    await press("End");
+    await press("ArrowDown");
+    await click(button("Final standings"));
+    await mouse(stage());
+    expect(counter()).toBe("1 / 1");
+    expect(failed()).toBeTruthy();
+    expect(queryResult()).toBeNull();
+  });
 });
 
-describe("Viewer info chip", () => {
-  it("shows the round's honba and deposits, and nothing for none", () => {
+describe("Viewer round header", () => {
+  it("names the round with its honba, and counts the turn, the tiles left and the deposits", async () => {
     renderViewer({
       game: makeGame([sampleRound(), { ...sampleRound(), honba: 2, riichiSticks: 1 }]),
     });
-    const counts = () =>
-      screen.getByRole("group", { name: "Dora indicators" }).parentElement?.querySelector("p")
-        ?.textContent ?? null;
-    expect(counts()).toBeNull();
-    fireEvent.keyDown(window, { key: "ArrowDown" });
-    expect(counts()).toBe("2 honba · 1 deposit");
-    expect(roundName()).toBe("East 1 · 2 honba");
+    expect(roundName()).toBe("East 1");
+    expect(facts()).toBe("Turn 1 · 70 tiles left");
+    await press("ArrowDown");
+    expect(roundName()).toBe("East 1, 2 honba");
+    expect(facts()).toBe("Turn 1 · 70 tiles left · 1 deposit");
+    // A's riichi (step 8) adds a deposit; the winner takes them all.
+    for (let i = 0; i < 8; i++) {
+      await press("ArrowRight");
+    }
+    expect(facts()).toBe("Turn 1 · 68 tiles left · 2 deposits");
+    await press("End");
+    expect(roundName()).toBe("East 1, 2 honba");
+    expect(facts()).toBe("Turn 3 · 61 tiles left");
+  });
+
+  it("shows the turn, and keeps it on the result step", async () => {
+    renderViewer({ start: at(0, 22) });
+    const turn = () => facts()?.split(" · ")[0];
+    expect(turn()).toBe("Turn 3");
+    await press("End");
+    expect(turn()).toBe("Turn 3");
+    await press("Home");
+    expect(turn()).toBe("Turn 1");
+  });
+
+  it("goes to the round before and after from its buttons, which keep the focus at a limit", async () => {
+    renderViewer({ start: at(1, 2) });
+    expect(roundButton("Previous round").title).toBe("Previous round (↑)");
+    expect(roundButton("Next round").title).toBe("Next round (↓)");
+    // Previous round: the start of this round first, then the round before.
+    await click(roundButton("Previous round"));
+    expect(roundName()).toBe("East 2");
+    expect(counter()).toBe("1 / 25");
+    await click(roundButton("Previous round"));
+    expect(roundName()).toBe("East 1");
+    expect(counter()).toBe("1 / 25");
+    const previous = roundButton("Previous round");
+    expect(previous.getAttribute("aria-disabled")).toBe("true");
+    expect(previous.hasAttribute("disabled")).toBe(false);
+    act(() => previous.focus());
+    await click(previous);
+    expect(roundName()).toBe("East 1");
+    expect(document.activeElement).toBe(roundButton("Previous round"));
+
+    await press("ArrowRight");
+    await click(roundButton("Next round"));
+    expect(roundName()).toBe("East 2");
+    expect(counter()).toBe("1 / 25");
+    const next = roundButton("Next round");
+    act(() => next.focus());
+    await click(next);
+    expect(roundName()).toBe("East 3");
+    expect(roundButton("Next round").getAttribute("aria-disabled")).toBe("true");
+    expect(roundButton("Previous round").getAttribute("aria-disabled")).toBe("false");
+    await click(roundButton("Next round"));
+    expect(roundName()).toBe("East 3");
+    expect(counter()).toBe("1 / 4");
+    expect(document.activeElement).toBe(roundButton("Next round"));
   });
 });
 
 describe("Viewer hidden information", () => {
   it("keeps opponents' draws out of the live region and the slider's value text", () => {
-    writeStorage(SETTINGS_STORAGE_NAME, JSON.stringify({ version: 2, showAllHands: false }));
+    writeStorage(SETTINGS_STORAGE_NAME, JSON.stringify({ version: 3, showAllHands: false }));
     // Step 4 of the fixture round: B draws 2 Pin.
     renderViewer({ game: fixtureGame, start: at(0, 3, 0) });
     expect(liveText()).toMatch(/B draws$/);
@@ -484,284 +658,307 @@ describe("Viewer hidden information", () => {
   });
 
   it("names the draw once the hands are shown, and says only that they are", async () => {
-    writeStorage(SETTINGS_STORAGE_NAME, JSON.stringify({ version: 2, showAllHands: false }));
+    writeStorage(SETTINGS_STORAGE_NAME, JSON.stringify({ version: 3, showAllHands: false }));
     renderViewer({ game: fixtureGame, start: at(0, 3, 0) });
     await press("h");
     // The step is not read out again as if it were a new one.
     expect(liveText()).toBe("All hands shown");
     expect(slider().getAttribute("aria-valuetext")).toMatch(/B draws 2 Pin$/);
   });
+
+  it("keeps the other players' waits out of the player list while their hands are hidden", async () => {
+    writeStorage(SETTINGS_STORAGE_NAME, JSON.stringify({ version: 3, showAllHands: false }));
+    renderViewer({ start: at(0, 8) });
+    expect(hands().checked).toBe(false);
+    expect(playerRows().map(spoken)).toEqual([
+      "East A Point of view 24,000 Waits 9 Man and Hatsu, 4 left",
+      "South B 25,000",
+      "West C 25,000",
+      "North D 25,000",
+    ]);
+    await click(hands());
+    expect(playerRows().map(spoken)).toEqual([
+      "East A Point of view 24,000 Waits 9 Man and Hatsu, 4 left",
+      "South B 25,000 Waits 8 Pin and 1 Sou, 4 left",
+      "West C 25,000",
+      "North D 25,000 Waits 2 Man and 5 Man, 6 left, furiten",
+    ]);
+  });
+
+  it("reads a version 2 blob, whose table view is gone, for the settings it still has", () => {
+    writeStorage(
+      SETTINGS_STORAGE_NAME,
+      JSON.stringify({ version: 2, view: "3d", showAllHands: false, autoplaySpeed: 2 }),
+    );
+    renderViewer();
+    expect(hands().checked).toBe(false);
+    expect(button(/^Autoplay speed:/).getAttribute("aria-label")).toBe("Autoplay speed: 2×");
+    expect(stored()).toEqual({
+      version: 3,
+      showAllHands: false,
+      showWaits: true,
+      charKeys: true,
+      autoplaySpeed: 2,
+    });
+  });
 });
 
-describe("Viewer result card", () => {
-  it("comes up a moment after a step reaches the round's end, hides on Esc and comes back on End", async () => {
+describe("Viewer round result", () => {
+  it("is in the panel as soon as a step reaches the round's end, and gone a step back", async () => {
+    // No clock runs: the result does not wait for a moment to pass.
     vi.useFakeTimers();
     renderViewer({ start: at(0, 23) });
-    expect(queryCard()).toBeNull();
-    expect(stage().hasAttribute("data-overlay")).toBe(false);
+    expect(queryResult()).toBeNull();
     await press("ArrowRight");
-    // The result is read out at once; the card waits so the win itself is seen first.
-    expect(liveText()).toMatch(/Result · A wins by ron off B/);
-    expect(queryCard()).toBeNull();
-    expect(screen.queryByRole("button", { name: "Show result" })).toBeNull();
-    await act(async () => {
-      vi.advanceTimersByTime(RESULT_DELAY_MS - 1);
-    });
-    expect(queryCard()).toBeNull();
-    await act(async () => {
-      vi.advanceTimersByTime(1);
-    });
-    expect(card().closest("[data-stage]")).toBe(stage());
-    expect(card().closest('[data-gesture="ignore"]')).not.toBeNull();
-    expect(liveText()).toMatch(/Result · A wins by ron off B/);
-    // The card never takes the focus when it appears.
-    expect(card().contains(document.activeElement)).toBe(false);
-
-    await press("Escape");
-    expect(queryCard()).toBeNull();
-    expect(button("Show result")).toBeTruthy();
-    await press("End");
-    expect(queryCard()).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Show result" })).toBeNull();
+    expect(liveText()).toBe("Result · A wins by ron off B · 4 han · 40 fu · 12,000 points");
+    expect(panel().contains(result())).toBe(true);
+    expect(stage().contains(result())).toBe(false);
+    // The result never takes the focus when it appears.
+    expect(result().contains(document.activeElement)).toBe(false);
+    // The table under it shows the win: the winner's caption, upright over the felt.
+    expect(within(stage()).getByText("Ron").closest('[aria-hidden="true"]')).not.toBeNull();
+    await press("ArrowLeft");
+    expect(queryResult()).toBeNull();
+    expect(counter()).toBe("24 / 25");
   });
 
-  it("comes up at once on a step forward while it waits, without leaving the round", async () => {
-    vi.useFakeTimers();
-    renderViewer({ start: at(0, 23) });
-    await press("ArrowRight");
-    expect(queryCard()).toBeNull();
-    await press("ArrowRight");
-    expect(queryCard()).not.toBeNull();
-    expect(roundName()).toBe("East 1");
-    expect(counter()).toBe("25 / 25");
-    cleanup();
-
-    // A press on the table does the same.
-    renderViewer({ start: at(0, 23) });
-    await mouse(stage());
-    expect(queryCard()).toBeNull();
-    await mouse(stage());
-    expect(queryCard()).not.toBeNull();
-    expect(counter()).toBe("25 / 25");
-  });
-
-  it("comes up at once after a jump to the round's end", async () => {
+  it("is there after a jump or a scrub to the round's end, and when the game opens there", async () => {
     renderViewer({ start: at(0, 3) });
     await press("End");
-    expect(queryCard()).not.toBeNull();
-    cleanup();
-    renderViewer({ start: at(0, 3) });
+    expect(queryResult()).not.toBeNull();
+    await press("Home");
+    expect(queryResult()).toBeNull();
     await act(async () => {
       fireEvent.change(slider(), { target: { value: "25" } });
     });
-    expect(queryCard()).not.toBeNull();
-  });
-
-  it("stays away when Esc or a step back comes while it waits", async () => {
-    vi.useFakeTimers();
-    renderViewer({ start: at(0, 23) });
-    await press("ArrowRight");
-    await press("Escape");
-    await act(async () => {
-      vi.advanceTimersByTime(RESULT_DELAY_MS);
-    });
-    expect(queryCard()).toBeNull();
-    expect(button("Show result")).toBeTruthy();
+    expect(queryResult()).not.toBeNull();
     cleanup();
-
-    renderViewer({ start: at(0, 23) });
+    renderViewer({ start: at(1, 24) });
+    expect(queryResult()).not.toBeNull();
+    // A step back from the next round's start is the way back to it.
     await press("ArrowRight");
+    expect(roundName()).toBe("East 3");
+    expect(queryResult()).toBeNull();
     await press("ArrowLeft");
-    await act(async () => {
-      vi.advanceTimersByTime(RESULT_DELAY_MS);
-    });
-    expect(queryCard()).toBeNull();
-    expect(counter()).toBe("24 / 25");
-  });
-
-  it("hides from its Show table button, and the stage takes the focus", async () => {
-    renderViewer({ start: at(0, 24) });
-    const hide = within(card()).getByRole("button", { name: "Show table" });
-    act(() => hide.focus());
-    await click(hide);
-    expect(queryCard()).toBeNull();
-    expect(document.activeElement).toBe(stage());
-    expect(counter()).toBe("25 / 25");
-  });
-
-  it("hides on a press on the stage outside the card, without stepping", async () => {
-    renderViewer({ start: at(0, 24) });
-    afterGuard();
-    const layer = card().parentElement as HTMLElement;
-    await act(async () => {
-      fireEvent.pointerDown(layer, { button: 0, pointerId: 1, isPrimary: true });
-      fireEvent.pointerUp(layer, { button: 0, pointerId: 1, isPrimary: true });
-      fireEvent.click(layer);
-    });
-    expect(queryCard()).toBeNull();
-    expect(roundName()).toBe("East 1");
-    expect(counter()).toBe("25 / 25");
-  });
-
-  it("hides on a press on the table beside its layer, and only the next press goes on", async () => {
-    renderViewer({ start: at(0, 24) });
-    await mouse(stage());
-    expect(queryCard()).toBeNull();
-    expect(roundName()).toBe("East 1");
-    expect(counter()).toBe("25 / 25");
-    await mouse(stage());
     expect(roundName()).toBe("East 2");
-  });
-
-  it("hides on a swipe to the left beside it, and goes back a step on a swipe to the right", async () => {
-    renderViewer({ start: at(0, 24) });
-    const swipe = async (from: number, to: number) => {
-      const layer = card().parentElement as HTMLElement;
-      const event = { button: 0, pointerId: 1, isPrimary: true, pointerType: "touch" };
-      await act(async () => {
-        fireEvent.pointerDown(layer, { ...event, clientX: from, clientY: 300 });
-        fireEvent.pointerUp(layer, { ...event, clientX: to, clientY: 300 });
-      });
-    };
-    afterGuard();
-    await swipe(400, 200);
-    expect(queryCard()).toBeNull();
     expect(counter()).toBe("25 / 25");
-    await press("End");
-    afterGuard();
-    await swipe(200, 400);
-    expect(roundName()).toBe("East 1");
-    expect(counter()).toBe("24 / 25");
+    expect(within(result()).getByRole("article", { name: "A Ron off B" })).toBeTruthy();
   });
 
-  it("goes back a step on a right press on the table beside its layer", async () => {
+  it("says who won, off whom and for how much, with the hand, the dora and the yaku", () => {
+    renderViewer({ game: fixtureGame, start: at(0, 99) });
+    const win = within(result()).getByRole("article", { name: "B Ron off A" });
+    expect(spoken(win)).toBe("B Ron off A 3,900 points 2 han · 40 fu Riichi 1 han Aka Dora 1 han");
+    const tiles = (name: string) =>
+      within(within(win).getByRole("group", { name }))
+        .getAllByRole("img")
+        .map((img) => img.getAttribute("alt"));
+    expect(tiles("Winning hand")).toEqual([
+      "2 Pin",
+      "2 Pin",
+      "3 Pin",
+      "4 Pin",
+      "5 Pin (red)",
+      "6 Pin",
+      "7 Pin",
+      "8 Pin",
+      "9 Pin",
+      "1 Sou",
+      "1 Sou",
+      "2 Sou",
+      "3 Sou",
+      "Winning tile: 1 Pin",
+    ]);
+    expect(tiles("Dora indicators")).toEqual(["3 Man"]);
+    expect(tiles("Ura Dora indicators")).toEqual(["5 Sou"]);
+    expect(
+      within(within(win).getByRole("list", { name: "Yaku" }))
+        .getAllByRole("listitem")
+        .map(spoken),
+    ).toEqual(["Riichi 1 han", "Aka Dora 1 han"]);
+  });
+
+  it("shows the winner's calls with the hand, and the dora indicators turned over by then", () => {
     renderViewer({ start: at(0, 24) });
-    await mouse(stage(), 2);
-    expect(roundName()).toBe("East 1");
-    expect(counter()).toBe("24 / 25");
+    const win = within(result()).getByRole("article", { name: "A Ron off B" });
+    const hand = within(win).getByRole("group", { name: "Winning hand" });
+    expect(
+      within(hand).getByRole("group", { name: "Closed kan: 2 Sou, 2 Sou, 2 Sou, 2 Sou" }),
+    ).toBeTruthy();
+    expect(
+      within(within(win).getByRole("group", { name: "Dora indicators" }))
+        .getAllByRole("img")
+        .map((img) => img.getAttribute("alt")),
+    ).toEqual(["South", "3 Pin", "8 Sou", "1 Man"]);
   });
 
-  it("stays for a press inside the card, a right press and a drag out of the card", async () => {
-    renderViewer({ start: at(0, 24) });
-    afterGuard();
-    const layer = card().parentElement as HTMLElement;
-    await act(async () => {
-      fireEvent.pointerDown(card(), { button: 0, pointerId: 1, isPrimary: true });
-      fireEvent.click(card());
-    });
-    expect(queryCard()).not.toBeNull();
-    await act(async () => {
-      fireEvent.pointerDown(layer, { button: 2, pointerId: 1, isPrimary: true });
-      fireEvent.click(layer);
-    });
-    expect(queryCard()).not.toBeNull();
-    // A press that starts on the card and ends outside it: the click lands on the layer.
-    await act(async () => {
-      fireEvent.pointerDown(card(), { button: 0, pointerId: 1, isPrimary: true });
-      fireEvent.click(layer);
-    });
-    expect(queryCard()).not.toBeNull();
-    expect(counter()).toBe("25 / 25");
+  it("stacks the wins of a multiple ron", () => {
+    renderViewer({ start: at(2, 99) });
+    expect(
+      within(result())
+        .getAllByRole("article")
+        .map((win) => spoken(win)),
+    ).toEqual(["B Ron off A", "C Ron off A"]);
+    expect(liveText()).toBe("Result · B wins by ron off A / C wins by ron off A");
   });
 
-  it("takes a tap in its first moment for one meant for the table, and the keys at once", async () => {
+  it("names a draw, and the player list says who was tenpai and on what", () => {
+    renderViewer({ game: drawGame, start: at(0, 99) });
+    expect(liveText()).toBe("Result · Exhaustive draw · tenpai: A and D");
+    expect(spoken(result())).toBe("Round result Next round Exhaustive draw");
+    expect(within(result()).queryByRole("article")).toBeNull();
+    expect(playerRows().map(spoken)).toEqual([
+      "East A Point of view +1,500 26,500 Tenpai Waits: 1 Man, 2 Man, 3 Man, 4 Man, 5 Man, 6 Man, 7 Man, 8 Man and 9 Man",
+      "South B −1,500 23,500 Noten",
+      "West C −1,500 23,500 Noten",
+      "North D +1,500 26,500 Tenpai Waits: Chun",
+    ]);
+    // For the eye the waits are tiles after the word.
+    expect(playerRows().map(shown)).toEqual([
+      "E A Point of view +1,500 26,500 Tenpai",
+      "S B −1,500 23,500 Noten",
+      "W C −1,500 23,500 Noten",
+      "N D +1,500 26,500 Tenpai",
+    ]);
+    expect(playerRows().map((row) => row.querySelectorAll("img").length)).toEqual([9, 0, 0, 1]);
+  });
+
+  it("says tenpai or noten only at the draw: a step back the rows show the hands' waits again", async () => {
+    renderViewer({ game: drawGame, start: at(0, 99) });
+    await press("ArrowLeft");
+    expect(queryResult()).toBeNull();
+    const rows = playerRows().map(spoken);
+    expect(rows[1]).toBe(
+      "South B 25,000 Waits 1 Pin, 2 Pin, 3 Pin, 4 Pin, 5 Pin, 6 Pin, 7 Pin, 8 Pin and 9 Pin, 23 left",
+    );
+    expect(rows.join(" ")).not.toMatch(/Tenpai|Noten/);
+  });
+
+  it("shows each player's point change in the player list at a result, and only there", async () => {
     renderViewer({ start: at(0, 23) });
-    await mouse(stage());
-    // The fourth tap of a quick run: it brings up the waiting card in the round.
-    await mouse(stage());
-    expect(queryCard()).not.toBeNull();
-    const tap = async (target: Element) => {
-      const event = { button: 0, pointerId: 1, isPrimary: true, pointerType: "touch" };
-      await act(async () => {
-        fireEvent.pointerDown(target, event);
-        fireEvent.pointerUp(target, event);
-        fireEvent.click(target, { detail: 1 });
+    const changes = () =>
+      playerRows().map((row) => {
+        const change = row.querySelector("[data-sign]");
+        return change ? `${change.getAttribute("data-sign")} ${change.textContent}` : null;
       });
-    };
-    const next = within(card()).getByRole("button", { name: "Next round" });
-    await tap(next);
-    await tap(card().parentElement as HTMLElement);
-    expect(queryCard()).not.toBeNull();
-    expect(roundName()).toBe("East 1");
-    // A key press is no stray tap.
-    await click(next);
+    expect(changes()).toEqual([null, null, null, null]);
+    expect(playerRows().map(shown)).toEqual([
+      "E A Point of view 24,000 Wait 3 left",
+      "S B 25,000 Wait 3 left",
+      "W C 25,000 Wait 4 left",
+      "N D 25,000 Wait 5 left Furiten",
+    ]);
+    await press("ArrowRight");
+    // A player the round did not touch has no change to show.
+    expect(changes()).toEqual(["gain +13,000", "loss −12,000", null, null]);
+    expect(playerRows().map(shown)).toEqual([
+      "E A Point of view +13,000 37,000 Wait 3 left",
+      "S B −12,000 13,000 Wait 3 left",
+      "W C 25,000 Wait 4 left",
+      "N D 25,000 Wait 5 left Furiten",
+    ]);
+    await press("ArrowRight");
     expect(roundName()).toBe("East 2");
-    cleanup();
-
-    renderViewer({ start: at(0, 24) });
-    afterGuard();
-    await tap(within(card()).getByRole("button", { name: "Next round" }));
-    expect(roundName()).toBe("East 2");
+    expect(changes()).toEqual([null, null, null, null]);
   });
 
-  it("swallows a quick run of taps on the card however long it lasts, and takes one after a pause", async () => {
-    renderViewer({ start: at(0, 24) });
-    const start = performance.now();
-    const now = vi.spyOn(performance, "now");
-    const tapAt = async (ms: number) => {
-      now.mockReturnValue(start + ms);
-      const target = within(card()).getByRole("button", { name: "Next round" });
-      const event = { button: 0, pointerId: 1, isPrimary: true, pointerType: "touch" };
-      await act(async () => {
-        fireEvent.pointerDown(target, event);
-        fireEvent.pointerUp(target, event);
-        fireEvent.click(target, { detail: 1 });
-      });
-    };
-    // A tap every 400 ms: each lands within CARD_GUARD_MS of the one before.
-    for (const ms of [300, 700, 1100, 1500]) {
-      await tapAt(ms);
-    }
-    expect(roundName()).toBe("East 1");
-    await tapAt(1500 + CARD_GUARD_MS);
-    expect(roundName()).toBe("East 2");
+  it("adds up the changes of a multiple ron", () => {
+    renderViewer({ start: at(2, 99) });
+    expect(
+      playerRows().map((row) => row.querySelector("[data-sign]")?.textContent ?? null),
+    ).toEqual(["−16,000", "+8,000", "+8,000", null]);
   });
 
-  it("leaves the round from its Next round button, and the stage takes the focus", async () => {
+  it("goes on from its Next round button, and the stage takes the focus", async () => {
     renderViewer({ start: at(0, 24) });
-    const next = within(card()).getByRole("button", { name: "Next round" });
+    const next = within(result()).getByRole("button", { name: "Next round" });
+    expect(next.title).toBe("Next round (↓)");
+    expect(next.getAttribute("data-variant")).toBe("primary");
     act(() => next.focus());
     await click(next);
     expect(roundName()).toBe("East 2");
     expect(counter()).toBe("1 / 25");
+    expect(queryResult()).toBeNull();
     expect(document.activeElement).toBe(stage());
   });
 
-  it("shows the card again from Show result, which then goes away", async () => {
+  it("hands the focus to the stage when a key leaves the result while its button has it", async () => {
     renderViewer({ start: at(0, 24) });
-    await press("Escape");
-    const show = button("Show result");
-    expect(transport().contains(show)).toBe(true);
-    act(() => show.focus());
-    await click(show);
-    expect(queryCard()).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Show result" })).toBeNull();
+    const next = within(result()).getByRole("button", { name: "Next round" });
+    act(() => next.focus());
+    await press("ArrowLeft", { target: next });
+    expect(counter()).toBe("24 / 25");
     expect(document.activeElement).toBe(stage());
   });
 
-  it("shows the card again after leaving the round and coming back", async () => {
-    vi.useFakeTimers();
+  it("leaves the focus where it is when the result goes away under another control", async () => {
     renderViewer({ start: at(0, 24) });
-    await press("Escape");
-    await press("ArrowLeft");
-    await press("ArrowRight");
-    await act(async () => {
-      vi.advanceTimersByTime(RESULT_DELAY_MS);
-    });
-    expect(queryCard()).not.toBeNull();
-  });
-
-  it("gives the card the final scores only at the end of the game", () => {
-    renderViewer({ game: fixtureGame, start: at(0, 99) });
-    expect(within(card()).getByText("Final standings")).toBeTruthy();
+    const row = roundRows()[0] as HTMLElement;
+    act(() => row.focus());
+    await press("ArrowRight", { target: row });
+    expect(roundName()).toBe("East 2");
+    expect(document.activeElement).toBe(roundRows()[0]);
+    // Nothing had the focus: nothing takes it.
     cleanup();
     renderViewer({ start: at(0, 24) });
-    expect(within(card()).queryByText("Final standings")).toBeNull();
+    await press("ArrowRight");
+    expect(roundName()).toBe("East 2");
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("shows the final standings in place of Next round after the game's last round", () => {
+    renderViewer({ start: at(2, 99) });
+    expect(within(result()).queryByRole("button", { name: "Next round" })).toBeNull();
+    const table = within(result()).getByRole("table", { name: "Final standings" });
+    expect(
+      within(table)
+        .getAllByRole("row")
+        .map((row) => spoken(row)),
+    ).toEqual([
+      "Rank Player Points",
+      "1st B 33,000",
+      "2nd C 33,000",
+      "3rd D 25,000",
+      "4th A 9,000",
+    ]);
+    cleanup();
+    renderViewer({ start: at(0, 24) });
+    expect(within(result()).queryByRole("table")).toBeNull();
+    expect(within(result()).queryByText("Final standings")).toBeNull();
+    expect(within(result()).getByRole("button", { name: "Next round" })).toBeTruthy();
+  });
+
+  it("ranks three players after a three-player game", () => {
+    renderViewer({ game: sanma, start: at(1, 99) });
+    const table = within(result()).getByRole("table", { name: "Final standings" });
+    expect(
+      within(table)
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => spoken(row)),
+    ).toEqual(["1st C 41,200", "2nd A 35,000", "3rd B 28,800"]);
+  });
+
+  it("ranks the players by the scores the player list ends the game with", () => {
+    renderViewer({ start: at(2, 99) });
+    const ranked = within(within(result()).getByRole("table", { name: "Final standings" }))
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) => spoken(row).replace(/^\S+ /, ""));
+    // "A 9,000", from a row that reads "East A Point of view −16,000 9,000 …".
+    const listed = playerRows().map((row) => {
+      const [, name, score] = /^\S+ (\S+)(?: Point of view)?(?: [+−][\d,]+)? ([\d,]+)/.exec(
+        spoken(row),
+      ) ?? ["", "", ""];
+      return `${name} ${score}`;
+    });
+    expect(listed).toEqual(["A 9,000", "B 33,000", "C 33,000", "D 25,000"]);
+    expect([...ranked].sort()).toEqual([...listed].sort());
   });
 });
 
 describe("Viewer autoplay", () => {
-  it("plays on Space and pauses at the round's result", async () => {
+  it("plays on Space and pauses at the round's result, which the panel shows", async () => {
     vi.useFakeTimers();
     renderViewer({ start: at(0, 20) });
     await press(" ", { code: "Space" });
@@ -774,9 +971,10 @@ describe("Viewer autoplay", () => {
     expect(counter()).toBe("25 / 25");
     expect(roundName()).toBe("East 1");
     expect(button("Play")).toBeTruthy();
+    expect(queryResult()).not.toBeNull();
   });
 
-  it("plays from the Play button and stops on Esc", async () => {
+  it("plays from the Play button and stops on Esc, which is the viewer's only then", async () => {
     vi.useFakeTimers();
     renderViewer({ start: at(0, 2) });
     await click(button("Play"));
@@ -784,8 +982,38 @@ describe("Viewer autoplay", () => {
       vi.advanceTimersByTime(1200);
     });
     expect(counter()).not.toBe("3 / 25");
-    await press("Escape");
+    expect(await press("Escape")).toBe(false);
     expect(button("Play")).toBeTruthy();
+    const stoppedAt = counter();
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(counter()).toBe(stoppedAt);
+    expect(await press("Escape")).toBe(true);
+  });
+
+  it("goes on to the next round when started at a round's result", async () => {
+    vi.useFakeTimers();
+    renderViewer({ start: at(0, 24) });
+    await click(button("Play"));
+    expect(roundName()).toBe("East 2");
+    expect(counter()).toBe("1 / 25");
+    expect(button("Pause")).toBeTruthy();
+    expect(queryResult()).toBeNull();
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(counter()).toBe("2 / 25");
+  });
+
+  it("has nothing to play at the game's end", async () => {
+    renderViewer({ start: at(2, 99) });
+    const play = button("Play");
+    expect(play.getAttribute("aria-disabled")).toBe("true");
+    await click(play);
+    await press(" ", { code: "Space" });
+    expect(button("Play")).toBeTruthy();
+    expect(counter()).toBe("4 / 4");
   });
 
   it("stores a speed change from the keys and the speed button, and starts with it", async () => {
@@ -805,6 +1033,7 @@ describe("Viewer autoplay", () => {
     await click(speed());
     await click(speed());
     expect(speed().getAttribute("aria-label")).toBe("Autoplay speed: 2×");
+    expect(speed().textContent).toBe("2×");
     expect(stored().autoplaySpeed).toBe(2);
 
     unmount();
@@ -825,67 +1054,98 @@ describe("Viewer table input", () => {
     expect(counter()).toBe("8 / 25");
   });
 
-  it("crosses into the next round on a fresh click at the result, behind the card", async () => {
+  it("goes on to the next round on a click at the result, and back a step on a right click", async () => {
     renderViewer({ start: at(0, 24) });
-    await press("Escape");
+    await mouse(stage(), 2);
+    expect(roundName()).toBe("East 1");
+    expect(counter()).toBe("24 / 25");
+    await mouse(stage());
+    expect(counter()).toBe("25 / 25");
+    expect(queryResult()).not.toBeNull();
+    // One press: there is no card to put away first.
     await mouse(stage());
     expect(roundName()).toBe("East 2");
     expect(counter()).toBe("1 / 25");
   });
 
-  it("steps on the wheel over the table and over the transport", async () => {
+  it("steps on a swipe across the table: left for the next step, right for the one before", async () => {
     renderViewer({ start: at(0, 2) });
-    await wheel(stage(), 100);
+    await swipe(stage(), 400, 200);
     expect(counter()).toBe("4 / 25");
-    // A new turn of the wheel after a pause (a burst is rate-limited).
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    await wheel(transport(), -100);
+    await swipe(stage(), 200, 400);
     expect(counter()).toBe("3 / 25");
   });
 
-  it("steps once for a wheel turn over the bar on the felt", async () => {
-    arrange("wide");
+  it("presses the console on a tap without stepping, and steps on a swipe that starts on it", async () => {
     renderViewer({ start: at(0, 2) });
-    await wheel(button("Next step"), 100);
+    const diff = button("Show score differences");
+    await act(async () => {
+      fireEvent.pointerDown(diff, TOUCH);
+      fireEvent.pointerUp(diff, TOUCH);
+      fireEvent.click(diff, { detail: 1 });
+    });
+    expect(diff.getAttribute("aria-pressed")).toBe("true");
+    expect(counter()).toBe("3 / 25");
+    await swipe(diff, 400, 200);
     expect(counter()).toBe("4 / 25");
+    expect(diff.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("does not step on a press on the transport or the panel", async () => {
+    renderViewer({ start: at(0, 2) });
+    for (const part of [transport(), panel(), players(), rounds(), header()]) {
+      await mouse(part);
+      await mouse(part, 2);
+      await swipe(part, 400, 200);
+    }
+    expect(counter()).toBe("3 / 25");
+    // The right button is a step back on the table only: elsewhere it opens the browser's menu.
+    expect(fireEvent.contextMenu(stage())).toBe(false);
+    expect(fireEvent.contextMenu(transport())).toBe(true);
+    expect(fireEvent.contextMenu(roundRows()[0] as HTMLElement)).toBe(true);
+  });
+
+  it("steps on the wheel over the table, and keeps the page from scrolling", async () => {
+    renderViewer({ start: at(0, 2) });
+    expect(await wheel(stage(), 100)).toBe(false);
+    expect(counter()).toBe("4 / 25");
+    // A new turn of the wheel after a pause (a burst is rate-limited).
+    await pause(250);
+    expect(await wheel(button("Show score differences"), -100)).toBe(false);
+    expect(counter()).toBe("3 / 25");
+  });
+
+  it("leaves the wheel to the page over the transport and the panel", async () => {
+    renderViewer({ start: at(0, 24) });
+    for (const part of [transport(), button("Next step"), panel(), result(), rounds()]) {
+      expect(await wheel(part, -100)).toBe(true);
+    }
+    expect(counter()).toBe("25 / 25");
   });
 
   it("stops a wheel burst at the round's result", async () => {
     renderViewer({ start: at(0, 23) });
     await wheel(stage(), 100);
     expect(counter()).toBe("25 / 25");
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await pause(60);
     await wheel(stage(), 100);
     expect(roundName()).toBe("East 1");
     expect(counter()).toBe("25 / 25");
   });
 
-  it("puts the result card away on a new turn of the wheel, and goes on with the next", async () => {
+  it("goes on to the next round on a new turn of the wheel at the result", async () => {
     renderViewer({ start: at(0, 24) });
-    await wheel(stage(), 100);
-    expect(queryCard()).toBeNull();
-    expect(roundName()).toBe("East 1");
-    expect(counter()).toBe("25 / 25");
-    await new Promise((resolve) => setTimeout(resolve, 400));
     await wheel(stage(), 100);
     expect(roundName()).toBe("East 2");
     expect(counter()).toBe("1 / 25");
   });
 
-  it("goes back a step on the wheel with the result card up", async () => {
+  it("goes back a step on the wheel at the result", async () => {
     renderViewer({ start: at(0, 24) });
     await wheel(stage(), -100);
     expect(roundName()).toBe("East 1");
     expect(counter()).toBe("24 / 25");
-  });
-
-  it("leaves the wheel alone over the result card and inside a popover", async () => {
-    renderViewer({ start: at(0, 24) });
-    await wheel(card(), -100);
-    expect(counter()).toBe("25 / 25");
-    await click(button(/, round list$/));
-    await wheel(screen.getByRole("group", { name: "Rounds" }), -100);
-    expect(counter()).toBe("25 / 25");
+    expect(queryResult()).toBeNull();
   });
 
   it("jumps to the moment before a discard on Alt+click, without stepping", async () => {
@@ -899,7 +1159,7 @@ describe("Viewer table input", () => {
 });
 
 describe("Viewer transport", () => {
-  it("steps and jumps from its buttons", async () => {
+  it("steps and skips to own turns from its buttons", async () => {
     renderViewer({ start: at(0, 2) });
     await click(button("Next step"));
     expect(counter()).toBe("4 / 25");
@@ -909,25 +1169,35 @@ describe("Viewer transport", () => {
     expect(counter()).toBe("8 / 25");
     await click(button("Previous own turn"));
     expect(counter()).toBe("2 / 25");
-    await click(within(transport()).getByRole("button", { name: "Next round" }));
-    expect(roundName()).toBe("East 2");
-    await click(button("Next step"));
-    // Previous round: the start of this round first, then the round before.
-    await click(button("Previous round"));
-    expect(roundName()).toBe("East 2");
-    expect(counter()).toBe("1 / 25");
-    await click(button("Previous round"));
-    expect(roundName()).toBe("East 1");
   });
 
-  it("shows the turn, and keeps it on the result step", async () => {
-    renderViewer({ start: at(0, 22) });
-    const turn = () => within(transport()).getByText(/^Turn \d+$/).textContent;
-    expect(turn()).toBe("Turn 3");
+  it("holds the step and turn buttons, the slider and the speed, and no round buttons", () => {
+    renderViewer({ start: at(0, 24) });
+    expect(
+      [...transport().querySelectorAll("button, input")].map((control) =>
+        control.getAttribute("aria-label"),
+      ),
+    ).toEqual([
+      "Previous own turn",
+      "Previous step",
+      "Play",
+      "Next step",
+      "Next own turn",
+      "Step in this round",
+      "Autoplay speed: 1×",
+    ]);
+  });
+
+  it("shows the step's number beside the slider, for the eye only", async () => {
+    renderViewer({ start: at(0, 2) });
+    const number = within(transport()).getByText("3 / 25");
+    expect(number.getAttribute("aria-hidden")).toBe("true");
+    expect(slider().getAttribute("aria-valuetext")).toBe("Step 3 of 25, turn 1: A discards 3 Man");
+    await click(button("Next step"));
+    expect(number.textContent).toBe("4 / 25");
+    await press("ArrowDown");
     await press("End");
-    expect(turn()).toBe("Turn 3");
-    await press("Home");
-    expect(turn()).toBe("Turn 1");
+    expect(number.textContent).toBe("25 / 25");
   });
 
   it("stops a held step button at the round's result", async () => {
@@ -942,6 +1212,21 @@ describe("Viewer transport", () => {
     fireEvent.pointerUp(next, held);
     expect(roundName()).toBe("East 1");
     expect(counter()).toBe("25 / 25");
+    expect(queryResult()).not.toBeNull();
+  });
+
+  it("stops a held own-turn button at the round's start", async () => {
+    vi.useFakeTimers();
+    renderViewer({ start: at(1, 9) });
+    const previous = button("Previous own turn");
+    const held = { pointerId: 1, isPrimary: true, button: 0, pointerType: "mouse" };
+    fireEvent.pointerDown(previous, held);
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+    fireEvent.pointerUp(previous, held);
+    expect(roundName()).toBe("East 2");
+    expect(counter()).toBe("1 / 25");
   });
 
   it("keeps a button focusable when it reaches its limit", async () => {
@@ -957,33 +1242,74 @@ describe("Viewer transport", () => {
   });
 });
 
-describe("Viewer round list", () => {
-  const list = () => screen.queryByRole("group", { name: "Rounds" });
-
-  it("opens from the round button on the round on the table, and jumps to a round's start", async () => {
-    renderViewer({ start: at(1, 5) });
-    await click(button(/, round list$/));
-    const rows = within(list() as HTMLElement).getAllByRole("button");
-    expect(rows.map((row) => row.textContent)).toEqual([
-      "East 1A ron off B · 12,000A +13,000",
-      "East 2A ron off B · 12,000A +13,000",
-      "East 3B ron off AC ron off AA −16,000",
-      "Final standings",
+describe("Viewer players", () => {
+  it("lists the players in seat order with wind, name, score and what the hand waits on", () => {
+    renderViewer({ start: at(0, 8) });
+    expect(playerRows().map(shown)).toEqual([
+      "E A Point of view 24,000 Wait 4 left",
+      "S B 25,000 Wait 4 left",
+      "W C 25,000",
+      "N D 25,000 Wait 6 left Furiten",
     ]);
-    expect(document.activeElement).toBe(rows[1]);
-    expect(rows[1]?.getAttribute("aria-current")).toBe("true");
-    await click(rows[2] as HTMLElement);
-    expect(list()).toBeNull();
-    expect(roundName()).toBe("East 3");
-    expect(counter()).toBe("1 / 4");
-    expect(document.activeElement).toBe(button(/, round list$/));
+    expect(playerRows().map(spoken)).toEqual([
+      "East A Point of view 24,000 Waits 9 Man and Hatsu, 4 left",
+      "South B 25,000 Waits 8 Pin and 1 Sou, 4 left",
+      "West C 25,000",
+      "North D 25,000 Waits 2 Man and 5 Man, 6 left, furiten",
+    ]);
+    expect(playerRows().map((row) => row.getAttribute("aria-pressed"))).toEqual([
+      "true",
+      "false",
+      "false",
+      "false",
+    ]);
+    expect(playerRows().map((row) => row.title)).toEqual([
+      "Point of view (1)",
+      "Point of view (2)",
+      "Point of view (3)",
+      "Point of view (4)",
+    ]);
   });
 
-  it("shows each round's change for the viewed player", async () => {
-    renderViewer({ start: at(0, 0, 1) });
-    await click(button(/, round list$/));
-    const rows = within(list() as HTMLElement).getAllByRole("button");
-    expect(rows.map((row) => row.querySelector("[data-sign]")?.textContent)).toEqual([
+  it("views the table from the player whose row is pressed", async () => {
+    renderViewer({ start: at(0, 2) });
+    expect(pov()).toBe("East A");
+    expect(ownHand()).toBe("A's hand");
+    const row = playerRows()[2] as HTMLElement;
+    act(() => row.focus());
+    await click(row);
+    expect(pov()).toBe("West C");
+    expect(ownHand()).toBe("C's hand");
+    expect(playerRows().map((player) => player.getAttribute("aria-pressed"))).toEqual([
+      "false",
+      "false",
+      "true",
+      "false",
+    ]);
+    expect(within(players()).getAllByText("Point of view")).toHaveLength(1);
+    // The row stays, with the focus, and the replay where it was.
+    expect(document.activeElement).toBe(playerRows()[2]);
+    expect(counter()).toBe("3 / 25");
+    // Own turns are now this player's: C's open kan is step 11.
+    await press("ArrowRight", { shiftKey: true });
+    expect(counter()).toBe("12 / 25");
+    // The row of the viewed player changes nothing.
+    await click(playerRows()[2] as HTMLElement);
+    expect(pov()).toBe("West C");
+    expect(counter()).toBe("12 / 25");
+  });
+
+  it("keeps the rows in seat order whoever is viewed, and the round list follows the view", async () => {
+    renderViewer({ start: at(0, 2) });
+    await click(playerRows()[1] as HTMLElement);
+    expect(playerRows().map((row) => spoken(row).split(" ").slice(0, 2).join(" "))).toEqual([
+      "East A",
+      "South B",
+      "West C",
+      "North D",
+    ]);
+    expect(shown(rounds())).toMatch(/^Rounds Change for B /);
+    expect(roundRows().map((round) => round.querySelector("[data-sign]")?.textContent)).toEqual([
       "B −12,000",
       "B −12,000",
       "B +8,000",
@@ -991,128 +1317,191 @@ describe("Viewer round list", () => {
     ]);
   });
 
-  it("jumps to the end of the game from Final standings", async () => {
-    renderViewer();
-    await click(button(/, round list$/));
-    await click(within(list() as HTMLElement).getByRole("button", { name: "Final standings" }));
-    expect(roundName()).toBe("East 3");
-    expect(counter()).toBe("4 / 4");
-    expect(queryCard()).not.toBeNull();
+  it("does not stop autoplay when the view changes", async () => {
+    vi.useFakeTimers();
+    renderViewer({ start: at(0, 2) });
+    await click(button("Play"));
+    await click(playerRows()[3] as HTMLElement);
+    expect(pov()).toBe("North D");
+    expect(button("Pause")).toBeTruthy();
   });
 
-  it("opens and closes on R", async () => {
-    renderViewer({ start: at(1, 0) });
-    await press("r");
-    expect(list()).not.toBeNull();
-    expect(button(/, round list$/).getAttribute("aria-expanded")).toBe("true");
-    expect(document.activeElement?.getAttribute("aria-current")).toBe("true");
-    await press("r", { target: document.activeElement as Element });
-    expect(list()).toBeNull();
-    expect(document.activeElement).toBe(button(/, round list$/));
+  it("lists three players in a three-player game", () => {
+    renderViewer({ game: sanma });
+    expect(playerRows().map(shown)).toEqual([
+      "E A Point of view 35,000 Wait 4 left",
+      "S B 35,000",
+      "W C 35,000 Wait 3 left",
+    ]);
+    expect(playerRows().map((row) => row.title)).toEqual([
+      "Point of view (1)",
+      "Point of view (2)",
+      "Point of view (3)",
+    ]);
+  });
+
+  it("hides and shows the other hands from its checkbox, and remembers it", async () => {
+    const { unmount } = renderViewer();
+    expect(hands().checked).toBe(true);
+    expect(players().contains(hands())).toBe(true);
+    expect(hands().closest("label")?.title).toBe("Show all hands (H)");
+    await click(hands());
+    expect(hands().checked).toBe(false);
+    expect(handOf("B's hand")).toBeNull();
+    expect(handOf("B's hand, 13 tiles face down")).not.toBeNull();
+    expect(stored().showAllHands).toBe(false);
+    unmount();
+    renderViewer();
+    expect(hands().checked).toBe(false);
+    await click(hands());
+    expect(hands().checked).toBe(true);
+    expect(handOf("B's hand")).not.toBeNull();
+    expect(stored().showAllHands).toBe(true);
   });
 });
 
-describe("Viewer popovers", () => {
-  const openers = [/^Point of view:/, /^Menu$/, /, round list$/];
-
-  it.each(openers)("ignores every shortcut while %s is open", async (name) => {
-    renderViewer({ start: at(0, 2) });
-    await click(button(name));
-    const inside = document.activeElement as HTMLElement;
-    expect(inside.closest('[data-gesture="ignore"]')).not.toBeNull();
-    for (const key of ["ArrowRight", "ArrowLeft", "h", "c", "w", "d", "v", "2", "?", "+"]) {
-      await press(key, { target: inside, code: key === "2" ? "Digit2" : undefined });
-    }
-    expect(counter()).toBe("3 / 25");
-    expect(button("Show all hands").getAttribute("aria-pressed")).toBe("true");
-    expect(stage().getAttribute("data-view")).toBe("3d");
-    expect(button(/^Point of view:/).getAttribute("aria-label")).toBe("Point of view: East, A");
-    expect(button(/^Autoplay speed/).getAttribute("aria-label")).toBe("Autoplay speed: 1×");
-    expect(screen.getByTestId("dialog").textContent).toBe("");
-    expect(screen.queryByText(/^Waits and shanten/)).toBeNull();
-  });
-
-  it.each(openers)(
-    "closes %s on Esc before the card, and the card on the next Esc",
-    async (name) => {
-      renderViewer({ start: at(0, 24) });
-      await click(button(name));
-      await press("Escape", { target: document.activeElement as Element });
-      expect(button(name).getAttribute("aria-expanded")).toBe("false");
-      expect(document.activeElement).toBe(button(name));
-      expect(queryCard()).not.toBeNull();
-      await press("Escape", { target: document.activeElement as Element });
-      expect(queryCard()).toBeNull();
-    },
-  );
-
-  it.each(openers)("closes %s on a press on the table, which does not step", async (name) => {
-    renderViewer({ start: at(0, 2) });
-    await click(button(name));
-    await mouse(stage());
-    expect(button(name).getAttribute("aria-expanded")).toBe("false");
-    expect(counter()).toBe("3 / 25");
-    // The item that had the focus is gone: the stage has it now.
-    expect(document.activeElement).toBe(stage());
-    await mouse(stage());
-    expect(counter()).toBe("4 / 25");
-  });
-
-  it("closes a popover on a press on the console, which does not press it", async () => {
-    renderViewer({ start: at(0, 2) });
-    await click(button(/, round list$/));
-    const diff = button("Show score differences");
-    const event = { button: 0, pointerId: 1, isPrimary: true, pointerType: "mouse" };
-    await act(async () => {
-      fireEvent.pointerDown(diff, event);
-      fireEvent.pointerUp(diff, event);
-      fireEvent.click(diff, { detail: 1 });
-    });
-    expect(screen.queryByRole("group", { name: "Rounds" })).toBeNull();
-    expect(diff.getAttribute("aria-pressed")).toBe("false");
-    expect(counter()).toBe("3 / 25");
-  });
-
-  it("has one popover open at a time", async () => {
-    renderViewer();
-    await click(button(/^Point of view:/));
-    expect(screen.getByRole("menu", { name: "Point of view" })).toBeTruthy();
-    await click(button("Menu"));
-    expect(screen.queryByRole("menu", { name: "Point of view" })).toBeNull();
-    expect(screen.getByRole("menu", { name: "Menu" })).toBeTruthy();
-    await click(button(/, round list$/));
-    expect(screen.queryByRole("menu")).toBeNull();
-    expect(screen.getByRole("group", { name: "Rounds" })).toBeTruthy();
-  });
-
-  it("views from the seat chosen in the point-of-view menu, which lists the scores", async () => {
-    renderViewer({ game: sanma });
-    await click(button(/^Point of view:/));
-    const seats = within(screen.getByRole("menu", { name: "Point of view" })).getAllByRole(
-      "menuitemradio",
-    );
-    expect(seats.map((seat) => seat.getAttribute("aria-label"))).toEqual([
-      "East, A, 35,000",
-      "South, B, 35,000 (±0)",
-      "West, C, 35,000 (±0)",
+describe("Viewer round list", () => {
+  it("lists every round with how it ended and the viewed player's change, the one on the table marked", () => {
+    renderViewer({ start: at(1, 5) });
+    expect(roundRows().map(spoken)).toEqual([
+      "East 1 A ron off B A +13,000",
+      "East 2 A ron off B A +13,000",
+      "East 3 B ron off A C ron off A A −16,000",
+      "Final standings",
     ]);
-    await click(seats[2] as HTMLElement);
-    expect(button(/^Point of view:/).getAttribute("aria-label")).toBe("Point of view: West, C");
-    expect(document.activeElement).toBe(button(/^Point of view:/));
+    expect(roundRows().map(shown)).toEqual([
+      "East 1 A ron off B +13,000",
+      "East 2 A ron off B +13,000",
+      "East 3 B ron off A C ron off A −16,000",
+      "Final standings",
+    ]);
+    expect(shown(rounds())).toMatch(/^Rounds Change for A /);
+    expect(roundRows().map((row) => row.getAttribute("aria-current"))).toEqual([
+      null,
+      "true",
+      null,
+      null,
+    ]);
   });
 
-  it("asks for the shell's dialogs from the Menu, with the focus back on the Menu button", async () => {
+  it("names a draw and leaves out a change of nothing", () => {
+    renderViewer({ game: drawGame, start: at(0, 0, 2) });
+    expect(roundRows().map(spoken)).toEqual([
+      "East 1 Draw C −1,500",
+      "East 2 A ron off B",
+      "Final standings",
+    ]);
+  });
+
+  it("jumps to the start of the round whose row is pressed, and the row keeps the focus", async () => {
+    const push = vi.spyOn(window.history, "pushState");
+    renderViewer({ start: at(1, 5) });
+    const row = roundRows()[2] as HTMLElement;
+    act(() => row.focus());
+    await click(row);
+    expect(roundName()).toBe("East 3");
+    expect(counter()).toBe("1 / 4");
+    expect(roundRows().map((round) => round.getAttribute("aria-current"))).toEqual([
+      null,
+      null,
+      "true",
+      null,
+    ]);
+    // The list is always there: nothing closes, nothing takes the focus away.
+    expect(document.activeElement).toBe(roundRows()[2]);
+    // A jump is a history entry.
+    expect(push).toHaveBeenCalledTimes(1);
+    // The row of the round on the table goes back to its start.
+    await press("ArrowRight");
+    await press("ArrowRight");
+    await click(roundRows()[2] as HTMLElement);
+    expect(counter()).toBe("1 / 4");
+    await click(roundRows()[0] as HTMLElement);
+    expect(roundName()).toBe("East 1");
+    expect(counter()).toBe("1 / 25");
+  });
+
+  it("stops autoplay when a row is pressed", async () => {
+    vi.useFakeTimers();
+    renderViewer({ start: at(0, 2) });
+    await click(button("Play"));
+    await click(roundRows()[1] as HTMLElement);
+    expect(roundName()).toBe("East 2");
+    expect(button("Play")).toBeTruthy();
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(counter()).toBe("1 / 25");
+  });
+
+  it("jumps to the end of the game from Final standings, where the standings are", async () => {
+    renderViewer();
+    await click(button("Final standings"));
+    expect(roundName()).toBe("East 3");
+    expect(counter()).toBe("4 / 4");
+    expect(within(result()).getByRole("table", { name: "Final standings" })).toBeTruthy();
+    expect(roundRows().map((row) => row.getAttribute("aria-current"))).toEqual([
+      null,
+      null,
+      "true",
+      null,
+    ]);
+  });
+
+  it("keeps the shortcuts working while the focus is in the panel", async () => {
+    renderViewer({ start: at(0, 2) });
+    const row = roundRows()[0] as HTMLElement;
+    act(() => row.focus());
+    expect(await press("ArrowRight", { target: row })).toBe(false);
+    expect(counter()).toBe("4 / 25");
+    await press("h", { target: row });
+    expect(hands().checked).toBe(false);
+    await press("2", { code: "Digit2", target: row });
+    expect(pov()).toBe("South B");
+    // Space presses the focused row; it does not start autoplay under it.
+    expect(await press(" ", { code: "Space", target: row })).toBe(true);
+    expect(button("Play")).toBeTruthy();
+    // The check box takes Space too, and leaves the arrows to the viewer.
+    act(() => hands().focus());
+    expect(await press(" ", { code: "Space", target: hands() })).toBe(true);
+    expect(await press("ArrowLeft", { target: hands() })).toBe(false);
+    expect(counter()).toBe("3 / 25");
+  });
+});
+
+describe("Viewer panel actions", () => {
+  const actions = () =>
+    within(menu())
+      .getAllByRole("button")
+      .map((action) => action.textContent);
+
+  it("offers a link to copy only for a log that has an address", () => {
+    renderViewer();
+    expect(actions()).toEqual(["Open another log", "Settings", "Controls"]);
+    cleanup();
+    renderViewer({ origin: SAMPLE });
+    expect(actions()).toEqual([
+      "Open another log",
+      "Copy link to this moment",
+      "Settings",
+      "Controls",
+    ]);
+  });
+
+  it("asks for the shell's dialogs, with the focus still on the button pressed", async () => {
     renderViewer();
     for (const [item, dialog] of [
       ["Open another log", "open"],
       ["Settings", "settings"],
       ["Controls", "help"],
-    ]) {
-      await click(button("Menu"));
-      await click(screen.getByRole("menuitem", { name: item }));
+    ] as const) {
+      const action = within(menu()).getByRole("button", { name: item });
+      act(() => action.focus());
+      await click(action);
       expect(screen.getByTestId("dialog").textContent).toBe(dialog);
-      expect(document.activeElement).toBe(button("Menu"));
+      expect(document.activeElement).toBe(action);
     }
+    expect(counter()).toBe("1 / 25");
   });
 
   it("opens the controls help on ?", async () => {
@@ -1126,15 +1515,44 @@ describe("Viewer history and links", () => {
   it("pushes a jump to another round as a history entry", async () => {
     const push = vi.spyOn(window.history, "pushState");
     renderViewer({ start: at(0, 5) });
-    await click(within(transport()).getByRole("button", { name: "Next round" }));
+    await click(roundButton("Next round"));
     expect(roundName()).toBe("East 2");
     expect(push).toHaveBeenCalledTimes(1);
+  });
+
+  it("pushes the result's Next round as a history entry, but not a step past the result", async () => {
+    const push = vi.spyOn(window.history, "pushState");
+    renderViewer({ start: at(0, 24) });
+    await press("ArrowRight");
+    expect(roundName()).toBe("East 2");
+    expect(push).not.toHaveBeenCalled();
+    await press("End");
+    push.mockClear();
+    // Jumps within a second of each other are one entry: let that second pass after End.
+    vi.spyOn(performance, "now").mockReturnValue(performance.now() + 2000);
+    await click(within(result()).getByRole("button", { name: "Next round" }));
+    expect(roundName()).toBe("East 3");
+    expect(push).toHaveBeenCalledTimes(1);
+  });
+
+  it("pushes a change of the point of view from the player list, with the seat in the address", async () => {
+    window.history.replaceState(null, "", "/?sample=tenhou-json");
+    const push = vi.spyOn(window.history, "pushState");
+    renderViewer({ origin: SAMPLE, start: at(0, 4) });
+    await click(playerRows()[1] as HTMLElement);
+    expect(push).toHaveBeenCalledTimes(1);
+    const url = String(push.mock.calls[0]?.[2]);
+    expect(url).toContain("sample=tenhou-json");
+    expect(url).toContain("step=5");
+    expect(url).toContain("pov=2");
   });
 
   it("restores a position from Back and Forward without a caption", async () => {
     renderViewer({ start: at(0, 7) });
     const captions = () =>
-      screen.queryAllByText("Riichi").filter((el) => el.closest('[aria-hidden="true"]'));
+      within(stage())
+        .queryAllByText("Riichi")
+        .filter((el) => el.closest('[aria-hidden="true"]'));
     await press("ArrowRight");
     expect(captions()).toHaveLength(1);
     const entry = window.history.state as { sid?: string };
@@ -1150,13 +1568,31 @@ describe("Viewer history and links", () => {
     expect(roundName()).toBe("East 1");
     expect(counter()).toBe("9 / 25");
     expect(captions()).toHaveLength(0);
+    expect(roundRows()[0]?.getAttribute("aria-current")).toBe("true");
+  });
+
+  it("restores the point of view of the entry Back returns to", async () => {
+    renderViewer({ start: at(0, 7) });
+    const entry = window.history.state as { sid?: string };
+    await click(playerRows()[2] as HTMLElement);
+    expect(pov()).toBe("West C");
+    await act(async () => {
+      window.dispatchEvent(
+        new PopStateEvent("popstate", {
+          state: { v: 1, round: 0, step: 7, pov: 0, sid: entry.sid, n: 0 },
+        }),
+      );
+    });
+    expect(pov()).toBe("East A");
+    expect(ownHand()).toBe("A's hand");
+    expect(counter()).toBe("8 / 25");
   });
 
   it("writes the sample and position into the address after single steps", async () => {
     vi.useFakeTimers();
     window.history.replaceState(null, "", "/?sample=tenhou-json");
     const replace = vi.spyOn(window.history, "replaceState");
-    renderViewer({ origin: { kind: "sample", id: "tenhou-json" } });
+    renderViewer({ origin: SAMPLE });
     await press("ArrowRight");
     await act(async () => {
       vi.advanceTimersByTime(300);
@@ -1180,25 +1616,27 @@ describe("Viewer history and links", () => {
     for (const call of replace.mock.calls) {
       expect(String(call[2])).not.toContain("?");
     }
-    await click(button("Menu"));
-    expect(screen.queryByRole("menuitem", { name: "Copy link to this moment" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy link to this moment" })).toBeNull();
   });
 
   it("copies a link to the clipboard and says so in a toast and the live region", async () => {
     vi.useFakeTimers();
     const writeText = vi.fn(async (_text: string) => {});
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    renderViewer({ origin: { kind: "sample", id: "tenhou-json" }, start: at(0, 4) });
-    await click(button("Menu"));
-    await click(screen.getByRole("menuitem", { name: "Copy link to this moment" }));
+    renderViewer({ origin: SAMPLE, start: at(0, 4) });
+    const copy = button("Copy link to this moment");
+    act(() => copy.focus());
+    await click(copy);
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(String(writeText.mock.calls[0]?.[0])).toMatch(
       /\?sample=tenhou-json&round=1&step=5&pov=1$/,
     );
     const toast = () => screen.queryByText("Link copied", { ignore: "[aria-live] *" });
     expect(toast()?.getAttribute("aria-hidden")).toBe("true");
+    // The toast floats by the table; it is not one of the panel's words.
+    expect(panel().contains(toast())).toBe(false);
     expect(liveText()).toBe("Link copied");
-    expect(document.activeElement).toBe(button("Menu"));
+    expect(document.activeElement).toBe(copy);
 
     // A step gives the live region back to the table; the toast stays its time.
     await press("ArrowRight");
@@ -1214,14 +1652,24 @@ describe("Viewer history and links", () => {
     expect(toast()).toBeNull();
   });
 
+  it("copies the link of the view on the table: the seat chosen in the player list", async () => {
+    const writeText = vi.fn(async (_text: string) => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    renderViewer({ origin: SAMPLE, start: at(1, 24) });
+    await click(playerRows()[3] as HTMLElement);
+    await click(button("Copy link to this moment"));
+    expect(String(writeText.mock.calls[0]?.[0])).toMatch(
+      /\?sample=tenhou-json&round=2&step=25&pov=4$/,
+    );
+  });
+
   it("says so when the link cannot be copied", async () => {
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText: vi.fn(async () => Promise.reject(new Error("denied"))) },
       configurable: true,
     });
-    renderViewer({ origin: { kind: "sample", id: "tenhou-json" } });
-    await click(button("Menu"));
-    await click(screen.getByRole("menuitem", { name: "Copy link to this moment" }));
+    renderViewer({ origin: SAMPLE });
+    await click(button("Copy link to this moment"));
     expect(liveText()).toBe("The link could not be copied");
   });
 
@@ -1230,11 +1678,8 @@ describe("Viewer history and links", () => {
       value: { writeText: vi.fn(async () => {}) },
       configurable: true,
     });
-    renderViewer({ origin: { kind: "sample", id: "tenhou-json" } });
-    const copy = async () => {
-      await click(button("Menu"));
-      await click(screen.getByRole("menuitem", { name: "Copy link to this moment" }));
-    };
+    renderViewer({ origin: SAMPLE });
+    const copy = () => click(button("Copy link to this moment"));
     const said = () => document.querySelector("[aria-live]")?.firstElementChild;
     await copy();
     const first = said();
@@ -1250,10 +1695,13 @@ describe("Viewer focus and announcements", () => {
   it("has exactly one live region, which announces each step", async () => {
     renderViewer({ start: at(0, 24) });
     expect(document.querySelectorAll("[aria-live]")).toHaveLength(1);
+    expect(liveText()).toMatch(/^Result · A wins by ron off B/);
     await press("ArrowRight");
     expect(liveText()).toContain("East 2: starting hands dealt");
     expect(document.querySelectorAll("[aria-live]")).toHaveLength(1);
     expect(document.querySelector("[aria-live]")?.className).toBe("sr-only");
+    // The result in the panel is not a second announcement of it.
+    expect(panel().querySelector("[aria-live], [role='status'], [role='alert']")).toBeNull();
   });
 
   it("reads out a notice from around it in its one live region, until the replay moves", async () => {
@@ -1280,22 +1728,29 @@ describe("Viewer focus and announcements", () => {
   it("attaches the shell's focus ref to the stage", () => {
     const { focusRef } = renderViewer();
     expect(focusRef.current).toBe(stage());
+    expect(stage().tabIndex).toBe(-1);
   });
 
-  it("gives every button a name and a tooltip", () => {
-    renderViewer({ start: at(0, 24) });
-    fireEvent.keyDown(window, { key: "Escape" });
-    for (const control of within(transport()).getAllByRole("button")) {
-      expect(control.getAttribute("aria-label") ?? control.textContent).toBeTruthy();
+  it("gives every button a name, and a tooltip with its key where it has one", () => {
+    renderViewer({ start: at(0, 24), origin: SAMPLE });
+    const all = within(screen.getByRole("main")).getAllByRole("button");
+    for (const control of all) {
+      expect(control.getAttribute("aria-label") ?? spoken(control), control.outerHTML).toBeTruthy();
+    }
+    // A button that is only an icon says in a tooltip what it is.
+    const icons = all.filter((control) => control.hasAttribute("data-icon"));
+    expect(icons).toHaveLength(7);
+    for (const control of icons) {
+      expect(control.getAttribute("aria-label"), control.outerHTML).toBeTruthy();
+      expect(control.title, control.outerHTML).toContain(control.getAttribute("aria-label"));
     }
     for (const control of [
-      ...within(screen.getByRole("group", { name: "Viewer tools" })).getAllByRole("button"),
-      ...within(transport())
-        .getAllByRole("button")
-        .filter((control) => control.textContent !== "Show result"),
+      ...within(transport()).getAllByRole("button"),
+      ...within(stage()).getAllByRole("button"),
+      ...playerRows(),
+      within(result()).getByRole("button", { name: "Next round" }),
     ]) {
-      expect(control.getAttribute("aria-label"), control.outerHTML).toBeTruthy();
-      expect(control.title, control.outerHTML).toBeTruthy();
+      expect(control.title, control.outerHTML).toMatch(/ \(.+\)$/);
     }
   });
 });

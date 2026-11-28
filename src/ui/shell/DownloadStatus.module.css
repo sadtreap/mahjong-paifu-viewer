@@ -10,7 +10,7 @@
   flex: none;
   inline-size: 0.875em;
   block-size: 0.875em;
-  border: 2px solid var(--chrome-border);
+  border: 2px solid var(--color-line-strong);
   border-block-start-color: currentcolor;
   border-radius: 50%;
   animation: turn 0.8s linear infinite;

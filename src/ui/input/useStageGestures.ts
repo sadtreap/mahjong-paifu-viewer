@@ -13,7 +13,7 @@ import { createRepeater, type Repeater } from "./repeat";
 import { swallowNextClick } from "./swallowClick";
 import { useAttach } from "./useAttach";
 
-/** Inside these, the table's gestures stop and the wheel scrolls natively (cards, menus). */
+/** Inside these, the table's gestures stop and the wheel scrolls natively (anything laid over the table). */
 export const GESTURE_IGNORE = '[data-gesture="ignore"]';
 /** A tap on these never steps (the control handles it); swipes still count. */
 export const INTERACTIVE = 'button, a, input, select, textarea, [role="slider"], [role="tab"]';
@@ -58,7 +58,7 @@ function closestIn(target: EventTarget | null, selector: string): boolean {
  * next, right-click or Ctrl+click = previous, Shift = by own turn, press and hold = repeat on the
  * hold schedule (forward, or backward with the right button), touch swipe left / right = next /
  * previous (not from a side edge of the screen, where a swipe is the system's Back gesture). The
- * context menu is prevented on the stage (outside cards, links and fields), and a tap that
+ * context menu is prevented on the stage (outside such parts, links and fields), and a tap that
  * stepped presses nothing else.
  */
 export function useStageGestures(

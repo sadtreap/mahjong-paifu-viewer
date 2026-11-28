@@ -20,14 +20,10 @@ describe("Icon", () => {
         "nextTurn",
         "play",
         "pause",
-        "caret",
         "open",
-        "link",
-        "eye",
-        "settings",
-        "help",
-        "more",
         "close",
+        "alert",
+        "globe",
       ]),
     );
   });

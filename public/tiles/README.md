@@ -4,7 +4,5 @@ The SVG files in this folder are the "Regular" set from [FluffyStuff/riichi-mahj
 
 All images share a 300×400 viewBox:
 
-- `Front.svg` is the blank tile body.
-- `Man1-9`, `Pin1-9`, `Sou1-9`, `Man5-Dora`/`Pin5-Dora`/`Sou5-Dora` (red fives), `Ton`, `Nan`, `Shaa`, `Pei`, `Haku`, `Hatsu` and `Chun` are transparent faces drawn over `Front.svg`. The viewer shows each face as an `<img>` with `Front.svg` as its CSS background (`src/ui/TileImage.tsx`).
-- `Back.svg` is a complete face-down tile, used for hidden and unknown tiles.
-- `Blank.svg` (a "?" face) is kept with the set but not used.
+- `Man1-9`, `Pin1-9`, `Sou1-9`, `Man5-Dora`/`Pin5-Dora`/`Sou5-Dora` (red fives), `Ton`, `Nan`, `Shaa`, `Pei`, `Haku`, `Hatsu` and `Chun` are transparent faces. The viewer shows each face as an `<img>` over a flat tile body drawn in CSS (`src/ui/TileImage.tsx`), and draws hidden and unknown tiles as that body alone.
+- `Front.svg` (the set's own tile body), `Back.svg` (its face-down tile) and `Blank.svg` (a "?" face) are kept with the set but not used.

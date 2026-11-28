@@ -1,15 +1,15 @@
-/* The app's dialogs (open, settings, controls): one card over a dimmed page. */
+/* The app's dialogs (open, settings, controls): one card over a veiled page. */
 .dialog {
   inline-size: min(30rem, calc(100vw - 16px));
   max-inline-size: none;
   max-block-size: calc(100dvh - 16px);
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--chrome-border);
+  border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-card);
-  background: var(--chrome-bg-solid);
+  background: var(--color-panel);
   color: var(--color-fg);
-  box-shadow: var(--chrome-shadow);
+  box-shadow: var(--shadow-dialog);
 }
 
 .wide {
@@ -18,7 +18,7 @@
 
 /* Written out: older browsers do not hand the page's custom properties to a backdrop. */
 .dialog::backdrop {
-  background: rgb(0 0 0 / 0.6);
+  background: rgb(27 27 25 / 0.4);
 }
 
 /* The dialog's box minus its border, so the body below scrolls instead of the dialog. */
@@ -34,7 +34,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.5rem 0.5rem 1rem;
-  border-block-end: 1px solid var(--chrome-border);
+  border-block-end: 1px solid var(--color-line);
 }
 
 .title {

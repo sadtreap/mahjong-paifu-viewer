@@ -1,12 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  allTileImageUrls,
-  preloadTileImages,
-  TILE_BACK_URL,
-  TILE_FRONT_URL,
-  tileFaceName,
-  tileImageUrl,
-} from "./tileAssets";
+import { allTileImageUrls, preloadTileImages, tileFaceName, tileImageUrl } from "./tileAssets";
 
 describe("tileFaceName", () => {
   it("maps number tiles to the suit files", () => {
@@ -41,8 +34,6 @@ describe("tileFaceName", () => {
 describe("tileImageUrl", () => {
   it("builds URLs under the base path's tiles folder", () => {
     expect(tileImageUrl("Man1")).toBe(`${import.meta.env.BASE_URL}tiles/Man1.svg`);
-    expect(TILE_FRONT_URL.endsWith("tiles/Front.svg")).toBe(true);
-    expect(TILE_BACK_URL.endsWith("tiles/Back.svg")).toBe(true);
   });
 });
 
@@ -51,14 +42,14 @@ describe("preloadTileImages", () => {
     vi.unstubAllGlobals();
   });
 
-  it("lists the 37 faces, the front and the back once each", () => {
+  it("lists the 37 faces once each, and no body or back (those are drawn in CSS)", () => {
     const urls = allTileImageUrls();
-    expect(urls).toHaveLength(39);
-    expect(new Set(urls).size).toBe(39);
+    expect(urls).toHaveLength(37);
+    expect(new Set(urls).size).toBe(37);
     expect(urls).toContain(tileImageUrl("Man5-Dora"));
     expect(urls).toContain(tileImageUrl("Chun"));
-    expect(urls).toContain(TILE_FRONT_URL);
-    expect(urls).toContain(TILE_BACK_URL);
+    expect(urls).not.toContain(tileImageUrl("Front"));
+    expect(urls).not.toContain(tileImageUrl("Back"));
   });
 
   it("starts loading every image once, decoded asynchronously", () => {
