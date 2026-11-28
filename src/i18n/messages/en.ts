@@ -301,7 +301,6 @@ export const en = {
       `Step ${step} of ${total}, turn ${turn}: ${text}`,
   },
   info: {
-    dora: "Dora",
     deposits: (n: number) => count(n, "deposit", "deposits"),
   },
   rounds: {

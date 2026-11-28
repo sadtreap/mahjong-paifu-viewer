@@ -103,11 +103,13 @@ export const Console = memo(function Console({
           <span className={cx(styles.round, styles.full)}>{roundName}</span>
           <span className={cx(styles.round, styles.short)}>{roundShort}</span>
           {doraIndicators.length > 0 && (
-            <span className={styles.dora} data-count={doraIndicators.length}>
-              <span className={styles.doraLabel}>{m.info.dora}</span>
-              {keyed(doraIndicators).map(({ key: tileKey, item }) => (
-                <TileImage key={tileKey} tile={item} label="" />
-              ))}
+            <span className={styles.dora}>
+              <span className={styles.doraLabel}>{m.board.dora}</span>
+              <span className={styles.doraTiles}>
+                {keyed(doraIndicators).map(({ key: tileKey, item }) => (
+                  <TileImage key={tileKey} tile={item} label="" />
+                ))}
+              </span>
             </span>
           )}
           <span className={cx(styles.left, styles.full)}>{m.board.wall(wallRemaining)}</span>

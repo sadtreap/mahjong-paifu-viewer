@@ -254,7 +254,6 @@ export const ko: Messages = {
       `${total}수 중 ${step}수, ${turn}순: ${text}`,
   },
   info: {
-    dora: "도라",
     deposits: (n: number) => `공탁 ${n}`,
   },
   rounds: {

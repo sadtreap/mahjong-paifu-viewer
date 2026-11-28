@@ -305,7 +305,8 @@ describe("what layout.ts and geometry.ts count on", () => {
 });
 
 describe("the console's two wordings", () => {
-  const SMALL = "@container stage";
+  const SMALL = "@container stage (max-width: 440px)";
+  const SMALLEST = "@container stage (max-width: 340px)";
   const css = read("Console.module.css");
 
   it("shows the short words only on a small table, in place of the full ones", () => {
@@ -313,7 +314,6 @@ describe("the console's two wordings", () => {
     expect(value(rule(outside, ".short"), "display")).toBe("none");
     expect(rule(outside, ".full")).toBe("");
     expect(value(rule(inside, ".full"), "display")).toBe("none");
-    expect(value(rule(inside, ".doraLabel"), "display")).toBe("none");
     expect(value(rule(inside, ".short"), "display")).not.toBe("none");
     expect(value(rule(inside, ".short"), "display")).not.toBe("");
   });
@@ -322,10 +322,11 @@ describe("the console's two wordings", () => {
     expect(css).toMatch(/@container stage \((max-width|max-height): \d+px\)/);
   });
 
-  it("drops the label of four or five dora indicators, which fill the middle", () => {
-    expect(
-      value(rule(css, '.dora:is([data-count="4"], [data-count="5"]) > .doraLabel'), "display"),
-    ).toBe("none");
+  it("names the dora indicators on a line of their own, on every table but the smallest", () => {
+    expect(value(rule(css, ".dora"), "flex-direction")).toBe("column");
+    const { inside, outside } = split(css, SMALLEST);
+    expect(value(rule(inside, ".doraLabel"), "display")).toBe("none");
+    expect(outside).not.toMatch(/\.doraLabel[^{]*\{[^}]*display:\s*none/);
   });
 });
 

@@ -180,11 +180,13 @@ describe("the console", () => {
     expect(screen.getByText("1 left")).toBeTruthy();
   });
 
-  it("shows the dora indicators as tiles, named in the hidden text", () => {
+  it("shows the dora indicators as tiles under their name, named in the hidden text", () => {
     renderStage({}, boardState({ doraIndicators: ["3m", "2z", "0p", "9s"] }));
-    const dora = consoleButton().querySelector("[data-count]") as HTMLElement;
-    expect(dora.getAttribute("data-count")).toBe("4");
-    expect(dora.textContent).toBe("Dora");
+    // "Indicators", not "Dora": the dora is the tile after the one shown.
+    const label = within(consoleButton()).getByText("Dora indicators");
+    const dora = label.parentElement as HTMLElement;
+    expect(dora.textContent).toBe("Dora indicators");
+    expect(dora.firstElementChild).toBe(label);
     const tiles = [...dora.querySelectorAll("img")];
     expect(tiles.map((img) => img.getAttribute("src")?.replace(/^.*\//, ""))).toEqual([
       "Man3.svg",
@@ -203,9 +205,8 @@ describe("the console", () => {
 
   it("leaves the dora out while there is none to show", () => {
     renderStage({}, boardState({ doraIndicators: [] }));
-    expect(consoleButton().querySelector("[data-count]")).toBeNull();
     expect(consoleButton().querySelector("img")).toBeNull();
-    expect(screen.queryByText("Dora")).toBeNull();
+    expect(screen.queryByText("Dora indicators")).toBeNull();
     expect(stage().querySelector(".sr-only")?.textContent).toBe("60 tiles left");
   });
 

@@ -255,7 +255,6 @@ export const ja: Messages = {
       `${total}手中${step}手目、${turn}巡目：${text}`,
   },
   info: {
-    dora: "ドラ",
     deposits: (n: number) => `供託 ${n}`,
   },
   rounds: {
